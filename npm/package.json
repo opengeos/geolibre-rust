@@ -1,0 +1,31 @@
+{
+  "name": "geolibre-rust",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Pure-Rust geospatial toolkit (whitebox_next_gen) compiled to WebAssembly (WASI) for GeoLibre's in-browser tool execution",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opengeos/geolibre-rust"
+  },
+  "homepage": "https://github.com/opengeos/geolibre-rust",
+  "keywords": ["geospatial", "wasm", "wasi", "gis", "geotiff", "geolibre", "whitebox"],
+  "files": [
+    "geolibre-cli.wasm",
+    "tools.mjs",
+    "tools.d.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./tools.d.ts",
+      "default": "./tools.mjs"
+    },
+    "./tools": {
+      "types": "./tools.d.ts",
+      "default": "./tools.mjs"
+    }
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2"
+  }
+}

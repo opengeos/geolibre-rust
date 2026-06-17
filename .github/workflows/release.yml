@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create releases / upload assets
+  id-token: write # OIDC token for npm Trusted Publishing (+ provenance)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing (OIDC) requires npm >= 11.5.1; the runner's bundled
+      # npm is older, so upgrade the CLI before publishing.
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Build WASI artifact
+        run: ./build.sh
+
+      - name: Sync package version to tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: npm
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+
+      # No NODE_AUTH_TOKEN needed: npm authenticates via the OIDC id-token from
+      # the configured trusted publisher and attaches build provenance.
+      - name: Publish to npm (Trusted Publishing)
+        working-directory: npm
+        run: npm publish --provenance --access public
+
+      - name: Stage release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p dist
+          cp npm/geolibre-cli.wasm dist/geolibre-cli-${GITHUB_REF_NAME}.wasm
+          cp npm/tools.mjs          dist/geolibre-rust-${GITHUB_REF_NAME}.mjs
+          cp npm/tools.d.ts         dist/geolibre-rust-${GITHUB_REF_NAME}.d.ts
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true

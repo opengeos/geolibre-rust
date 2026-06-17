@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Host tests
+        run: cargo test -p geolibre-cli -p geolibre-tools
+
+      - name: Build WASI artifact
+        run: ./build.sh
+
+      - name: Install npm deps and smoke test
+        working-directory: npm
+        run: |
+          npm install --no-save @bjorn3/browser_wasi_shim@^0.4.2
+          node ../examples/node-demo.mjs

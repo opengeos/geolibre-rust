@@ -1,0 +1,57 @@
+name: Deploy demo to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Build the WASI tool runner and assemble the site
+        run: |
+          ./build.sh
+          mkdir -p site
+          cp demo/index.html      site/index.html
+          cp npm/tools.mjs        site/tools.mjs
+          cp npm/geolibre-cli.wasm site/geolibre-cli.wasm
+          cp examples/sample.tif  site/sample.tif
+          # cache-bust the glue + wasm together so returning visitors never mix
+          # an old cached loader with a freshly built module
+          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

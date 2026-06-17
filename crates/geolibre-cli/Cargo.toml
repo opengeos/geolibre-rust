@@ -1,0 +1,24 @@
+[package]
+name = "geolibre-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WASI command-line runner for the whitebox_next_gen geospatial tool suite, built for GeoLibre's in-browser WASM execution."
+
+[[bin]]
+name = "geolibre"
+path = "src/main.rs"
+
+[dependencies]
+# whitebox_next_gen crates. Pointed at the fork branch that carries the WASI
+# `image` fix; switch to jblindsay/whitebox_next_gen `main` once that PR merges,
+# or to published versions when available. wbtools_oss is `publish = false`, so a
+# git (or path) dependency is required regardless.
+# For local development against a sibling checkout, override with a [patch] or
+# replace these with `{ path = "../../../<...>/whitebox_next_gen/crates/<crate>" }`.
+wbcore = { git = "https://github.com/giswqs/whitebox_next_gen", branch = "slim-image-default-features" }
+wbtools_oss = { git = "https://github.com/giswqs/whitebox_next_gen", branch = "slim-image-default-features" }
+geolibre-tools = { path = "../geolibre-tools" }
+
+serde_json = "1"

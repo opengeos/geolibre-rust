@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>geolibre-rust demo</title>
+    <!-- tools.mjs imports the WASI shim by bare specifier; resolve it from a CDN
+         so this static page needs no bundler. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@bjorn3/browser_wasi_shim": "https://esm.sh/@bjorn3/browser_wasi_shim@0.4.2"
+        }
+      }
+    </script>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+      h1 { margin-bottom: 0.25rem; }
+      .muted { opacity: 0.7; }
+      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
+      input[type="search"] { font: inherit; padding: 0.4rem 0.6rem; width: 100%; box-sizing: border-box; }
+      pre { background: rgba(127,127,127,0.12); padding: 0.75rem; border-radius: 6px; overflow:auto; }
+      .list { max-height: 240px; overflow: auto; border: 1px solid rgba(127,127,127,0.3); border-radius: 6px; padding: 0.5rem; }
+      .list div { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 1px 0; }
+      .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0; }
+    </style>
+  </head>
+  <body>
+    <h1>geolibre-rust</h1>
+    <p class="muted">
+      The <code>whitebox_next_gen</code> tool suite plus GeoLibre's own tools,
+      compiled to WebAssembly (WASI) and running entirely in your browser.
+    </p>
+
+    <div class="row">
+      <strong id="status">Loading WASM runtime...</strong>
+    </div>
+
+    <div class="row">
+      <button id="run" disabled>Run raster_normalize on a sample DEM</button>
+      <a id="download" hidden download="normalized.tif">Download output</a>
+    </div>
+    <pre id="output" hidden></pre>
+
+    <h2>Available tools (<span id="count">0</span>)</h2>
+    <input type="search" id="filter" placeholder="Filter tools..." disabled />
+    <div class="list" id="tools"></div>
+
+    <script type="module">
+      import { initTools, listTools, runTool } from "./tools.mjs?v=__BUILD__";
+
+      const $ = (id) => document.getElementById(id);
+      let allTools = [];
+
+      function renderTools(filter = "") {
+        const f = filter.trim().toLowerCase();
+        const shown = f ? allTools.filter((t) => t.includes(f)) : allTools;
+        $("tools").innerHTML = shown.map((t) => `<div>${t}</div>`).join("");
+      }
+
+      async function main() {
+        try {
+          await initTools();
+          allTools = await listTools();
+          $("status").textContent = "Ready.";
+          $("count").textContent = allTools.length;
+          renderTools();
+          $("filter").disabled = false;
+          $("run").disabled = false;
+        } catch (e) {
+          $("status").textContent = "Failed to load: " + e;
+          return;
+        }
+
+        $("filter").addEventListener("input", (e) => renderTools(e.target.value));
+
+        $("run").addEventListener("click", async () => {
+          $("run").disabled = true;
+          $("output").hidden = false;
+          $("output").textContent = "Running raster_normalize...";
+          try {
+            const dem = new Uint8Array(await (await fetch("./sample.tif")).arrayBuffer());
+            const { exitCode, stdout, files } = await runTool("raster_normalize", {
+              args: ["--input=/work/dem.tif", "--output=/work/out.tif", "--band=1"],
+              input: { "dem.tif": dem },
+            });
+            const out = files["out.tif"];
+            $("output").textContent =
+              `exit code: ${exitCode}\n` +
+              `stdout:\n${stdout.join("\n")}\n` +
+              `output: out.tif (${out ? out.length : 0} bytes)`;
+            if (out) {
+              const url = URL.createObjectURL(new Blob([out], { type: "image/tiff" }));
+              const a = $("download");
+              a.href = url;
+              a.hidden = false;
+            }
+          } catch (e) {
+            $("output").textContent = "Error: " + e;
+          } finally {
+            $("run").disabled = false;
+          }
+        });
+      }
+
+      main();
+    </script>
+  </body>
+</html>

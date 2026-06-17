@@ -1,0 +1,6 @@
+/target
+node_modules
+npm/geolibre-cli.wasm
+*.wasm-opt.wasm
+# Cargo.lock is committed: this workspace ships a binary, and the lock pins the
+# exact whitebox_next_gen fork commit for reproducible WASI builds.

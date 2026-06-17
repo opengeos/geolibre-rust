@@ -1,5 +1,10 @@
 # geolibre-rust
 
+[![npm version](https://img.shields.io/npm/v/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
+[![npm downloads](https://img.shields.io/npm/dm/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
+[![CI](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/geolibre-wasm.svg)](https://github.com/opengeos/geolibre-rust#license)
+
 A pure-Rust geospatial toolkit for [GeoLibre](https://github.com/opengeos/GeoLibre),
 built on [`opengeos/whitebox-wasm`](https://github.com/opengeos/whitebox-wasm)
 (the WASM-ready fork of

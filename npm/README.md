@@ -1,5 +1,9 @@
 # geolibre-wasm
 
+[![npm version](https://img.shields.io/npm/v/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
+[![npm downloads](https://img.shields.io/npm/dm/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
+[![license](https://img.shields.io/npm/l/geolibre-wasm.svg)](https://github.com/opengeos/geolibre-rust#license)
+
 A pure-Rust geospatial toolkit compiled to WebAssembly, runnable entirely in the
 browser, Node, Deno, or any bundler. No server, no Python, no native install.
 

@@ -53,8 +53,8 @@ jobs:
         run: |
           mkdir -p dist
           cp npm/geolibre-cli.wasm dist/geolibre-cli-${GITHUB_REF_NAME}.wasm
-          cp npm/tools.mjs          dist/geolibre-rust-${GITHUB_REF_NAME}.mjs
-          cp npm/tools.d.ts         dist/geolibre-rust-${GITHUB_REF_NAME}.d.ts
+          cp npm/tools.mjs          dist/geolibre-wasm-${GITHUB_REF_NAME}.mjs
+          cp npm/tools.d.ts         dist/geolibre-wasm-${GITHUB_REF_NAME}.d.ts
           (cd dist && sha256sum * > SHA256SUMS.txt)
 
       - name: Attach to GitHub Release

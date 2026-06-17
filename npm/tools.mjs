@@ -1,10 +1,10 @@
-// geolibre-rust - run the whitebox_next_gen geospatial tool suite from
+// geolibre-wasm - run the whitebox_next_gen geospatial tool suite from
 // JavaScript. The tools are the WASI binary `geolibre-cli.wasm`; this module
 // executes them through a WASI shim with an in-memory filesystem, so they run in
 // browsers, Node, Deno, and bundlers without a real disk. Raster outputs are
 // Cloud Optimized GeoTIFFs.
 //
-//   import { runTool, listTools } from "geolibre-rust/tools";
+//   import { runTool, listTools } from "geolibre-wasm/tools";
 //   const { files } = await runTool("slope", {
 //     args: ["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
 //     input: { "dem.tif": demBytes },   // Uint8Array, placed under /work

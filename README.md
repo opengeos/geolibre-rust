@@ -83,8 +83,11 @@ When `kdtree 0.8.1` (or later) is published, delete `vendor/kdtree/` and the
 
 ## Use from JavaScript
 
+> Note: the repository is `geolibre-rust` (the Rust source), but the published
+> npm package is **`geolibre-wasm`** (the WASM artifact), mirroring `whitebox-wasm`.
+
 ```js
-import { runTool, listTools } from "geolibre-rust/tools";
+import { runTool, listTools } from "geolibre-wasm/tools";
 
 const tools = await listTools();
 
@@ -99,11 +102,11 @@ const slopeCog = files["slope.tif"]; // Uint8Array (COG GeoTIFF)
 
 The interface is byte-compatible with the existing `whitebox-wasm/tools` client:
 
-1. Add `geolibre-rust` to `packages/processing/package.json`.
+1. Add `geolibre-wasm` to `packages/processing/package.json`.
 2. Add it to `optimizeDeps.exclude` in `apps/geolibre-desktop/vite.config.ts`
    (required for the `new URL("./*.wasm", import.meta.url)` glue).
 3. Point `packages/processing/src/wasm-client.ts`'s lazy
-   `import("whitebox-wasm/tools")` at `geolibre-rust/tools`, or add a sibling
+   `import("whitebox-wasm/tools")` at `geolibre-wasm/tools`, or add a sibling
    client and a source toggle in `ProcessingDialog.tsx`.
 
 `listManifests()` is a value-add over the legacy package: it lets GeoLibre build

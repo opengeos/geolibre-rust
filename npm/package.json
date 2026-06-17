@@ -1,5 +1,5 @@
 {
-  "name": "geolibre-rust",
+  "name": "geolibre-wasm",
   "type": "module",
   "version": "0.1.0",
   "description": "Pure-Rust geospatial toolkit (whitebox_next_gen) compiled to WebAssembly (WASI) for GeoLibre's in-browser tool execution",
@@ -13,7 +13,8 @@
   "files": [
     "geolibre-cli.wasm",
     "tools.mjs",
-    "tools.d.ts"
+    "tools.d.ts",
+    "README.md"
   ],
   "exports": {
     ".": {

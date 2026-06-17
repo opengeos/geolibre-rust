@@ -1,0 +1,35 @@
+[package]
+name = "geolibre-wasm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust geospatial toolkit (raster, vector, LiDAR, projections) compiled to WebAssembly for GeoLibre"
+
+[lib]
+# wasm-bindgen browser library. Built with `wasm-pack build --target web`, which
+# emits geolibre_wasm.js + geolibre_wasm_bg.wasm + geolibre_wasm.d.ts.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Built on opengeos/whitebox-wasm's enhanced WASM crates (byte-buffer reads,
+# COG streaming, in-memory writers). See crates/geolibre-cli/Cargo.toml.
+wbgeotiff = { git = "https://github.com/opengeos/whitebox-wasm" }
+wbprojection = { git = "https://github.com/opengeos/whitebox-wasm", default-features = false }
+wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geoparquet", "kmz", "osmpbf"] }
+wblidar = { git = "https://github.com/opengeos/whitebox-wasm" }
+wbtopology = { git = "https://github.com/opengeos/whitebox-wasm" }
+wbspatialstats = { git = "https://github.com/opengeos/whitebox-wasm" }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+# The wasm-opt bundled with some wasm-pack versions predates bulk-memory being
+# on by default in LLVM output. Enable the features the toolchain now emits.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O', '--enable-bulk-memory', '--enable-nontrapping-float-to-int', '--enable-sign-ext', '--enable-mutable-globals']
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

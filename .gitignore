@@ -1,6 +1,12 @@
 /target
 node_modules
+# Build artifacts staged into npm/ by build.sh (regenerated on every build)
 npm/geolibre-cli.wasm
+npm/geolibre_wasm.js
+npm/geolibre_wasm_bg.wasm
+npm/geolibre_wasm.d.ts
+npm/geolibre_wasm_bg.wasm.d.ts
+npm/snippets/
 *.wasm-opt.wasm
 # Cargo.lock is committed: this workspace ships a binary, and the lock pins the
 # exact whitebox_next_gen fork commit for reproducible WASI builds.

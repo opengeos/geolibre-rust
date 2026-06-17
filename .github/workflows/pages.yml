@@ -22,21 +22,26 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          targets: wasm32-wasip1, wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Install binaryen (wasm-opt)
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
-      - name: Build the WASI tool runner and assemble the site
+      - name: Build both WASM artifacts and assemble the site
         run: |
           ./build.sh
           mkdir -p site
-          cp demo/index.html      site/index.html
-          cp npm/tools.mjs        site/tools.mjs
-          cp npm/geolibre-cli.wasm site/geolibre-cli.wasm
-          cp examples/sample.tif  site/sample.tif
+          cp demo/index.html           site/index.html
+          cp npm/tools.mjs             site/tools.mjs
+          cp npm/geolibre-cli.wasm     site/geolibre-cli.wasm
+          cp npm/geolibre_wasm.js      site/geolibre_wasm.js
+          cp npm/geolibre_wasm_bg.wasm site/geolibre_wasm_bg.wasm
+          cp examples/sample.tif       site/sample.tif
           # cache-bust the glue + wasm together so returning visitors never mix
           # an old cached loader with a freshly built module
           sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html

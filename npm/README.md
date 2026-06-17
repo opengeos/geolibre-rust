@@ -1,11 +1,22 @@
 # geolibre-wasm
 
-The [`whitebox_next_gen`](https://github.com/jblindsay/whitebox_next_gen) pure-Rust
-geospatial tool suite, **plus new [GeoLibre](https://github.com/opengeos/GeoLibre)
-tools**, compiled to WebAssembly (WASI) and runnable entirely in the browser,
-Node, Deno, or any bundler. No server, no Python, no native install.
+A pure-Rust geospatial toolkit compiled to WebAssembly, runnable entirely in the
+browser, Node, Deno, or any bundler. No server, no Python, no native install.
+
+It is a **superset of [`whitebox-wasm`](https://www.npmjs.com/package/whitebox-wasm)**:
+everything that package offers, plus new
+[GeoLibre](https://github.com/opengeos/GeoLibre) tools. Built on
+[`opengeos/whitebox-wasm`](https://github.com/opengeos/whitebox-wasm), the
+WASM-ready fork of [`whitebox_next_gen`](https://github.com/jblindsay/whitebox_next_gen).
 
 Source repo: [opengeos/geolibre-rust](https://github.com/opengeos/geolibre-rust).
+
+Two layers, two entry points:
+
+- **`geolibre-wasm`** (the `.` export) -- a `wasm-bindgen` browser library with
+  typed in-memory APIs for GeoTIFF/COG read+write, projections, vector, and LiDAR.
+- **`geolibre-wasm/tools`** (the `./tools` export) -- a WASI tool runner exposing
+  the whitebox tool suite plus GeoLibre's own tools.
 
 ## Install
 
@@ -13,10 +24,28 @@ Source repo: [opengeos/geolibre-rust](https://github.com/opengeos/geolibre-rust)
 npm install geolibre-wasm
 ```
 
-It has a single runtime dependency, [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim),
-which runs the WASI binary over an in-memory filesystem.
+`geolibre-wasm/tools` uses [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim)
+(a runtime dependency) to run the WASI binary over an in-memory filesystem.
 
-## Usage
+## Library usage (`.`)
+
+```js
+import init, { GeoTiffReader, CogBuilder, geotiff_info, version } from "geolibre-wasm";
+
+await init(); // load the wasm-bindgen module (browsers/bundlers)
+
+const r = new GeoTiffReader(tiffBytes); // Uint8Array
+console.log(r.width, r.height, r.bands, r.epsg);
+const band0 = r.read_band_f64(0);        // Float64Array
+
+// header-only metadata (works on multi-GB files)
+const meta = JSON.parse(geotiff_info(tiffBytes));
+```
+
+Classes include `GeoTiffReader` (parse once, read many), `CogBuilder` (encode
+Cloud Optimized GeoTIFFs), and `CogStream` (range-request tiled COG reading).
+
+## Tools usage (`./tools`)
 
 ```js
 import { runTool, listTools, listManifests } from "geolibre-wasm/tools";

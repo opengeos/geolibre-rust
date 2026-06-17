@@ -17,9 +17,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          targets: wasm32-wasip1, wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Install binaryen (wasm-opt)
         run: sudo apt-get update && sudo apt-get install -y binaryen
@@ -34,7 +37,7 @@ jobs:
       - name: Upgrade npm for Trusted Publishing
         run: npm install -g npm@latest
 
-      - name: Build WASI artifact
+      - name: Build both WASM artifacts (library + WASI runner)
         run: ./build.sh
 
       - name: Sync package version to tag
@@ -52,9 +55,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           mkdir -p dist
-          cp npm/geolibre-cli.wasm dist/geolibre-cli-${GITHUB_REF_NAME}.wasm
-          cp npm/tools.mjs          dist/geolibre-wasm-${GITHUB_REF_NAME}.mjs
-          cp npm/tools.d.ts         dist/geolibre-wasm-${GITHUB_REF_NAME}.d.ts
+          # browser library (wasm-bindgen)
+          cp npm/geolibre_wasm_bg.wasm dist/geolibre_wasm_bg-${GITHUB_REF_NAME}.wasm
+          cp npm/geolibre_wasm.js      dist/geolibre_wasm-${GITHUB_REF_NAME}.js
+          cp npm/geolibre_wasm.d.ts    dist/geolibre_wasm-${GITHUB_REF_NAME}.d.ts
+          # WASI tool runner
+          cp npm/geolibre-cli.wasm     dist/geolibre-cli-${GITHUB_REF_NAME}.wasm
+          cp npm/tools.mjs             dist/tools-${GITHUB_REF_NAME}.mjs
+          cp npm/tools.d.ts            dist/tools-${GITHUB_REF_NAME}.d.ts
           (cd dist && sha256sum * > SHA256SUMS.txt)
 
       - name: Attach to GitHub Release

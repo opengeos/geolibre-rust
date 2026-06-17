@@ -1,21 +1,33 @@
 # geolibre-rust
 
-The [`whitebox_next_gen`](https://github.com/jblindsay/whitebox_next_gen) pure-Rust
-geospatial tool suite compiled to WebAssembly (WASI) for in-browser execution in
-[GeoLibre](https://github.com/opengeos/GeoLibre).
+A pure-Rust geospatial toolkit for [GeoLibre](https://github.com/opengeos/GeoLibre),
+built on [`opengeos/whitebox-wasm`](https://github.com/opengeos/whitebox-wasm)
+(the WASM-ready fork of
+[`whitebox_next_gen`](https://github.com/jblindsay/whitebox_next_gen)) and
+compiled to WebAssembly. It is a **superset of `whitebox-wasm`**: everything that
+package offers, plus new GeoLibre-authored tools.
 
-It builds a single WASI binary (`geolibre-cli.wasm`) that exposes whitebox's
-built-in tool registry **plus GeoLibre's own new tools** over a small
-command-line contract, and ships a thin JS wrapper (`tools.mjs`) that runs it
-through [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim)
-with an in-memory filesystem. No server, no Python, no native install.
+The published npm package (`geolibre-wasm`) ships two layers:
 
-New tools live in the `geolibre-tools` crate and are registered alongside
-whitebox's, so GeoLibre sees them through the same interface as the built-ins.
+- **Browser library** (`.` export, `wasm-bindgen`) -- typed in-memory APIs for
+  GeoTIFF/COG read+write, projections, vector, LiDAR, and topology
+  (`GeoTiffReader`, `CogBuilder`, `CogStream`, ...). Same surface as
+  `whitebox-wasm`.
+- **Tool runner** (`./tools` export, WASI) -- the whitebox tool registry **plus
+  GeoLibre's own tools**, run over an in-memory `/work` filesystem via
+  [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim).
+
+No server, no Python, no native install. New tools live in the `geolibre-tools`
+crate and are registered alongside whitebox's, so GeoLibre sees them through the
+same interface as the built-ins.
 
 ## Architecture
 
 ```
+crates/geolibre-wasm   wasm-bindgen browser library  -> geolibre_wasm{.js,_bg.wasm,.d.ts}  (npm ".")
+crates/geolibre-cli    WASI tool runner              -> geolibre-cli.wasm + tools.mjs       (npm "./tools")
+crates/geolibre-tools  new Tool impls (raster_normalize, ...), registered by geolibre-cli
+
 JS (browser/Node)                WASI binary (geolibre-cli.wasm)
 -----------------                --------------------------------
 tools.mjs                        crates/geolibre-cli (main.rs)
@@ -85,6 +97,19 @@ When `kdtree 0.8.1` (or later) is published, delete `vendor/kdtree/` and the
 
 > Note: the repository is `geolibre-rust` (the Rust source), but the published
 > npm package is **`geolibre-wasm`** (the WASM artifact), mirroring `whitebox-wasm`.
+
+Browser library (the `.` export) -- typed GeoTIFF/projection/vector/LiDAR APIs:
+
+```js
+import init, { GeoTiffReader, CogBuilder, version } from "geolibre-wasm";
+
+await init(); // load the wasm-bindgen module
+const r = new GeoTiffReader(tiffBytes);   // Uint8Array
+console.log(r.width, r.height, r.bands, r.epsg);
+const band0 = r.read_band_f64(0);          // Float64Array
+```
+
+Tool runner (the `./tools` export) -- the whitebox + GeoLibre tool suite:
 
 ```js
 import { runTool, listTools } from "geolibre-wasm/tools";

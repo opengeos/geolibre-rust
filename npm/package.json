@@ -9,8 +9,15 @@
     "url": "https://github.com/opengeos/geolibre-rust"
   },
   "homepage": "https://github.com/opengeos/geolibre-rust",
-  "keywords": ["geospatial", "wasm", "wasi", "gis", "geotiff", "geolibre", "whitebox"],
+  "keywords": ["geospatial", "wasm", "wasi", "gis", "geotiff", "lidar", "geolibre", "whitebox"],
+  "main": "geolibre_wasm.js",
+  "types": "geolibre_wasm.d.ts",
+  "sideEffects": ["./snippets/*"],
   "files": [
+    "geolibre_wasm.js",
+    "geolibre_wasm_bg.wasm",
+    "geolibre_wasm.d.ts",
+    "geolibre_wasm_bg.wasm.d.ts",
     "geolibre-cli.wasm",
     "tools.mjs",
     "tools.d.ts",
@@ -18,8 +25,8 @@
   ],
   "exports": {
     ".": {
-      "types": "./tools.d.ts",
-      "default": "./tools.mjs"
+      "types": "./geolibre_wasm.d.ts",
+      "default": "./geolibre_wasm.js"
     },
     "./tools": {
       "types": "./tools.d.ts",

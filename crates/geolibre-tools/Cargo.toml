@@ -10,8 +10,8 @@ description = "New geospatial tools that extend the whitebox_next_gen suite, sur
 # Depend only on wbcore (the Tool trait + types) and the data crates a given
 # tool needs. Staying off wbtools_oss keeps this crate reusable for other
 # bindings (native CLI, Python sidecar) and avoids any dependency cycle.
-# Pointed at the fork branch with the WASI fix; see geolibre-cli/Cargo.toml.
-wbcore = { git = "https://github.com/giswqs/whitebox_next_gen", branch = "slim-image-default-features" }
-wbraster = { git = "https://github.com/giswqs/whitebox_next_gen", branch = "slim-image-default-features" }
+# Built on opengeos/whitebox-wasm; see geolibre-cli/Cargo.toml.
+wbcore = { git = "https://github.com/opengeos/whitebox-wasm" }
+wbraster = { git = "https://github.com/opengeos/whitebox-wasm" }
 
 serde_json = "1"

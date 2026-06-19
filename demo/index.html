@@ -14,16 +14,40 @@
       }
     </script>
     <style>
-      :root { color-scheme: light dark; }
-      body { font-family: system-ui, sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+      :root { color-scheme: light dark; --line: rgba(127,127,127,0.3); --soft: rgba(127,127,127,0.12); }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; max-width: 1080px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
       h1 { margin-bottom: 0.25rem; }
+      h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
       .muted { opacity: 0.7; }
-      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
-      input[type="search"] { font: inherit; padding: 0.4rem 0.6rem; width: 100%; box-sizing: border-box; }
-      pre { background: rgba(127,127,127,0.12); padding: 0.75rem; border-radius: 6px; overflow:auto; }
-      .list { max-height: 240px; overflow: auto; border: 1px solid rgba(127,127,127,0.3); border-radius: 6px; padding: 0.5rem; }
-      .list div { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 1px 0; }
+      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+      input, select { font: inherit; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+      /* Let the native control + its option popup follow the OS theme so text
+         keeps proper contrast in dark mode (transparent/inherit breaks it). */
+      select, select option { color-scheme: light dark; background-color: Field; color: FieldText; }
+      input[type="search"] { width: 100%; }
+      pre { background: var(--soft); padding: 0.75rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+      code { font-family: ui-monospace, monospace; }
       .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0; }
+      .grid { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; align-items: start; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      .list { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+      .list .item { padding: 0.5rem 0.6rem; cursor: pointer; border-bottom: 1px solid var(--line); }
+      .list .item:last-child { border-bottom: none; }
+      .list .item:hover { background: var(--soft); }
+      .list .item.active { background: #2563eb22; box-shadow: inset 3px 0 0 #2563eb; }
+      .list .item .name { font-weight: 600; font-size: 0.9rem; }
+      .list .item .sum { font-size: 0.78rem; opacity: 0.7; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .panel { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; }
+      .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--soft); margin-left: 0.4rem; vertical-align: middle; }
+      .field { margin: 0.7rem 0; }
+      .field label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.2rem; }
+      .field label .req { color: #dc2626; }
+      .field .desc { font-size: 0.78rem; opacity: 0.7; margin-bottom: 0.3rem; }
+      .field input[type="text"], .field input[type="number"], .field select { width: 100%; }
+      .placeholder { opacity: 0.6; padding: 2rem 1rem; text-align: center; }
     </style>
   </head>
   <body>
@@ -31,77 +55,258 @@
     <p class="muted">
       The <code>whitebox_next_gen</code> tool suite plus GeoLibre's own tools,
       compiled to WebAssembly (WASI) and running entirely in your browser.
+      Pick any tool, fill in its parameters, and run it on a sample DEM (or your own GeoTIFF).
     </p>
 
-    <div class="row">
-      <strong id="status">Loading WASM runtime...</strong>
-    </div>
+    <div class="row"><strong id="status">Loading WASM runtime...</strong></div>
 
-    <div class="row">
-      <button id="run" disabled>Run raster_normalize on a sample DEM</button>
-      <a id="download" hidden download="normalized.tif">Download output</a>
-    </div>
-    <pre id="output" hidden></pre>
+    <div class="grid">
+      <div>
+        <input type="search" id="filter" placeholder="Filter tools by name, summary, or tag..." disabled />
+        <select id="category" disabled style="width:100%;margin-top:0.5rem;">
+          <option value="">All categories</option>
+        </select>
+        <p class="muted" style="margin:0.3rem 0;font-size:0.8rem;">
+          <span id="count">0</span> tools
+        </p>
+        <div class="list" id="tools"></div>
+      </div>
 
-    <h2>Available tools (<span id="count">0</span>)</h2>
-    <input type="search" id="filter" placeholder="Filter tools..." disabled />
-    <div class="list" id="tools"></div>
+      <div class="panel" id="panel">
+        <div class="placeholder" id="placeholder">Select a tool on the left to configure and run it.</div>
+        <div id="detail" hidden></div>
+      </div>
+    </div>
 
     <script type="module">
-      import { initTools, listTools, runTool } from "./tools.mjs?v=__BUILD__";
+      import { initTools, listManifests, runTool } from "./tools.mjs?v=__BUILD__";
 
       const $ = (id) => document.getElementById(id);
-      let allTools = [];
+      const FILE_RE = /\.(tif|tiff|geojson|json|shp|las|laz|csv|dep|txt|html|asc)$/i;
+      const RASTER_OUT = "image/tiff";
 
-      function renderTools(filter = "") {
-        const f = filter.trim().toLowerCase();
-        const shown = f ? allTools.filter((t) => t.includes(f)) : allTools;
-        $("tools").innerHTML = shown.map((t) => `<div>${t}</div>`).join("");
+      let manifests = [];
+      let sampleBytes = null; // lazily-fetched bundled sample.tif
+      let selected = null;
+
+      const basename = (p) => String(p).split(/[\\/]/).pop();
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+      // Best-known value for a param: prefer the worked example, fall back to the default.
+      function hintValue(tool, name) {
+        const ex = tool.examples && tool.examples[0] && tool.examples[0].args;
+        if (ex && name in ex) return ex[name];
+        if (tool.defaults && name in tool.defaults) return tool.defaults[name];
+        return undefined;
+      }
+
+      // Classify a param so we can render the right control and route file I/O.
+      function classify(tool, p) {
+        const v = hintValue(tool, p.name);
+        const looksFile = FILE_RE.test(String(v ?? ""));
+        const isOutput = p.name === "output" || p.name.startsWith("output");
+        const isInputFile = !isOutput && (p.name === "input" || p.name.startsWith("input") || (looksFile && p.required));
+        let kind = "text";
+        if (isOutput) kind = "output";
+        else if (isInputFile) kind = "file";
+        else if (typeof v === "boolean") kind = "bool";
+        else if (typeof v === "number") kind = "number";
+        return { kind, hint: v, primary: p.name === "input" };
+      }
+
+      function renderList() {
+        const f = $("filter").value.trim().toLowerCase();
+        const cat = $("category").value;
+        const shown = manifests.filter((t) => {
+          if (cat && t.category !== cat) return false;
+          if (!f) return true;
+          return (t.id + " " + t.display_name + " " + t.summary + " " + (t.tags || []).join(" "))
+            .toLowerCase()
+            .includes(f);
+        });
+        $("count").textContent = shown.length;
+        $("tools").innerHTML = shown
+          .slice(0, 400)
+          .map(
+            (t) =>
+              `<div class="item${selected && selected.id === t.id ? " active" : ""}" data-id="${t.id}">` +
+              `<div class="name">${esc(t.display_name)}</div>` +
+              `<div class="sum">${esc(t.summary)}</div></div>`,
+          )
+          .join("");
+        if (shown.length > 400)
+          $("tools").insertAdjacentHTML(
+            "beforeend",
+            `<div class="item muted" style="cursor:default">...and ${shown.length - 400} more. Refine the filter.</div>`,
+          );
+      }
+
+      function selectTool(id) {
+        selected = manifests.find((t) => t.id === id);
+        renderList();
+        renderDetail();
+      }
+
+      function renderDetail() {
+        const t = selected;
+        $("placeholder").hidden = true;
+        const d = $("detail");
+        d.hidden = false;
+
+        const fields = (t.params || [])
+          .map((p) => {
+            const c = classify(t, p);
+            const req = p.required ? ' <span class="req">*</span>' : "";
+            const desc = p.description ? `<div class="desc">${esc(p.description)}</div>` : "";
+            const id = `f_${p.name}`;
+            let control;
+            if (c.kind === "file") {
+              const note = c.primary ? " (defaults to bundled sample.tif)" : "";
+              control = `<input type="file" id="${id}" data-name="${p.name}" data-kind="file" />` +
+                `<div class="desc">Leave empty to use ${c.primary ? "the sample DEM" : "no file"}${note}.</div>`;
+            } else if (c.kind === "output") {
+              const val = basename(c.hint ?? `${t.id}.tif`);
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="output" value="${esc(val)}" />`;
+            } else if (c.kind === "bool") {
+              const checked = c.hint ? " checked" : "";
+              control = `<input type="checkbox" id="${id}" data-name="${p.name}" data-kind="bool"${checked} />`;
+            } else if (c.kind === "number") {
+              control = `<input type="number" step="any" id="${id}" data-name="${p.name}" data-kind="number" value="${esc(c.hint ?? "")}" />`;
+            } else {
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="text" value="${esc(c.hint ?? "")}" />`;
+            }
+            return `<div class="field"><label for="${id}">${esc(p.name)}${req}</label>${desc}${control}</div>`;
+          })
+          .join("");
+
+        d.innerHTML =
+          `<h2>${esc(t.display_name)}<span class="badge">${esc(t.category)}</span><span class="badge">${esc(t.id)}</span></h2>` +
+          `<p class="muted" style="margin-top:0">${esc(t.summary)}</p>` +
+          `<form id="form" onsubmit="return false">${fields || '<p class="muted">This tool takes no parameters.</p>'}</form>` +
+          `<div class="field"><label>Command</label><pre id="cmd" style="margin:0"></pre></div>` +
+          `<div class="row">` +
+          `<button class="primary" id="run">Run ${esc(t.id)}</button>` +
+          `<a id="download" hidden download>Download output</a>` +
+          `</div>` +
+          `<pre id="output" hidden></pre>`;
+
+        d.querySelectorAll("input").forEach((el) => el.addEventListener("input", updateCmd));
+        $("run").addEventListener("click", run);
+        updateCmd();
+      }
+
+      // Build {argv, inputs, outputs} from the current form state.
+      async function buildInvocation() {
+        const args = [];
+        const inputs = {};
+        const outputs = [];
+        const controls = $("form").querySelectorAll("[data-name]");
+        for (const el of controls) {
+          const name = el.dataset.name;
+          const kind = el.dataset.kind;
+          if (kind === "file") {
+            let bytes = null;
+            let fname = null;
+            if (el.files && el.files[0]) {
+              fname = el.files[0].name;
+              bytes = new Uint8Array(await el.files[0].arrayBuffer());
+            } else if (el.dataset.name === "input" || $("form").querySelector('[data-kind="file"]') === el) {
+              // primary input: fall back to the bundled sample
+              if (!sampleBytes) sampleBytes = new Uint8Array(await (await fetch("./sample.tif")).arrayBuffer());
+              if (sampleBytes) { fname = "sample.tif"; bytes = sampleBytes; }
+            }
+            if (bytes && fname) {
+              inputs[fname] = bytes;
+              args.push(`--${name}=/work/${fname}`);
+            }
+          } else if (kind === "output") {
+            const fname = basename(el.value.trim() || `${selected.id}.tif`);
+            outputs.push(fname);
+            args.push(`--${name}=/work/${fname}`);
+          } else if (kind === "bool") {
+            args.push(`--${name}=${el.checked ? "true" : "false"}`);
+          } else {
+            const v = el.value.trim();
+            if (v !== "") args.push(`--${name}=${v}`);
+          }
+        }
+        return { args, inputs, outputs };
+      }
+
+      async function updateCmd() {
+        try {
+          const { args } = await buildInvocation();
+          $("cmd").textContent = `geolibre ${selected.id} ${args.join(" ")}`;
+        } catch {
+          $("cmd").textContent = `geolibre ${selected.id} ...`;
+        }
+      }
+
+      async function run() {
+        const t = selected;
+        $("run").disabled = true;
+        $("output").hidden = false;
+        $("output").textContent = `Running ${t.id}...`;
+        const dl = $("download");
+        dl.hidden = true;
+        try {
+          const { args, inputs, outputs } = await buildInvocation();
+          const t0 = performance.now();
+          const { exitCode, stdout, files } = await runTool(t.id, { args, input: inputs });
+          const ms = Math.round(performance.now() - t0);
+
+          const produced = Object.entries(files);
+          let report =
+            `exit code: ${exitCode}  (${ms} ms)\n\n` +
+            `stdout:\n${stdout.length ? stdout.join("\n") : "(no output)"}\n\n` +
+            `files written: ${produced.length ? produced.map(([n, b]) => `${n} (${b.length} bytes)`).join(", ") : "(none)"}`;
+          $("output").textContent = report;
+
+          // Offer the declared output (or, failing that, the first new file) for download.
+          const pick =
+            produced.find(([n]) => outputs.includes(n)) || produced[0];
+          if (pick) {
+            const [name, bytes] = pick;
+            const url = URL.createObjectURL(new Blob([bytes], { type: RASTER_OUT }));
+            dl.href = url;
+            dl.download = name;
+            dl.textContent = `Download ${name}`;
+            dl.hidden = false;
+          }
+        } catch (e) {
+          $("output").textContent = "Error: " + (e && e.stack ? e.stack : e);
+        } finally {
+          $("run").disabled = false;
+        }
       }
 
       async function main() {
         try {
           await initTools();
-          allTools = await listTools();
-          $("status").textContent = "Ready.";
-          $("count").textContent = allTools.length;
-          renderTools();
-          $("filter").disabled = false;
-          $("run").disabled = false;
+          manifests = await listManifests();
+          manifests.sort((a, b) => a.display_name.localeCompare(b.display_name));
+          $("status").textContent = `Ready — ${manifests.length} tools loaded.`;
+
+          // Populate the category dropdown from the manifests (sorted, with counts).
+          const counts = {};
+          for (const t of manifests) counts[t.category] = (counts[t.category] || 0) + 1;
+          const cat = $("category");
+          for (const name of Object.keys(counts).sort())
+            cat.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)} (${counts[name]})</option>`);
+          cat.disabled = false;
+          cat.addEventListener("change", renderList);
+
+          renderList();
+          const filter = $("filter");
+          filter.disabled = false;
+          filter.addEventListener("input", renderList);
+          $("tools").addEventListener("click", (e) => {
+            const item = e.target.closest(".item[data-id]");
+            if (item) selectTool(item.dataset.id);
+          });
         } catch (e) {
           $("status").textContent = "Failed to load: " + e;
-          return;
         }
-
-        $("filter").addEventListener("input", (e) => renderTools(e.target.value));
-
-        $("run").addEventListener("click", async () => {
-          $("run").disabled = true;
-          $("output").hidden = false;
-          $("output").textContent = "Running raster_normalize...";
-          try {
-            const dem = new Uint8Array(await (await fetch("./sample.tif")).arrayBuffer());
-            const { exitCode, stdout, files } = await runTool("raster_normalize", {
-              args: ["--input=/work/dem.tif", "--output=/work/out.tif", "--band=1"],
-              input: { "dem.tif": dem },
-            });
-            const out = files["out.tif"];
-            $("output").textContent =
-              `exit code: ${exitCode}\n` +
-              `stdout:\n${stdout.join("\n")}\n` +
-              `output: out.tif (${out ? out.length : 0} bytes)`;
-            if (out) {
-              const url = URL.createObjectURL(new Blob([out], { type: "image/tiff" }));
-              const a = $("download");
-              a.href = url;
-              a.hidden = false;
-            }
-          } catch (e) {
-            $("output").textContent = "Error: " + e;
-          } finally {
-            $("run").disabled = false;
-          }
-        });
       }
 
       main();

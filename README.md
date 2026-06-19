@@ -26,6 +26,23 @@ No server, no Python, no native install. New tools live in the `geolibre-tools`
 crate and are registered alongside whitebox's, so GeoLibre sees them through the
 same interface as the built-ins.
 
+## Try it in the browser
+
+`demo/index.html` is a self-contained page that loads every tool manifest,
+renders a parameter form for whichever tool you pick, and runs it on a sample DEM
+(or your own GeoTIFF) entirely in the browser via the WASI runner.
+
+```bash
+./build.sh          # once, to produce npm/geolibre-cli.wasm and npm/tools.mjs
+./demo/serve.sh     # serve on http://localhost:8000 (pass a port to override)
+```
+
+Open the printed URL, filter the tool list, fill in the auto-generated form, and
+click **Run** to see the exit code, stdout, output files, and a download link.
+`serve.sh` stages the runtime (`npm/tools.mjs`, `npm/geolibre-cli.wasm`) and the
+sample raster (`examples/sample.tif`) next to the page in a temp directory, so the
+repo's `demo/` stays clean; Ctrl-C stops the server and cleans up.
+
 ## Architecture
 
 ```

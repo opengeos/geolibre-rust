@@ -1,5 +1,7 @@
 /target
 node_modules
+# Local-only drafts and notes (e.g. LinkedIn announcements)
+/private/
 # Build artifacts staged into npm/ by build.sh (regenerated on every build)
 npm/geolibre-cli.wasm
 npm/geolibre_wasm.js

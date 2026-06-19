@@ -147,13 +147,25 @@
         renderDetail();
       }
 
+      // Some tools (~140) ship an empty `params` array in their manifest, but
+      // they still follow the standard raster-in / raster-out convention and
+      // accept --input/--output. Fall back to an inferred schema so they remain
+      // runnable; the free-form "Additional arguments" field below covers the
+      // rest (extra flags, alternate param names).
+      const INFERRED_PARAMS = [
+        { name: "input", description: "Input raster (inferred — this tool ships no parameter schema).", required: true },
+        { name: "output", description: "Output raster path.", required: false },
+      ];
+
       function renderDetail() {
         const t = selected;
         $("placeholder").hidden = true;
         const d = $("detail");
         d.hidden = false;
 
-        const fields = (t.params || [])
+        const inferred = !(t.params && t.params.length);
+        const params = inferred ? INFERRED_PARAMS : t.params;
+        const fields = params
           .map((p) => {
             const c = classify(t, p);
             const req = p.required ? ' <span class="req">*</span>' : "";
@@ -179,10 +191,19 @@
           })
           .join("");
 
+        const inferredNote = inferred
+          ? `<p class="muted" style="font-size:0.8rem">This tool ships no parameter schema; the fields below are inferred from the standard raster-in/raster-out convention. Use "Additional arguments" for anything else.</p>`
+          : "";
+        const extraField =
+          `<div class="field"><label for="f_extra">Additional arguments</label>` +
+          `<div class="desc">Optional raw flags appended verbatim, e.g. <code>--units=degrees --zfactor=2</code>.</div>` +
+          `<input type="text" id="f_extra" data-extra="1" placeholder="--flag=value ..." /></div>`;
+
         d.innerHTML =
           `<h2>${esc(t.display_name)}<span class="badge">${esc(t.category)}</span><span class="badge">${esc(t.id)}</span></h2>` +
           `<p class="muted" style="margin-top:0">${esc(t.summary)}</p>` +
-          `<form id="form" onsubmit="return false">${fields || '<p class="muted">This tool takes no parameters.</p>'}</form>` +
+          inferredNote +
+          `<form id="form" onsubmit="return false">${fields}${extraField}</form>` +
           `<div class="field"><label>Command</label><pre id="cmd" style="margin:0"></pre></div>` +
           `<div class="row">` +
           `<button class="primary" id="run">Run ${esc(t.id)}</button>` +
@@ -230,6 +251,9 @@
             if (v !== "") args.push(`--${name}=${v}`);
           }
         }
+        // Append any free-form extra flags verbatim (split on whitespace).
+        const extra = $("form").querySelector("[data-extra]");
+        if (extra && extra.value.trim()) args.push(...extra.value.trim().split(/\s+/));
         return { args, inputs, outputs };
       }
 

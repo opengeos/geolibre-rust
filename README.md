@@ -62,9 +62,20 @@ tools.mjs                        crates/geolibre-cli (main.rs)
 
 ## GeoLibre-authored tools
 
-In addition to the whitebox suite, `geolibre-tools` ships pure-Rust ports of the
-DEM depression/mount algorithms from [`opengeos/lidar`](https://github.com/opengeos/lidar)
-(no GDAL, RichDEM, SciPy, or scikit-image dependency; they run in WASM):
+In addition to the whitebox suite, `geolibre-tools` ships cloud-native I/O and
+rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
+
+| Tool id | What it does |
+|---|---|
+| `reproject_raster` | Reproject (warp) a raster into a target EPSG CRS, with selectable resampling. |
+| `render_raster_png` | Render a raster band to a PNG through a colormap (viridis/magma/turbo/terrain/grayscale); no-data becomes transparent. |
+| `raster_to_tiles` | Slice a raster into a Web Mercator (EPSG:3857) XYZ PNG tile pyramid for web maps. |
+| `write_geoparquet` | Convert any supported vector format to GeoParquet, Hilbert-sorted with a bbox covering column and ZSTD compression by default. |
+| `read_geoparquet` | Read GeoParquet and convert it to another vector format (or store it in memory). |
+
+It also ships pure-Rust ports of the DEM depression/mount algorithms from
+[`opengeos/lidar`](https://github.com/opengeos/lidar) (no GDAL, RichDEM, SciPy,
+or scikit-image dependency; they run in WASM):
 
 | Tool id | Source | What it does |
 |---|---|---|

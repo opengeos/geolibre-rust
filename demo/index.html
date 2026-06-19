@@ -48,6 +48,10 @@
       .field .desc { font-size: 0.78rem; opacity: 0.7; margin-bottom: 0.3rem; }
       .field input[type="text"], .field input[type="number"], .field select { width: 100%; }
       .placeholder { opacity: 0.6; padding: 2rem 1rem; text-align: center; }
+      .src { display: inline-block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.03em; padding: 0.05rem 0.35rem; border-radius: 4px; vertical-align: middle; }
+      .src.geolibre { background: #2563eb; color: #fff; }
+      .src.whitebox { background: rgba(127,127,127,0.22); color: inherit; }
+      .list .item .name { display: flex; align-items: center; gap: 0.4rem; }
     </style>
   </head>
   <body>
@@ -92,6 +96,13 @@
       const basename = (p) => String(p).split(/[\\/]/).pop();
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+      // Provenance badge: GeoLibre-authored vs whitebox tool. Defaults to
+      // whitebox if the manifest predates the "source" field.
+      function sourceBadge(t) {
+        const geo = t.source === "geolibre";
+        return `<span class="src ${geo ? "geolibre" : "whitebox"}" title="${geo ? "GeoLibre-authored tool" : "whitebox_next_gen tool"}">${geo ? "GeoLibre" : "Whitebox"}</span>`;
+      }
+
       // Best-known value for a param: prefer the worked example, fall back to the default.
       function hintValue(tool, name) {
         const ex = tool.examples && tool.examples[0] && tool.examples[0].args;
@@ -130,7 +141,7 @@
           .map(
             (t) =>
               `<div class="item${selected && selected.id === t.id ? " active" : ""}" data-id="${t.id}">` +
-              `<div class="name">${esc(t.display_name)}</div>` +
+              `<div class="name">${esc(t.display_name)}${sourceBadge(t)}</div>` +
               `<div class="sum">${esc(t.summary)}</div></div>`,
           )
           .join("");
@@ -200,7 +211,7 @@
           `<input type="text" id="f_extra" data-extra="1" placeholder="--flag=value ..." /></div>`;
 
         d.innerHTML =
-          `<h2>${esc(t.display_name)}<span class="badge">${esc(t.category)}</span><span class="badge">${esc(t.id)}</span></h2>` +
+          `<h2>${esc(t.display_name)} ${sourceBadge(t)}<span class="badge">${esc(t.category)}</span><span class="badge">${esc(t.id)}</span></h2>` +
           `<p class="muted" style="margin-top:0">${esc(t.summary)}</p>` +
           inferredNote +
           `<form id="form" onsubmit="return false">${fields}${extraField}</form>` +

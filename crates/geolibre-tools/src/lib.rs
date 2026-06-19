@@ -13,9 +13,16 @@ mod delineate_mounts;
 mod dem_filter;
 mod extract_sinks;
 mod fill;
+mod geoparquet_io;
+mod hilbert;
 mod polygonize;
 mod raster_normalize;
+mod raster_to_tiles;
 mod regions;
+mod render;
+mod render_png;
+mod reproject_raster;
+mod vector_common;
 
 use wbcore::Tool;
 
@@ -38,6 +45,11 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(extract_sinks::ExtractSinksTool),
         Box::new(delineate_depressions::DelineateDepressionsTool),
         Box::new(delineate_mounts::DelineateMountsTool),
+        Box::new(reproject_raster::ReprojectRasterTool),
+        Box::new(render_png::RenderPngTool),
+        Box::new(raster_to_tiles::RasterToTilesTool),
+        Box::new(geoparquet_io::WriteGeoParquetTool),
+        Box::new(geoparquet_io::ReadGeoParquetTool),
     ]
 }
 

@@ -7,7 +7,15 @@
 //! Add a new tool by creating a module with a `Tool` impl and pushing it in
 //! [`geolibre_tools`].
 
+mod common;
+mod delineate_depressions;
+mod delineate_mounts;
+mod dem_filter;
+mod extract_sinks;
+mod fill;
+mod polygonize;
 mod raster_normalize;
+mod regions;
 
 use wbcore::Tool;
 
@@ -24,7 +32,13 @@ use wbcore::Tool;
 /// }
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
-    vec![Box::new(raster_normalize::RasterNormalizeTool)]
+    vec![
+        Box::new(raster_normalize::RasterNormalizeTool),
+        Box::new(dem_filter::DemFilterTool),
+        Box::new(extract_sinks::ExtractSinksTool),
+        Box::new(delineate_depressions::DelineateDepressionsTool),
+        Box::new(delineate_mounts::DelineateMountsTool),
+    ]
 }
 
 #[cfg(test)]

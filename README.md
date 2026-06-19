@@ -43,6 +43,35 @@ tools.mjs                        crates/geolibre-cli (main.rs)
                                    tool writes via std::fs to /work
 ```
 
+## GeoLibre-authored tools
+
+In addition to the whitebox suite, `geolibre-tools` ships pure-Rust ports of the
+DEM depression/mount algorithms from [`opengeos/lidar`](https://github.com/opengeos/lidar)
+(no GDAL, RichDEM, SciPy, or scikit-image dependency; they run in WASM):
+
+| Tool id | Source | What it does |
+|---|---|---|
+| `dem_filter` | `filtering.py` | Mean / median / Gaussian smoothing of a DEM. |
+| `extract_sinks` | `filling.py` | Wang & Liu fill, then group filled cells into sinks larger than `min_size`; emits sink/region/depth/filled rasters, an attribute CSV, and region polygons (`vector_output`, GeoJSON). |
+| `delineate_depressions` | `slicing.py` | Level-set slicing of a sink raster into a nested-depression hierarchy; emits id/level rasters, a CSV, and depression polygons (`vector_output`, GeoJSON). |
+| `delineate_mounts` | `mounts.py` | Flip the DEM, then run the sink + depression pipeline to delineate nested elevated features (rasters, CSV, and GeoJSON). |
+
+Typical chain (over the WASI `/work` filesystem or via paths):
+
+```text
+extract_sinks --input=dem.tif --output=sink.tif --min_size=100
+delineate_depressions --input=sink.tif --output=dep_id.tif --level_output=dep_level.tif
+```
+
+Depression filling reuses a port of whitebox's Wang & Liu priority-flood (kept
+inside `geolibre-tools` so the crate stays free of a `wbtools_oss` dependency).
+The morphological attributes (perimeter, axes, eccentricity, orientation) mirror
+`scikit-image`'s `regionprops`. The `vector_output` parameter polygonizes the
+label raster into GeoJSON (one feature per connected component, holes preserved,
+RFC 7946 winding) in the source CRS, with the attribute table joined onto each
+feature -- a pure-Rust replacement for the `gdal.Polygonize` + GeoPackage join
+in the Python original.
+
 ## Adding a new tool
 
 1. Add a module with a `wbcore::Tool` impl under `crates/geolibre-tools/src/`

@@ -32,6 +32,15 @@ jobs:
       - name: Install binaryen (wasm-opt)
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
+      - name: Install wasi-sdk (C toolchain so zstd-sys builds for wasm32-wasip1)
+        run: |
+          ver=33.0
+          curl -sL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-${ver}-x86_64-linux.tar.gz" | sudo tar xz -C /opt
+          sdk=/opt/wasi-sdk-${ver}-x86_64-linux
+          echo "CC_wasm32_wasip1=$sdk/bin/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_wasip1=$sdk/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "CFLAGS_wasm32_wasip1=--sysroot=$sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+
       - name: Build both WASM artifacts and assemble the site
         run: |
           ./build.sh

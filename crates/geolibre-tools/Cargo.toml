@@ -1,6 +1,6 @@
 [package]
 name = "geolibre-tools"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,5 +13,13 @@ description = "New geospatial tools that extend the whitebox_next_gen suite, sur
 # Built on opengeos/whitebox-wasm; see geolibre-cli/Cargo.toml.
 wbcore = { git = "https://github.com/opengeos/whitebox-wasm" }
 wbraster = { git = "https://github.com/opengeos/whitebox-wasm" }
+# GeoParquet read/write lives behind wbvector's `geoparquet` feature.
+wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geoparquet"] }
+# Pulled in transitively by wbvector's geoparquet feature; named directly so the
+# GeoParquet tools can choose the compression codec (ZSTD by default).
+parquet = "58.3"
 
 serde_json = "1"
+# Pure-Rust PNG encoder (miniz_oxide backend), used by render_raster_png and
+# raster_to_tiles. Compiles cleanly to wasm32-wasip1.
+png = "0.17"

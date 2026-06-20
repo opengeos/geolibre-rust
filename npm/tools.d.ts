@@ -4,7 +4,9 @@ export interface ToolResult {
   exitCode: number;
   /** Captured stdout/stderr lines. */
   stdout: string[];
-  /** New files the tool wrote, keyed by filename (e.g. the --output path's basename). */
+  /** New files the tool wrote, keyed by path relative to /work. Top-level
+   *  outputs use their basename (e.g. "slope.tif"); tools that write a tree
+   *  (e.g. raster_to_tiles) use nested keys like "tiles/15/4779/16383.png". */
   files: Record<string, Uint8Array>;
 }
 

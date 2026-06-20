@@ -25,7 +25,7 @@
 //!
 //! Exit codes: `0` success, `1` tool/execution error, `2` usage error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::process::ExitCode;
 
 use serde_json::Value;
@@ -41,6 +41,32 @@ fn build_registry() -> ToolRegistry {
         registry.register(tool);
     }
     registry
+}
+
+/// The ids of GeoLibre-authored tools, so manifests can be tagged with their
+/// provenance (`"geolibre"` vs `"whitebox"`).
+fn geolibre_tool_ids() -> HashSet<String> {
+    geolibre_tools::geolibre_tools()
+        .iter()
+        .map(|t| t.metadata().id.to_string())
+        .collect()
+}
+
+/// Adds a `"source"` field (`"geolibre"` or `"whitebox"`) to a manifest JSON
+/// object based on its `id`. The upstream `ToolManifest` has no such field, so
+/// it is injected here at serialization time.
+fn tag_source(manifest: &mut Value, geolibre_ids: &HashSet<String>) {
+    if let Some(obj) = manifest.as_object_mut() {
+        let is_geolibre = obj
+            .get("id")
+            .and_then(Value::as_str)
+            .map(|id| geolibre_ids.contains(id))
+            .unwrap_or(false);
+        obj.insert(
+            "source".to_string(),
+            Value::String(if is_geolibre { "geolibre" } else { "whitebox" }.to_string()),
+        );
+    }
 }
 
 fn main() -> ExitCode {
@@ -60,9 +86,15 @@ fn main() -> ExitCode {
         }
         "manifests" => {
             let registry = build_registry();
-            match serde_json::to_string(&registry.manifests()) {
-                Ok(json) => {
-                    println!("{json}");
+            let geolibre_ids = geolibre_tool_ids();
+            match serde_json::to_value(registry.manifests()) {
+                Ok(mut value) => {
+                    if let Some(arr) = value.as_array_mut() {
+                        for m in arr.iter_mut() {
+                            tag_source(m, &geolibre_ids);
+                        }
+                    }
+                    println!("{value}");
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
@@ -78,9 +110,10 @@ fn main() -> ExitCode {
             };
             let registry = build_registry();
             match registry.manifests().into_iter().find(|m| &m.id == id) {
-                Some(manifest) => match serde_json::to_string(&manifest) {
-                    Ok(json) => {
-                        println!("{json}");
+                Some(manifest) => match serde_json::to_value(&manifest) {
+                    Ok(mut value) => {
+                        tag_source(&mut value, &geolibre_tool_ids());
+                        println!("{value}");
                         ExitCode::SUCCESS
                     }
                     Err(e) => {

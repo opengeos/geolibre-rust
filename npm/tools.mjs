@@ -52,10 +52,21 @@ async function exec(argv, inputFiles) {
   let exitCode = 0;
   try { exitCode = wasi.start(inst); }
   catch (e) { if (e && e.constructor && e.constructor.name === "WASIProcExit") exitCode = e.code; else throw e; }
+  // Collect every new file under /work, recursing into subdirectories so tools
+  // that write a tree (e.g. raster_to_tiles' {z}/{x}/{y}.png) are surfaced too.
+  // Keys are paths relative to /work (nested files use "/" separators).
   const files = {};
-  for (const [name, entry] of work.dir.contents) {
-    if (entry.data && !inNames.has(name)) files[name] = entry.data;
-  }
+  const walk = (dir, prefix) => {
+    for (const [name, entry] of dir.contents) {
+      const rel = prefix ? `${prefix}/${name}` : name;
+      if (entry && entry.contents) {
+        walk(entry, rel); // subdirectory
+      } else if (entry && entry.data && !(prefix === "" && inNames.has(name))) {
+        files[rel] = entry.data; // new file (top-level inputs excluded)
+      }
+    }
+  };
+  walk(work.dir, "");
   return { exitCode, stdout, files };
 }
 

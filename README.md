@@ -191,6 +191,16 @@ const { files } = await runTool("slope", {
 const slopeCog = files["slope.tif"]; // Uint8Array (COG GeoTIFF)
 ```
 
+An `input` value may also be an `http(s)` URL string, fetched for you (whole
+file, no range reads) -- the same for raster and vector inputs:
+
+```js
+await runTool("write_geoparquet", {
+  args: ["--input=/work/in.geojson", "--output=/work/out.parquet"],
+  input: { "in.geojson": "https://example.com/data/cities.geojson" },
+});
+```
+
 ## Use from Python
 
 The `python/` package (`geolibre-wasm` on PyPI, `import geolibre_wasm`) runs the
@@ -217,6 +227,17 @@ res = gl.run_tool(
 )
 assert res.exit_code == 0, res.stdout                  # surfaces tool errors
 open("slope.tif", "wb").write(res.files["slope.tif"])  # key is relative to /work
+```
+
+Each `input` value may be `bytes`, an `http(s)` URL (downloaded for you), or a
+local file path -- the same for raster and vector inputs:
+
+```python
+gl.run_tool(
+    "write_geoparquet",
+    args=["--input=/work/in.geojson", "--output=/work/out.parquet"],
+    input={"in.geojson": "https://example.com/data/cities.geojson"},
+)
 ```
 
 The runtime `.wasm` is downloaded from the matching release on first use (or set

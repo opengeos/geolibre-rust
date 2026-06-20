@@ -34,11 +34,23 @@ export async function initTools(source) {
   return _module;
 }
 
+// Resolve one input value to bytes: a Uint8Array/ArrayBuffer as-is, or an
+// http(s) URL string to fetch. Format-agnostic (raster or vector).
+async function materializeInput(value) {
+  if (typeof value === "string") {
+    if (!/^https?:\/\//i.test(value))
+      throw new Error(`input string must be an http(s) URL, got: ${value}`);
+    return new Uint8Array(await (await fetch(value)).arrayBuffer());
+  }
+  return new Uint8Array(value);
+}
+
 async function exec(argv, inputFiles) {
   const mod = await initTools();
   const inNames = new Set(Object.keys(inputFiles));
-  const contents = new Map(
-    Object.entries(inputFiles).map(([k, v]) => [k, new File(new Uint8Array(v))]));
+  const entries = await Promise.all(
+    Object.entries(inputFiles).map(async ([k, v]) => [k, new File(await materializeInput(v))]));
+  const contents = new Map(entries);
   const work = new PreopenDirectory("/work", contents);
   const stdout = [];
   const fds = [

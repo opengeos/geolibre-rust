@@ -114,7 +114,19 @@ in the Python original.
    reading and writing rasters by path).
 2. Push it into the list returned by `geolibre_tools()` in
    `crates/geolibre-tools/src/lib.rs`.
-3. Rebuild (`./build.sh`); it appears in `listTools()` automatically.
+3. **Declare each parameter's schema** in `geolibre_param_schemas()` (same file):
+   add a match arm mapping the tool id to its params, e.g.
+   `input` -> `ToolParamSchema::input_raster()`, `output` ->
+   `ToolParamSchema::output_raster()` (or `output(ToolDatasetSchema::File)` for a
+   non-dataset file), a count -> `scalar_integer()`, a factor -> `scalar_float()`,
+   a flag -> `bool()`, a fixed choice -> `enum_values(&[...])`. This is what makes
+   `geolibre manifests` emit an accurate `io_role`/`data_kind`/`schema` per param,
+   so host UIs route raster/vector inputs and render the right widget. Without it,
+   the manifest falls back to keyword inference, which mis-types scalars whose
+   description mentions a dataset (a flag that "sorts features" would read as a
+   vector input). A unit test (`every_tool_has_explicit_param_schemas`) fails if a
+   tool's param is left without a schema.
+4. Rebuild (`./build.sh`); it appears in `listTools()` automatically.
 
 The crate depends only on `wbcore` plus the data crates a tool needs (e.g.
 `wbraster`), so the same tools can later back a native CLI or the Python sidecar,

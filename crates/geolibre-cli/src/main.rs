@@ -69,6 +69,16 @@ fn tag_source(manifest: &mut Value, geolibre_ids: &HashSet<String>) {
     }
 }
 
+/// Serializes a manifest with per-param I/O schema. GeoLibre-authored tools use
+/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); every
+/// other tool falls back to wbcore's name/description-based inference.
+fn enriched_manifest(manifest: &wbcore::ToolManifest) -> Value {
+    match geolibre_tools::geolibre_param_schemas(&manifest.id) {
+        Some(schemas) => wbcore::manifest_with_param_schema_json(manifest, &schemas),
+        None => wbcore::manifest_with_io_schema_json(manifest),
+    }
+}
+
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some(command) = argv.first() else {
@@ -87,21 +97,21 @@ fn main() -> ExitCode {
         "manifests" => {
             let registry = build_registry();
             let geolibre_ids = geolibre_tool_ids();
-            match serde_json::to_value(registry.manifests()) {
-                Ok(mut value) => {
-                    if let Some(arr) = value.as_array_mut() {
-                        for m in arr.iter_mut() {
-                            tag_source(m, &geolibre_ids);
-                        }
-                    }
-                    println!("{value}");
-                    ExitCode::SUCCESS
-                }
-                Err(e) => {
-                    eprintln!("failed to serialize manifests: {e}");
-                    ExitCode::from(1)
-                }
-            }
+            // Emit the I/O-enriched manifest (each param's `schema`, `io_role`,
+            // and `data_kind`) rather than the bare manifest, so host UIs can
+            // route raster/vector/lidar inputs and render widgets without a
+            // separate catalog. Mirrors what the ArcGIS catalog snapshot carries.
+            let arr: Vec<Value> = registry
+                .manifests()
+                .iter()
+                .map(|m| {
+                    let mut value = enriched_manifest(m);
+                    tag_source(&mut value, &geolibre_ids);
+                    value
+                })
+                .collect();
+            println!("{}", Value::Array(arr));
+            ExitCode::SUCCESS
         }
         "manifest" => {
             let Some(id) = argv.get(1) else {
@@ -110,17 +120,12 @@ fn main() -> ExitCode {
             };
             let registry = build_registry();
             match registry.manifests().into_iter().find(|m| &m.id == id) {
-                Some(manifest) => match serde_json::to_value(&manifest) {
-                    Ok(mut value) => {
-                        tag_source(&mut value, &geolibre_tool_ids());
-                        println!("{value}");
-                        ExitCode::SUCCESS
-                    }
-                    Err(e) => {
-                        eprintln!("failed to serialize manifest: {e}");
-                        ExitCode::from(1)
-                    }
-                },
+                Some(manifest) => {
+                    let mut value = enriched_manifest(&manifest);
+                    tag_source(&mut value, &geolibre_tool_ids());
+                    println!("{value}");
+                    ExitCode::SUCCESS
+                }
                 None => {
                     eprintln!("tool not found: {id}");
                     ExitCode::from(1)

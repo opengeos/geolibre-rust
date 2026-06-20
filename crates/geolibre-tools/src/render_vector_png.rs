@@ -5,8 +5,6 @@
 //! (e.g. in a notebook) without a mapping library. Single fill/stroke colors;
 //! the image aspect ratio follows the data unless a height is given.
 
-use std::path::Path;
-
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
@@ -14,6 +12,7 @@ use wbcore::{
 };
 use wbvector::{Coord, Geometry, Ring};
 
+use crate::common::write_bytes;
 use crate::render::encode_png_rgba;
 use crate::vector_common::load_input_layer;
 
@@ -272,9 +271,17 @@ fn fill_rings(canvas: &mut Canvas, rings: &[Vec<(f64, f64)>], fill: Rgba) {
         let yc = y as f64 + 0.5;
         let mut xs: Vec<f64> = Vec::new();
         for ring in rings {
-            for seg in ring.windows(2) {
-                let (x0, ya) = seg[0];
-                let (x1, yb) = seg[1];
+            let len = ring.len();
+            if len < 2 {
+                continue;
+            }
+            // Iterate every edge including the closing one (`(i + 1) % len`) so a
+            // ring that does not repeat its first vertex still fills correctly;
+            // a ring that does repeat it just yields a degenerate (no-crossing)
+            // closing edge.
+            for i in 0..len {
+                let (x0, ya) = ring[i];
+                let (x1, yb) = ring[(i + 1) % len];
                 // Half-open edge test avoids double-counting shared vertices.
                 if (ya <= yc && yb > yc) || (yb <= yc && ya > yc) {
                     let t = (yc - ya) / (yb - ya);
@@ -357,6 +364,11 @@ fn parse_color(s: &str) -> Result<Rgba, ToolError> {
         return Ok([0, 0, 0, 0]);
     }
     let hex = s.strip_prefix('#').unwrap_or(s);
+    // Guard before byte-slicing: a multi-byte char could otherwise make a 6/8
+    // byte string slice across a char boundary and panic.
+    if !hex.is_ascii() {
+        return Err(color_err(s));
+    }
     let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
     match hex.len() {
         6 => match (byte(0), byte(2), byte(4)) {
@@ -382,16 +394,4 @@ fn require_str<'a>(args: &'a ToolArgs, key: &str) -> Result<&'a str, ToolError> 
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| ToolError::Validation(format!("missing required string parameter '{key}'")))
-}
-
-fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::Execution(format!("failed creating output directory: {e}"))
-            })?;
-        }
-    }
-    std::fs::write(path, bytes)
-        .map_err(|e| ToolError::Execution(format!("failed writing output file: {e}")))
 }

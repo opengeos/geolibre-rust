@@ -5,7 +5,6 @@
 //! single-file web-map tile format), so a whole basemap layer is one download.
 
 use std::f64::consts::PI;
-use std::path::Path;
 
 use serde_json::{json, Value};
 use wbcore::{
@@ -14,7 +13,7 @@ use wbcore::{
 };
 use wbraster::{Raster, ResampleMethod};
 
-use crate::common::load_input_raster;
+use crate::common::{load_input_raster, write_bytes};
 use crate::pmtiles::{self, LonLatBounds, Tile};
 use crate::raster_to_tiles::{
     native_zoom, render_tile, tile_range, MAX_TILES, ORIGIN, TILE_SIZE, WEB_MERCATOR_EPSG,
@@ -198,16 +197,4 @@ fn require_str<'a>(args: &'a ToolArgs, key: &str) -> Result<&'a str, ToolError> 
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| ToolError::Validation(format!("missing required string parameter '{key}'")))
-}
-
-fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::Execution(format!("failed creating output directory: {e}"))
-            })?;
-        }
-    }
-    std::fs::write(path, bytes)
-        .map_err(|e| ToolError::Execution(format!("failed writing output file: {e}")))
 }

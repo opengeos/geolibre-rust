@@ -5,8 +5,6 @@
 //! tile grid into 256x256 RGBA PNGs written as `{output_dir}/{z}/{x}/{y}.png`.
 //! Fully transparent (no-data) tiles are skipped so the pyramid stays sparse.
 
-use std::path::Path;
-
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
@@ -14,7 +12,7 @@ use wbcore::{
 };
 use wbraster::{NodataPolicy, Raster, ResampleMethod};
 
-use crate::common::load_input_raster;
+use crate::common::{load_input_raster, write_bytes};
 use crate::render::{encode_png_rgba, normalize, Colormap};
 use crate::reproject_raster::parse_resample;
 
@@ -294,17 +292,4 @@ pub(crate) fn native_zoom(cell_size_m: f64) -> u32 {
     // res(z) = (2*ORIGIN) / (256 * 2^z); solve for z so res ~= cell_size_m.
     let z = ((2.0 * ORIGIN / (TILE_SIZE as f64 * cell_size_m)).log2()).round();
     z.clamp(0.0, 24.0) as u32
-}
-
-/// Writes bytes to a path, creating parent directories as needed.
-fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::Execution(format!("failed creating tile directory: {e}"))
-            })?;
-        }
-    }
-    std::fs::write(path, bytes)
-        .map_err(|e| ToolError::Execution(format!("failed writing tile: {e}")))
 }

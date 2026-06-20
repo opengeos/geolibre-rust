@@ -85,7 +85,7 @@ impl Tool for SpectralIndexTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        if args.get("input").and_then(Value::as_str).is_none() {
+        if args.get("input").and_then(Value::as_str).map(str::trim).unwrap_or("").is_empty() {
             return Err(ToolError::Validation(
                 "missing required string parameter 'input'".to_string(),
             ));
@@ -120,7 +120,12 @@ impl Tool for SpectralIndexTool {
                     args.get("index").and_then(Value::as_str).unwrap_or("?")
                 ))
             })?;
-            let idx = (n.max(1) - 1) as isize;
+            if n == 0 {
+                return Err(ToolError::Validation(format!(
+                    "'{key}' band number is 1-based and must be >= 1"
+                )));
+            }
+            let idx = (n - 1) as isize;
             if idx as usize >= raster.bands {
                 return Err(ToolError::Validation(format!(
                     "band {n} out of range (raster has {} band(s))",

@@ -40,7 +40,7 @@ impl Tool for VectorConvertTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        if args.get("input").and_then(Value::as_str).is_none() {
+        if args.get("input").and_then(Value::as_str).map(str::trim).unwrap_or("").is_empty() {
             return Err(ToolError::Validation(
                 "missing required string parameter 'input'".to_string(),
             ));

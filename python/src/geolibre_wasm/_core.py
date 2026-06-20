@@ -25,10 +25,20 @@ import wasmtime
 _WASM_MAGIC = b"\x00asm"
 #: Network timeout (seconds) for the one-time runtime download.
 _DOWNLOAD_TIMEOUT = 120
+#: Sent on HTTP fetches; some CDNs reject the default ``Python-urllib`` agent.
+_USER_AGENT = "Mozilla/5.0 (geolibre-wasm)"
+
+
+def _http_get(url: str, timeout: int) -> bytes:
+    """GET a URL to bytes with a browser-like User-Agent and a timeout."""
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        return response.read()
+
 
 #: Release whose ``geolibre-cli.wasm`` asset this wrapper downloads by default.
 #: Kept in sync with the package version's ``vMAJOR.MINOR.PATCH`` tag.
-RUNTIME_VERSION = "v0.4.2"
+RUNTIME_VERSION = "v0.4.3"
 _ASSET = f"geolibre-cli-{RUNTIME_VERSION}.wasm"
 _RELEASE_URL = (
     "https://github.com/opengeos/geolibre-rust/releases/download/"
@@ -57,10 +67,7 @@ def _materialize_input(value: InputSource) -> bytes:
     if isinstance(value, (bytes, bytearray, memoryview)):
         return bytes(value)
     if isinstance(value, str) and value.startswith(("http://", "https://")):
-        with urllib.request.urlopen(  # noqa: S310 (caller-supplied URL)
-            value, timeout=_INPUT_TIMEOUT
-        ) as response:
-            return response.read()
+        return _http_get(value, _INPUT_TIMEOUT)
     if isinstance(value, (str, os.PathLike)):
         path = Path(value)
         if path.is_file():
@@ -116,10 +123,7 @@ def download_runtime(dest: Optional[PathLike] = None) -> str:
     """
     target = Path(dest) if dest is not None else _cache_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(  # noqa: S310 (trusted release URL)
-        _RELEASE_URL, timeout=_DOWNLOAD_TIMEOUT
-    ) as response:
-        data = response.read()
+    data = _http_get(_RELEASE_URL, _DOWNLOAD_TIMEOUT)
     # Guard against truncated or error-page downloads: every wasm module starts
     # with the "\0asm" magic.
     if not data.startswith(_WASM_MAGIC):

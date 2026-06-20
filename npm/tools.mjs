@@ -40,7 +40,10 @@ async function materializeInput(value) {
   if (typeof value === "string") {
     if (!/^https?:\/\//i.test(value))
       throw new Error(`input string must be an http(s) URL, got: ${value}`);
-    return new Uint8Array(await (await fetch(value)).arrayBuffer());
+    // A User-Agent helps with CDNs that reject non-browser agents (browsers
+    // ignore this header and send their own; Node/undici honors it).
+    const resp = await fetch(value, { headers: { "User-Agent": "Mozilla/5.0 (geolibre-wasm)" } });
+    return new Uint8Array(await resp.arrayBuffer());
   }
   return new Uint8Array(value);
 }

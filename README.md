@@ -1,6 +1,7 @@
 # geolibre-rust
 
 [![npm version](https://img.shields.io/npm/v/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
+[![PyPI version](https://img.shields.io/pypi/v/geolibre-wasm.svg)](https://pypi.org/project/geolibre-wasm/)
 [![npm downloads](https://img.shields.io/npm/dm/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
 [![CI](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/geolibre-wasm.svg)](https://github.com/opengeos/geolibre-rust#license)
@@ -22,9 +23,10 @@ The published npm package (`geolibre-wasm`) ships two layers:
   GeoLibre's own tools**, run over an in-memory `/work` filesystem via
   [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim).
 
-No server, no Python, no native install. New tools live in the `geolibre-tools`
-crate and are registered alongside whitebox's, so GeoLibre sees them through the
-same interface as the built-ins.
+No server, no GDAL, no native install. Use it from JavaScript (npm
+`geolibre-wasm`) or Python (PyPI `geolibre-wasm`). New tools live in the
+`geolibre-tools` crate and are registered alongside whitebox's, so GeoLibre sees
+them through the same interface as the built-ins.
 
 ## Try it in the browser
 
@@ -160,6 +162,10 @@ When `kdtree 0.8.1` (or later) is published, delete `vendor/kdtree/` and the
 > Note: the repository is `geolibre-rust` (the Rust source), but the published
 > npm package is **`geolibre-wasm`** (the WASM artifact), mirroring `whitebox-wasm`.
 
+```bash
+npm install geolibre-wasm
+```
+
 Browser library (the `.` export) -- typed GeoTIFF/projection/vector/LiDAR APIs:
 
 ```js
@@ -184,6 +190,37 @@ const { files } = await runTool("slope", {
 });
 const slopeCog = files["slope.tif"]; // Uint8Array (COG GeoTIFF)
 ```
+
+## Use from Python
+
+The `python/` package (`geolibre-wasm` on PyPI, `import geolibre_wasm`) runs the
+same WASI tool runner in-process via `wasmtime`, mirroring the JS `./tools` API.
+No native install, GDAL, or server.
+
+```bash
+pip install geolibre-wasm
+```
+
+```python
+import geolibre_wasm as gl
+
+tools = gl.list_tools()                 # every tool id
+manifests = gl.list_manifests()         # schemas + "source": geolibre|whitebox
+
+res = gl.run_tool(
+    "slope",
+    # Paths in `args` refer to the tool's sandbox (/work), NOT your host disk.
+    # `input` files are placed at /work/<name>; `res.files` keys are relative
+    # to /work. Mixing in host paths (e.g. /content on Colab) will not work.
+    args=["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
+    input={"dem.tif": open("dem.tif", "rb").read()},   # -> /work/dem.tif
+)
+assert res.exit_code == 0, res.stdout                  # surfaces tool errors
+open("slope.tif", "wb").write(res.files["slope.tif"])  # key is relative to /work
+```
+
+The runtime `.wasm` is downloaded from the matching release on first use (or set
+`GEOLIBRE_WASM`). See [`python/README.md`](python/README.md) for details.
 
 ## GeoLibre integration
 

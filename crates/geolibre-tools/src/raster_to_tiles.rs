@@ -19,11 +19,11 @@ use crate::render::{encode_png_rgba, normalize, Colormap};
 use crate::reproject_raster::parse_resample;
 
 /// EPSG:3857 (Web Mercator) world half-extent in meters: pi * 6378137.
-const ORIGIN: f64 = 20_037_508.342_789_244;
-const TILE_SIZE: usize = 256;
-const WEB_MERCATOR_EPSG: u32 = 3857;
+pub(crate) const ORIGIN: f64 = 20_037_508.342_789_244;
+pub(crate) const TILE_SIZE: usize = 256;
+pub(crate) const WEB_MERCATOR_EPSG: u32 = 3857;
 /// Safety cap so a too-wide zoom range cannot generate an unbounded pyramid.
-const MAX_TILES: usize = 4096;
+pub(crate) const MAX_TILES: usize = 4096;
 
 /// Renders a raster into a Web Mercator XYZ PNG tile pyramid.
 pub struct RasterToTilesTool;
@@ -240,7 +240,7 @@ impl Tool for RasterToTilesTool {
 /// Renders one 256x256 tile. Returns `None` if every pixel is no-data / outside
 /// the raster, so the caller can skip writing an empty tile.
 #[allow(clippy::too_many_arguments)]
-fn render_tile(
+pub(crate) fn render_tile(
     merc: &Raster,
     band: isize,
     x0: f64,
@@ -277,7 +277,7 @@ fn render_tile(
 
 /// Inclusive tile-index range covering `[lo, hi]` along an axis whose tile 0
 /// starts at `axis_origin`, with `span`-meter tiles and `n` tiles total.
-fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u64) {
+pub(crate) fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u64) {
     let max_idx = n - 1;
     let a = (((lo - axis_origin) / span).floor()).clamp(0.0, max_idx as f64) as u64;
     // Subtract a tiny epsilon so a coordinate exactly on a tile boundary does
@@ -287,7 +287,7 @@ fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u6
 }
 
 /// Zoom level whose 256px tiles have a pixel size closest to `cell_size_m`.
-fn native_zoom(cell_size_m: f64) -> u32 {
+pub(crate) fn native_zoom(cell_size_m: f64) -> u32 {
     if cell_size_m <= 0.0 {
         return 0;
     }

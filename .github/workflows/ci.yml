@@ -51,3 +51,16 @@ jobs:
         run: |
           npm install --no-save @bjorn3/browser_wasi_shim@^0.4.2
           node ../examples/node-demo.mjs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test the Python wrapper against the freshly built runtime
+        env:
+          # Use the runtime just built by build.sh instead of downloading it.
+          GEOLIBRE_WASM: ${{ github.workspace }}/npm/geolibre-cli.wasm
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./python pytest
+          pytest python/tests -q

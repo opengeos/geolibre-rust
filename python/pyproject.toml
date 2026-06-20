@@ -17,7 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: GIS",
 ]
-dependencies = ["wasmtime>=20"]
+dependencies = ["wasmtime>=20,<50"]
 
 [project.urls]
 Homepage = "https://github.com/opengeos/geolibre-rust"

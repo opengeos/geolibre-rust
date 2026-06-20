@@ -14,11 +14,17 @@ import os
 import shutil
 import tempfile
 import urllib.request
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Union
+from typing import Optional, Union
 
 import wasmtime
+
+#: Magic header of every WebAssembly module ("\0asm").
+_WASM_MAGIC = b"\x00asm"
+#: Network timeout (seconds) for the one-time runtime download.
+_DOWNLOAD_TIMEOUT = 120
 
 #: Release whose ``geolibre-cli.wasm`` asset this wrapper downloads by default.
 #: Kept in sync with the package version's ``vMAJOR.MINOR.PATCH`` tag.
@@ -46,12 +52,12 @@ class ToolResult:
     """
 
     exit_code: int
-    stdout: List[str]
-    files: Dict[str, bytes]
+    stdout: list[str]
+    files: dict[str, bytes]
 
 
 _engine: Optional[wasmtime.Engine] = None
-_module_cache: Dict[str, "wasmtime.Module"] = {}
+_module_cache: dict[str, "wasmtime.Module"] = {}
 
 
 def _get_engine() -> "wasmtime.Engine":
@@ -78,8 +84,18 @@ def download_runtime(dest: Optional[PathLike] = None) -> str:
     """
     target = Path(dest) if dest is not None else _cache_path()
     target.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(  # noqa: S310 (trusted release URL)
+        _RELEASE_URL, timeout=_DOWNLOAD_TIMEOUT
+    ) as response:
+        data = response.read()
+    # Guard against truncated or error-page downloads: every wasm module starts
+    # with the "\0asm" magic.
+    if not data.startswith(_WASM_MAGIC):
+        raise RuntimeError(
+            f"downloaded runtime from {_RELEASE_URL} is not a valid WASM module"
+        )
     tmp = target.with_name(target.name + ".download")
-    urllib.request.urlretrieve(_RELEASE_URL, tmp)  # noqa: S310 (trusted release URL)
+    tmp.write_bytes(data)
     tmp.replace(target)
     return str(target)
 
@@ -128,7 +144,7 @@ def _exec(
         for name, data in inputs.items():
             dest = work / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(bytes(data))
+            dest.write_bytes(data)
 
         stdout_file = work / _STDOUT_CAPTURE
         store = wasmtime.Store(engine)
@@ -151,12 +167,12 @@ def _exec(
         except wasmtime.ExitTrap as exit_trap:
             exit_code = exit_trap.code
 
-        stdout: List[str] = []
+        stdout: list[str] = []
         if stdout_file.exists():
             stdout = stdout_file.read_text(errors="replace").splitlines()
 
         input_names = set(inputs)
-        files: Dict[str, bytes] = {}
+        files: dict[str, bytes] = {}
         for path in sorted(work.rglob("*")):
             if not path.is_file():
                 continue
@@ -170,7 +186,7 @@ def _exec(
         shutil.rmtree(work, ignore_errors=True)
 
 
-def list_tools(wasm_path: Optional[PathLike] = None) -> List[str]:
+def list_tools(wasm_path: Optional[PathLike] = None) -> list[str]:
     """List every available tool id.
 
     Args:
@@ -183,7 +199,7 @@ def list_tools(wasm_path: Optional[PathLike] = None) -> List[str]:
     return [line.strip() for line in result.stdout if line.strip()]
 
 
-def list_manifests(wasm_path: Optional[PathLike] = None) -> List[dict]:
+def list_manifests(wasm_path: Optional[PathLike] = None) -> list[dict]:
     """Fetch every tool manifest (id, parameters, category, provenance, ...).
 
     Args:

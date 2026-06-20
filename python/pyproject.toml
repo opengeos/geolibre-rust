@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geolibre-wasm"
+version = "0.4.0"
+description = "Run the GeoLibre / whitebox_next_gen geospatial tool suite (WASM/WASI) from Python."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Qiusheng Wu", email = "giswqs@gmail.com" }]
+keywords = ["geospatial", "gis", "wasm", "wasi", "raster", "vector", "geoparquet", "whitebox", "geolibre"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = ["wasmtime>=20"]
+
+[project.urls]
+Homepage = "https://github.com/opengeos/geolibre-rust"
+Repository = "https://github.com/opengeos/geolibre-rust"
+Issues = "https://github.com/opengeos/geolibre-rust/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/geolibre_wasm"]

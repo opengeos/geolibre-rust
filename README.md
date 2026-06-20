@@ -185,6 +185,29 @@ const { files } = await runTool("slope", {
 const slopeCog = files["slope.tif"]; // Uint8Array (COG GeoTIFF)
 ```
 
+## Use from Python
+
+The `python/` package (`geolibre-wasm` on PyPI, `import geolibre_wasm`) runs the
+same WASI tool runner in-process via `wasmtime`, mirroring the JS `./tools` API.
+No native install, GDAL, or server.
+
+```python
+import geolibre_wasm as gl
+
+tools = gl.list_tools()                 # every tool id
+manifests = gl.list_manifests()         # schemas + "source": geolibre|whitebox
+
+res = gl.run_tool(
+    "slope",
+    args=["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
+    input={"dem.tif": open("dem.tif", "rb").read()},
+)
+open("slope.tif", "wb").write(res.files["slope.tif"])  # COG GeoTIFF bytes
+```
+
+The runtime `.wasm` is downloaded from the matching release on first use (or set
+`GEOLIBRE_WASM`). See [`python/README.md`](python/README.md) for details.
+
 ## GeoLibre integration
 
 The interface is byte-compatible with the existing `whitebox-wasm/tools` client:

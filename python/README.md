@@ -26,8 +26,20 @@ copy instead, set `GEOLIBRE_WASM=/path/to/geolibre-cli.wasm` or pass
 
 ## Usage
 
-Inputs are passed as `bytes` under `/work`; the tool reads/writes there and any
-new files come back as `bytes`.
+Inputs are placed under `/work`; the tool reads/writes there and any new files
+come back as `bytes`. Each `input` value may be **`bytes`**, an **`http(s)` URL**
+to download, or a **local file path** -- the same for raster and vector inputs:
+
+```python
+res = gl.run_tool(
+    "write_geoparquet",
+    args=["--input=/work/in.geojson", "--output=/work/out.parquet"],
+    input={"in.geojson": "https://example.com/data/cities.geojson"},  # fetched for you
+)
+```
+
+This downloads the whole file (no HTTP range reads). Works for `cog.tif`,
+`data.parquet`, `data.fgb`, `data.geojson`, etc.
 
 > **Paths are sandboxed.** Every path inside `args` refers to the tool's `/work`
 > filesystem, **not** your host disk. `input` files are placed at `/work/<name>`,

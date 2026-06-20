@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import geolibre_wasm as geolibre
+from geolibre_wasm._core import _materialize_input
 
 
 def test_list_tools():
@@ -63,3 +66,37 @@ def test_geoparquet_roundtrip():
     assert back.exit_code == 0
     fc = json.loads(back.files["back.geojson"])
     assert len(fc["features"]) == 2
+
+
+def test_materialize_input_sources(tmp_path):
+    # bytes pass through
+    assert _materialize_input(b"abc") == b"abc"
+    assert _materialize_input(bytearray(b"xy")) == b"xy"
+    # a local file path is read
+    p = tmp_path / "f.bin"
+    p.write_bytes(b"hello")
+    assert _materialize_input(p) == b"hello"
+    assert _materialize_input(str(p)) == b"hello"
+    # a non-URL, non-file string is rejected
+    with pytest.raises(TypeError):
+        _materialize_input("not-a-url-or-file")
+
+
+def test_run_tool_accepts_a_local_path_input(tmp_path):
+    # run_tool's `input` values may be a path, not just bytes. (URL inputs use
+    # the same code path; they are exercised in test_materialize_input_sources
+    # without hitting the network.)
+    import os
+
+    src = os.path.join("examples", "sample.tif")  # repo-relative; present in CI
+    if not os.path.isfile(src):
+        pytest.skip("sample raster not available")
+    sample = tmp_path / "dem.tif"
+    sample.write_bytes(open(src, "rb").read())
+    res = geolibre.run_tool(
+        "slope",
+        args=["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
+        input={"dem.tif": sample},  # a pathlib.Path, not bytes
+    )
+    assert res.exit_code == 0
+    assert "slope.tif" in res.files

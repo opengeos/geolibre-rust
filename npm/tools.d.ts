@@ -13,8 +13,10 @@ export interface ToolResult {
 export interface RunToolOptions {
   /** CLI args, e.g. ["--input=/work/dem.tif", "--output=/work/out.tif", "--units=degrees"]. */
   args?: string[];
-  /** Input files placed under /work, keyed by filename. */
-  input?: Record<string, Uint8Array>;
+  /** Input files placed under /work, keyed by filename. Each value is the file
+   *  bytes (Uint8Array/ArrayBuffer) or an http(s) URL string that is fetched
+   *  (whole file, no range reads). Works for raster and vector inputs alike. */
+  input?: Record<string, Uint8Array | ArrayBuffer | string>;
 }
 
 /** A single parameter in a tool manifest. */

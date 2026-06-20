@@ -35,8 +35,40 @@ _RELEASE_URL = (
     f"{RUNTIME_VERSION}/{_ASSET}"
 )
 _STDOUT_CAPTURE = ".geolibre-stdout"
+#: Network timeout (seconds) for fetching http(s) input files.
+_INPUT_TIMEOUT = 120
 
 PathLike = Union[str, os.PathLike]
+#: An input file's contents: raw bytes, an http(s) URL to fetch, or a path to a
+#: local file to read. Works the same for raster and vector inputs.
+InputSource = Union[bytes, bytearray, memoryview, str, os.PathLike]
+
+
+def _materialize_input(value: InputSource) -> bytes:
+    """Resolves an input value to the bytes written under ``/work``.
+
+    Args:
+        value: Raw bytes, an ``http(s)`` URL to download, or a path to a local
+            file to read.
+
+    Returns:
+        The file contents as ``bytes``.
+    """
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value)
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        with urllib.request.urlopen(  # noqa: S310 (caller-supplied URL)
+            value, timeout=_INPUT_TIMEOUT
+        ) as response:
+            return response.read()
+    if isinstance(value, (str, os.PathLike)):
+        path = Path(value)
+        if path.is_file():
+            return path.read_bytes()
+    raise TypeError(
+        "input values must be bytes, an http(s) URL, or a path to an existing "
+        f"file; got {value!r}"
+    )
 
 
 @dataclass
@@ -133,7 +165,7 @@ def _load_module(path: str) -> "wasmtime.Module":
 
 def _exec(
     argv: Sequence[str],
-    inputs: Optional[Mapping[str, bytes]] = None,
+    inputs: Optional[Mapping[str, InputSource]] = None,
     wasm_path: Optional[PathLike] = None,
 ) -> ToolResult:
     inputs = inputs or {}
@@ -141,10 +173,10 @@ def _exec(
     engine = _get_engine()
     work = Path(tempfile.mkdtemp(prefix="geolibre-"))
     try:
-        for name, data in inputs.items():
+        for name, value in inputs.items():
             dest = work / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(data)
+            dest.write_bytes(_materialize_input(value))
 
         stdout_file = work / _STDOUT_CAPTURE
         store = wasmtime.Store(engine)
@@ -216,7 +248,7 @@ def list_manifests(wasm_path: Optional[PathLike] = None) -> list[dict]:
 def run_tool(
     tool: str,
     args: Optional[Sequence[str]] = None,
-    input: Optional[Mapping[str, bytes]] = None,
+    input: Optional[Mapping[str, InputSource]] = None,
     wasm_path: Optional[PathLike] = None,
 ) -> ToolResult:
     """Run one tool over an in-memory ``/work`` filesystem.
@@ -225,8 +257,12 @@ def run_tool(
         tool: Tool id, e.g. ``"slope"`` (see :func:`list_tools`).
         args: CLI args, e.g.
             ``["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"]``.
-        input: Files placed under ``/work`` before the run, keyed by filename
-            (values are ``bytes``).
+        input: Files placed under ``/work`` before the run, keyed by filename.
+            Each value may be ``bytes``, an ``http(s)`` URL to download, or a path
+            to a local file to read. This is format-agnostic: it works for raster
+            inputs (``cog.tif``) and vector inputs (``data.parquet``,
+            ``data.geojson``, ``data.fgb``, ...) alike. The whole file is fetched
+            (no HTTP range reads).
         wasm_path: Optional explicit runtime path (see :func:`runtime_path`).
 
     Returns:

@@ -1,7 +1,7 @@
 {
   "name": "geolibre-wasm",
   "type": "module",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Pure-Rust geospatial toolkit (whitebox_next_gen) compiled to WebAssembly (WASI) for GeoLibre's in-browser tool execution",
   "license": "MIT",
   "repository": {

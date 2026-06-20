@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geolibre-wasm"
-version = "0.4.1"
+version = "0.4.2"
 description = "Run the GeoLibre / whitebox_next_gen geospatial tool suite (WASM/WASI) from Python."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Qiusheng Wu", email = "giswqs@gmail.com" }]
 keywords = ["geospatial", "gis", "wasm", "wasi", "raster", "vector", "geoparquet", "whitebox", "geolibre"]
 classifiers = [

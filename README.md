@@ -5,6 +5,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/geolibre-wasm.svg)](https://www.npmjs.com/package/geolibre-wasm)
 [![CI](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/opengeos/geolibre-rust/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/geolibre-wasm.svg)](https://github.com/opengeos/geolibre-rust#license)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeos/geolibre-rust/blob/main/examples/geolibre_wasm.ipynb)
 
 A pure-Rust geospatial toolkit for [GeoLibre](https://github.com/opengeos/GeoLibre),
 built on [`opengeos/whitebox-wasm`](https://github.com/opengeos/whitebox-wasm)
@@ -207,6 +208,11 @@ The `python/` package (`geolibre-wasm` on PyPI, `import geolibre_wasm`) runs the
 same WASI tool runner in-process via `wasmtime`, mirroring the JS `./tools` API.
 No native install, GDAL, or server.
 
+Try it in your browser, no setup:
+[**Open the quickstart notebook in Google Colab**](https://colab.research.google.com/github/opengeos/geolibre-rust/blob/main/examples/geolibre_wasm.ipynb)
+([`examples/geolibre_wasm.ipynb`](examples/geolibre_wasm.ipynb)) -- it reads and
+processes a real DEM and building footprints end to end.
+
 ```bash
 pip install geolibre-wasm
 ```
@@ -242,6 +248,97 @@ gl.run_tool(
 
 The runtime `.wasm` is downloaded from the matching release on first use (or set
 `GEOLIBRE_WASM`). See [`python/README.md`](python/README.md) for details.
+
+## Recipes: reading and processing various formats
+
+The examples below use the Python API; the JavaScript `runTool` takes the same
+`args` and `input` (just `camelCase`). Each `input` value can be `bytes`, an
+`http(s)` URL, or a local path. Output files come back in `result.files` keyed by
+their `/work`-relative path. These all run against the real tool suite.
+
+### Vector (GeoParquet, GeoJSON, FlatGeobuf, Shapefile, GeoPackage, ...)
+
+```python
+import geolibre_wasm as gl
+
+# Convert GeoJSON -> GeoParquet (Hilbert-sorted, bbox covering, ZSTD by default)
+gj = open("cities.geojson", "rb").read()
+gl.run_tool("write_geoparquet",
+            args=["--input=/work/in.geojson", "--output=/work/out.parquet"],
+            input={"in.geojson": gj})
+
+# Read GeoParquet -> any vector format (driver picked from the output extension:
+# .geojson, .fgb, .shp, .gpkg, ...). Omit --output to keep it in memory.
+res = gl.run_tool("read_geoparquet",
+                  args=["--input=/work/in.parquet", "--output=/work/out.fgb"],
+                  input={"in.parquet": "https://example.com/data.parquet"})
+open("out.fgb", "wb").write(res.files["out.fgb"])
+
+# Buffer features, then simplify (Douglas-Peucker)
+res = gl.run_tool("buffer_vector",
+                  args=["--input=/work/in.geojson", "--distance=25", "--output=/work/buf.geojson"],
+                  input={"in.geojson": gj})
+res = gl.run_tool("simplify_features",
+                  args=["--input=/work/buf.geojson", "--tolerance=5", "--output=/work/simple.geojson"],
+                  input={"buf.geojson": res.files["buf.geojson"]})
+
+# Add geometry attributes (area / perimeter / centroid, ...)
+gl.run_tool("add_geometry_attributes",
+            args=["--input=/work/in.geojson", "--area=true", "--centroid=true",
+                  "--output=/work/attrs.geojson"],
+            input={"in.geojson": gj})
+```
+
+`reproject_vector` works the same, but the input must carry a source CRS (a
+Shapefile `.prj`, or a GeoParquet/GeoPackage with CRS metadata), e.g.
+`args=["--input=/work/in.fgb", "--epsg=3857", "--output=/work/out.fgb"]`.
+
+### LiDAR point clouds (LAS / LAZ)
+
+```python
+import geolibre_wasm as gl
+
+cloud = open("cloud.las", "rb").read()        # or a .laz, or an http(s) URL
+
+# Summary report (point count, bounds, density, ...). Output must be .txt/.html.
+res = gl.run_tool("lidar_info",
+                  args=["--input=/work/cloud.las", "--output=/work/info.txt"],
+                  input={"cloud.las": cloud})
+print(res.files["info.txt"].decode())
+
+# Rasterize to a DEM (IDW) -> Cloud Optimized GeoTIFF
+res = gl.run_tool("lidar_idw_interpolation",
+                  args=["--input=/work/cloud.las", "--resolution=1.0", "--output=/work/dtm.tif"],
+                  input={"cloud.las": cloud})
+open("dtm.tif", "wb").write(res.files["dtm.tif"])
+
+# Drop unwanted classes (comma-delimited list; e.g. exclude 1=unclassified, 7=noise)
+gl.run_tool("filter_lidar_classes",
+            args=["--input=/work/cloud.las", "--excluded_classes=1,7", "--output=/work/clean.las"],
+            input={"cloud.las": cloud})
+
+# Export points to a Shapefile
+gl.run_tool("las_to_shapefile",
+            args=["--input=/work/cloud.las", "--output=/work/points.shp"],
+            input={"cloud.las": cloud})
+```
+
+### Raster (GeoTIFF / COG)
+
+```python
+dem = open("dem.tif", "rb").read()            # or an http(s) URL to a COG
+
+# Warp to Web Mercator, then render a PNG preview through a colormap
+gl.run_tool("reproject_raster",
+            args=["--input=/work/dem.tif", "--epsg=3857", "--output=/work/merc.tif"],
+            input={"dem.tif": dem})
+gl.run_tool("render_raster_png",
+            args=["--input=/work/dem.tif", "--colormap=terrain", "--output=/work/preview.png"],
+            input={"dem.tif": dem})
+```
+
+Run `gl.list_tools()` for all 740+ tool ids and `gl.list_manifests()` for each
+tool's parameters and provenance (`"source": "geolibre" | "whitebox"`).
 
 ## GeoLibre integration
 

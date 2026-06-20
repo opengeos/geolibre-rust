@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "geolibre-tools",
  "serde_json",
@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-tools"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "parquet",
  "png 0.17.16",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-wasm"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

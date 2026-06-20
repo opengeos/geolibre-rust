@@ -5,8 +5,6 @@
 //! tile grid into 256x256 RGBA PNGs written as `{output_dir}/{z}/{x}/{y}.png`.
 //! Fully transparent (no-data) tiles are skipped so the pyramid stays sparse.
 
-use std::path::Path;
-
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
@@ -14,16 +12,16 @@ use wbcore::{
 };
 use wbraster::{NodataPolicy, Raster, ResampleMethod};
 
-use crate::common::load_input_raster;
+use crate::common::{load_input_raster, write_bytes};
 use crate::render::{encode_png_rgba, normalize, Colormap};
 use crate::reproject_raster::parse_resample;
 
 /// EPSG:3857 (Web Mercator) world half-extent in meters: pi * 6378137.
-const ORIGIN: f64 = 20_037_508.342_789_244;
-const TILE_SIZE: usize = 256;
-const WEB_MERCATOR_EPSG: u32 = 3857;
+pub(crate) const ORIGIN: f64 = 20_037_508.342_789_244;
+pub(crate) const TILE_SIZE: usize = 256;
+pub(crate) const WEB_MERCATOR_EPSG: u32 = 3857;
 /// Safety cap so a too-wide zoom range cannot generate an unbounded pyramid.
-const MAX_TILES: usize = 4096;
+pub(crate) const MAX_TILES: usize = 4096;
 
 /// Renders a raster into a Web Mercator XYZ PNG tile pyramid.
 pub struct RasterToTilesTool;
@@ -240,7 +238,7 @@ impl Tool for RasterToTilesTool {
 /// Renders one 256x256 tile. Returns `None` if every pixel is no-data / outside
 /// the raster, so the caller can skip writing an empty tile.
 #[allow(clippy::too_many_arguments)]
-fn render_tile(
+pub(crate) fn render_tile(
     merc: &Raster,
     band: isize,
     x0: f64,
@@ -277,7 +275,7 @@ fn render_tile(
 
 /// Inclusive tile-index range covering `[lo, hi]` along an axis whose tile 0
 /// starts at `axis_origin`, with `span`-meter tiles and `n` tiles total.
-fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u64) {
+pub(crate) fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u64) {
     let max_idx = n - 1;
     let a = (((lo - axis_origin) / span).floor()).clamp(0.0, max_idx as f64) as u64;
     // Subtract a tiny epsilon so a coordinate exactly on a tile boundary does
@@ -287,24 +285,11 @@ fn tile_range(lo: f64, hi: f64, axis_origin: f64, span: f64, n: u64) -> (u64, u6
 }
 
 /// Zoom level whose 256px tiles have a pixel size closest to `cell_size_m`.
-fn native_zoom(cell_size_m: f64) -> u32 {
+pub(crate) fn native_zoom(cell_size_m: f64) -> u32 {
     if cell_size_m <= 0.0 {
         return 0;
     }
     // res(z) = (2*ORIGIN) / (256 * 2^z); solve for z so res ~= cell_size_m.
     let z = ((2.0 * ORIGIN / (TILE_SIZE as f64 * cell_size_m)).log2()).round();
     z.clamp(0.0, 24.0) as u32
-}
-
-/// Writes bytes to a path, creating parent directories as needed.
-fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::Execution(format!("failed creating tile directory: {e}"))
-            })?;
-        }
-    }
-    std::fs::write(path, bytes)
-        .map_err(|e| ToolError::Execution(format!("failed writing tile: {e}")))
 }

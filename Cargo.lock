@@ -735,6 +735,7 @@ dependencies = [
 name = "geolibre-tools"
 version = "0.4.3"
 dependencies = [
+ "flate2",
  "parquet",
  "png 0.17.16",
  "serde_json",

@@ -16,13 +16,18 @@ mod fill;
 mod geoparquet_io;
 mod hilbert;
 mod polygonize;
+mod pmtiles;
 mod raster_normalize;
 mod raster_to_tiles;
 mod regions;
 mod render;
 mod render_png;
+mod render_vector_png;
 mod reproject_raster;
+mod spectral_index;
 mod vector_common;
+mod vector_convert;
+mod write_pmtiles;
 
 use wbcore::Tool;
 
@@ -50,6 +55,10 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(raster_to_tiles::RasterToTilesTool),
         Box::new(geoparquet_io::WriteGeoParquetTool),
         Box::new(geoparquet_io::ReadGeoParquetTool),
+        Box::new(spectral_index::SpectralIndexTool),
+        Box::new(vector_convert::VectorConvertTool),
+        Box::new(render_vector_png::RenderVectorPngTool),
+        Box::new(write_pmtiles::WritePmTilesTool),
     ]
 }
 

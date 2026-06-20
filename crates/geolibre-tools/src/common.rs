@@ -127,3 +127,17 @@ pub fn raster_like_with_data(
     }
     Ok(out)
 }
+
+/// Writes raw bytes to a file path, creating parent directories as needed.
+/// Shared by the tools that emit non-raster artifacts (PNGs, tiles, archives).
+pub fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                ToolError::Execution(format!("failed creating output directory: {e}"))
+            })?;
+        }
+    }
+    std::fs::write(path, bytes)
+        .map_err(|e| ToolError::Execution(format!("failed writing output file: {e}")))
+}

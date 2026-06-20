@@ -19,7 +19,7 @@ pub fn xy_to_hilbert(x: u32, y: u32) -> u64 {
 /// Classic iterative xy->d Hilbert transform for an arbitrary grid `order`
 /// (grid is `2^order` per axis). Factored out so tests can exhaustively check a
 /// small grid.
-fn xy_to_hilbert_order(mut x: u32, mut y: u32, order: u32) -> u64 {
+pub(crate) fn xy_to_hilbert_order(mut x: u32, mut y: u32, order: u32) -> u64 {
     let n: u32 = 1 << order;
     let mut d: u64 = 0;
     let mut s: u32 = n / 2;

@@ -23,3 +23,5 @@ serde_json = "1"
 # Pure-Rust PNG encoder (miniz_oxide backend), used by render_raster_png and
 # raster_to_tiles. Compiles cleanly to wasm32-wasip1.
 png = "0.17"
+# Pure-Rust gzip (miniz_oxide backend) for the PMTiles directory + metadata.
+flate2 = "1"

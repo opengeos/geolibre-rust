@@ -29,6 +29,12 @@ copy instead, set `GEOLIBRE_WASM=/path/to/geolibre-cli.wasm` or pass
 Inputs are passed as `bytes` under `/work`; the tool reads/writes there and any
 new files come back as `bytes`.
 
+> **Paths are sandboxed.** Every path inside `args` refers to the tool's `/work`
+> filesystem, **not** your host disk. `input` files are placed at `/work/<name>`,
+> and `res.files` keys are paths relative to `/work`. Do your own `open()` /
+> `write()` against host paths (e.g. `/content/...` on Colab) on the Python side,
+> never inside `args`.
+
 ```python
 import geolibre_wasm as gl
 
@@ -37,14 +43,14 @@ tools = gl.list_tools()
 manifests = gl.list_manifests()
 
 # Raster: compute slope from a DEM
-dem = open("dem.tif", "rb").read()
+dem = open("dem.tif", "rb").read()                     # read from host disk
 res = gl.run_tool(
     "slope",
     args=["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
-    input={"dem.tif": dem},
+    input={"dem.tif": dem},                            # -> /work/dem.tif
 )
-assert res.exit_code == 0
-open("slope.tif", "wb").write(res.files["slope.tif"])
+assert res.exit_code == 0, res.stdout                  # surfaces tool errors
+open("slope.tif", "wb").write(res.files["slope.tif"])  # key is relative to /work
 
 # Reproject (warp) to a target EPSG
 res = gl.run_tool(

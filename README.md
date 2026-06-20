@@ -209,10 +209,14 @@ manifests = gl.list_manifests()         # schemas + "source": geolibre|whitebox
 
 res = gl.run_tool(
     "slope",
+    # Paths in `args` refer to the tool's sandbox (/work), NOT your host disk.
+    # `input` files are placed at /work/<name>; `res.files` keys are relative
+    # to /work. Mixing in host paths (e.g. /content on Colab) will not work.
     args=["--input=/work/dem.tif", "--output=/work/slope.tif", "--units=degrees"],
-    input={"dem.tif": open("dem.tif", "rb").read()},
+    input={"dem.tif": open("dem.tif", "rb").read()},   # -> /work/dem.tif
 )
-open("slope.tif", "wb").write(res.files["slope.tif"])  # COG GeoTIFF bytes
+assert res.exit_code == 0, res.stdout                  # surfaces tool errors
+open("slope.tif", "wb").write(res.files["slope.tif"])  # key is relative to /work
 ```
 
 The runtime `.wasm` is downloaded from the matching release on first use (or set

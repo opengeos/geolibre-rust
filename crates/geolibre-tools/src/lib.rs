@@ -27,6 +27,7 @@ mod reproject_raster;
 mod spectral_index;
 mod vector_common;
 mod vector_convert;
+mod vector_to_h3;
 mod write_pmtiles;
 
 use std::collections::BTreeMap;
@@ -59,6 +60,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geoparquet_io::ReadGeoParquetTool),
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
+        Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(render_vector_png::RenderVectorPngTool),
         Box::new(write_pmtiles::WritePmTilesTool),
     ]
@@ -197,6 +199,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
         ]),
         "vector_convert" => schemas(&[("input", vector_in()), ("output", vector_out())]),
+        "vector_to_h3" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("resolution", int()),
+        ]),
         "render_vector_png" => schemas(&[
             ("input", vector_in()),
             ("output", file_out()),

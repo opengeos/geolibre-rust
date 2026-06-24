@@ -273,4 +273,45 @@ mod tests {
         let registry = build_registry();
         assert!(!registry.list().is_empty());
     }
+
+    // Looks up an enriched-manifest param by name; panics if it's absent.
+    fn param<'a>(manifest: &'a Value, name: &str) -> &'a Value {
+        manifest["params"]
+            .as_array()
+            .expect("params array")
+            .iter()
+            .find(|p| p["name"] == name)
+            .unwrap_or_else(|| panic!("param '{name}' not found"))
+    }
+
+    #[test]
+    fn spatial_join_manifest_renders_correct_controls() {
+        // Regression for the broken demo inputs (opengeos/geolibre-rust#17). These
+        // controls now come from wbcore's improved manifest inference rather than a
+        // curated override: layer paths are file inputs, strategy/predicate are
+        // enums (not a free-form box or a file picker), and distance is numeric.
+        let registry = build_registry();
+        let manifest = registry
+            .manifests()
+            .into_iter()
+            .find(|m| m.id == "spatial_join")
+            .expect("spatial_join present");
+        let json = enriched_manifest(&manifest);
+
+        for layer in ["target", "join"] {
+            assert_eq!(param(&json, layer)["schema"]["kind"], "input");
+            assert_eq!(param(&json, layer)["io_role"], "input");
+        }
+        assert_eq!(param(&json, "output")["schema"]["kind"], "output");
+        assert_eq!(param(&json, "distance")["schema"]["kind"], "scalar");
+
+        for enum_param in ["predicate", "strategy"] {
+            let schema = &param(&json, enum_param)["schema"];
+            assert_eq!(schema["kind"], "enum", "{enum_param} should be an enum");
+            assert!(
+                schema["options"].as_array().is_some_and(|o| !o.is_empty()),
+                "{enum_param} should carry its option list"
+            );
+        }
+    }
 }

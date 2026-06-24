@@ -197,6 +197,43 @@
         return { kind, hint: v, options, scalar, primary: p.name === "input" };
       }
 
+      // Some params only make sense for one choice of a sibling enum — e.g.
+      // spatial_join's `distance` applies only "for within_distance predicate".
+      // Detect that dependency from the param's own description and return
+      // { controller, value } so the field can be hidden until the controlling
+      // enum selects that value. Conservative: only fires when the description
+      // names a value that an actual sibling enum param offers.
+      function conditionFor(tool, p, params) {
+        const m = (p.description || "").match(
+          /\bfor\s+(?:the\s+)?'?([a-z][a-z0-9_]*)'?\s+(?:predicate|mode|method|strategy|option|type)\b/i,
+        );
+        if (!m) return null;
+        const value = m[1].toLowerCase();
+        const controller = params.find((q) => {
+          if (q.name === p.name) return false;
+          const c = classify(tool, q);
+          return c.kind === "enum" && (c.options || []).some((o) => String(o).toLowerCase() === value);
+        });
+        return controller ? { controller: controller.name, value } : null;
+      }
+
+      // Hide any field whose `data-show-when` controller doesn't currently hold
+      // its `data-show-value`. Hidden fields are skipped when building the
+      // command/invocation and the permalink, so an irrelevant flag never rides
+      // along.
+      function applyConditions() {
+        const form = $("form");
+        if (!form) return;
+        form.querySelectorAll(".field[data-show-when]").forEach((field) => {
+          const ctl = form.querySelector(`[data-name="${field.dataset.showWhen}"]`);
+          const on = !!ctl && String(ctl.value) === field.dataset.showValue;
+          field.hidden = !on;
+        });
+      }
+
+      // A control counts only when its enclosing field is visible.
+      const fieldVisible = (el) => !el.closest(".field")?.hidden;
+
       function renderList() {
         const f = $("filter").value.trim().toLowerCase();
         const cat = $("category").value;
@@ -247,7 +284,7 @@
           const form = $("form");
           if (form) {
             form.querySelectorAll("[data-name]").forEach((el) => {
-              if (el.dataset.kind === "file") return;
+              if (el.dataset.kind === "file" || !fieldVisible(el)) return;
               const def = el.dataset.default ?? "";
               const val = el.dataset.kind === "bool" ? (el.checked ? "true" : "false") : String(el.value);
               if (val !== def) params.set(el.dataset.name, val);
@@ -281,6 +318,7 @@
           const extra = form.querySelector("[data-extra]");
           if (extra) extra.value = params.get("args");
         }
+        applyConditions();
         updateCmd();
       }
 
@@ -339,7 +377,11 @@
             } else {
               control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="text" data-default="${esc(c.hint ?? "")}" value="${esc(c.hint ?? "")}" />`;
             }
-            return `<div class="field"><label for="${id}">${esc(p.name)}${req}</label>${desc}${control}</div>`;
+            const cond = conditionFor(t, p, params);
+            const condAttr = cond
+              ? ` data-show-when="${esc(cond.controller)}" data-show-value="${esc(cond.value)}"`
+              : "";
+            return `<div class="field"${condAttr}><label for="${id}">${esc(p.name)}${req}</label>${desc}${control}</div>`;
           })
           .join("");
 
@@ -368,11 +410,13 @@
           el.addEventListener("change", onFormChange);
         });
         $("run").addEventListener("click", run);
+        applyConditions();
         updateCmd();
       }
 
       // Reflect form edits into both the command preview and the shareable URL.
       function onFormChange() {
+        applyConditions();
         updateCmd();
         writePermalink();
       }
@@ -384,6 +428,7 @@
         const outputs = [];
         const controls = $("form").querySelectorAll("[data-name]");
         for (const el of controls) {
+          if (!fieldVisible(el)) continue; // a hidden, condition-gated field
           const name = el.dataset.name;
           const kind = el.dataset.kind;
           if (kind === "file") {

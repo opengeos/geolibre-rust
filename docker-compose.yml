@@ -1,0 +1,13 @@
+# Self-host the geolibre-rust demo.
+#
+#   docker compose up -d         # pull the published image and serve on :8080
+#
+# Prefer to build from source instead of pulling? Comment out `image:` and
+# uncomment `build: .` below, then run `docker compose up -d --build`.
+services:
+  demo:
+    image: ghcr.io/opengeos/geolibre-rust:latest
+    # build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped

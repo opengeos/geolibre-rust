@@ -46,6 +46,30 @@ click **Run** to see the exit code, stdout, output files, and a download link.
 sample raster (`examples/sample.tif`) next to the page in a temp directory, so the
 repo's `demo/` stays clean; Ctrl-C stops the server and cleans up.
 
+### Self-host with Docker
+
+The same demo ships as a container image so you can host it yourself. The image
+is a static site (nginx) — every tool still runs in the visitor's browser, so
+there's no server-side compute, GDAL, or database.
+
+Pull the published image with Docker Compose:
+
+```bash
+docker compose up -d        # serves on http://localhost:8080
+```
+
+Or build and run it straight from source (needs only Docker — the Rust/WASM
+toolchain lives inside the build):
+
+```bash
+docker build -t geolibre-rust .
+docker run --rm -p 8080:80 geolibre-rust
+```
+
+Images are published to `ghcr.io/opengeos/geolibre-rust` on each release (and on
+`v*` tags); `:latest` tracks the most recent release. To build from source via
+Compose instead of pulling, uncomment `build: .` in `docker-compose.yml`.
+
 ## Architecture
 
 ```

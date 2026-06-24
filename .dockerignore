@@ -1,0 +1,10 @@
+# Keep the build context small and reproducible. Everything the multi-stage
+# build needs (crates/, vendor/, npm/, examples/, demo/, build.sh, Cargo.*) is
+# tracked source; the heavy/generated bits below are rebuilt inside the image.
+target
+.git
+.github
+site
+node_modules
+**/node_modules
+*.log

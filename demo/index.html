@@ -129,18 +129,72 @@
         return undefined;
       }
 
+      // Pull a small set of allowed string values out of a param description
+      // when the manifest carries no explicit enum schema. Whitebox tools often
+      // only spell their choices out in prose, e.g.
+      //   "Filter type: 'mean', 'median', or 'gaussian' (default 'mean')."
+      //   "Spatial predicate: intersects, within, contains, touches, crosses."
+      // Returns the option list (>= 2 values) or null when nothing enumerable is
+      // found. Conservative on purpose: a bad guess turns a free-form field into
+      // a too-narrow dropdown, so we require quotes or a clear comma list.
+      function enumOptionsFromDescription(desc) {
+        if (!desc) return null;
+        // Prefer single-quoted simple identifiers: 'mean', 'median', ...
+        const quoted = [...desc.matchAll(/'([a-z][a-z0-9_]*)'/gi)].map((m) => m[1].toLowerCase());
+        const uniqQuoted = [...new Set(quoted)];
+        if (uniqQuoted.length >= 2) return uniqQuoted;
+        // Else a colon-introduced comma list of >= 3 bare identifiers, so we
+        // don't mistake an "x, y" coordinate hint for an enumeration.
+        const after = desc.match(/:\s*([a-z][a-z0-9_]*(?:\s*,\s*(?:or\s+|and\s+)?[a-z][a-z0-9_]*){2,})/i);
+        if (after) {
+          const items = after[1]
+            .split(/\s*,\s*/)
+            .map((s) => s.replace(/^(?:or|and)\s+/i, "").trim().toLowerCase())
+            .filter((s) => /^[a-z][a-z0-9_]*$/.test(s));
+          const uniq = [...new Set(items)];
+          if (uniq.length >= 3) return uniq;
+        }
+        return null;
+      }
+
       // Classify a param so we can render the right control and route file I/O.
+      // Prefer the manifest's per-param `schema` (kind: input/output/enum/scalar/
+      // bool/string) when present; fall back to the older name/example heuristics
+      // for manifests that predate the self-describing schema.
       function classify(tool, p) {
         const v = hintValue(tool, p.name);
+        const sk = p.schema && p.schema.kind;
         const looksFile = FILE_RE.test(String(v ?? ""));
-        const isOutput = p.name === "output" || p.name.startsWith("output");
-        const isInputFile = !isOutput && (p.name === "input" || p.name.startsWith("input") || (looksFile && p.required));
         let kind = "text";
-        if (isOutput) kind = "output";
-        else if (isInputFile) kind = "file";
-        else if (typeof v === "boolean") kind = "bool";
-        else if (typeof v === "number") kind = "number";
-        return { kind, hint: v, primary: p.name === "input" };
+        let options = null;
+        let scalar = null;
+        if (sk === "output" || (!sk && (p.name === "output" || p.name.startsWith("output")))) {
+          kind = "output";
+        } else if (sk === "input") {
+          kind = "file";
+        } else if (sk === "enum") {
+          kind = "enum";
+          options = (p.schema.options || []).map((o) => o.value);
+        } else if (sk === "scalar") {
+          kind = "number";
+          scalar = p.schema.scalar;
+        } else if (sk === "bool" || (!sk && typeof v === "boolean")) {
+          kind = "bool";
+        } else if (!sk && (p.name === "input" || p.name.startsWith("input") || (looksFile && p.required))) {
+          kind = "file";
+        } else if (!sk && typeof v === "number") {
+          kind = "number";
+          scalar = Number.isInteger(v) ? "integer" : "float";
+        } else {
+          // String-typed (or schema-less) param: the description may still
+          // enumerate the allowed values in prose.
+          const opts = enumOptionsFromDescription(p.description);
+          if (opts) {
+            kind = "enum";
+            options = opts;
+          }
+        }
+        return { kind, hint: v, options, scalar, primary: p.name === "input" };
       }
 
       function renderList() {
@@ -172,10 +226,62 @@
           );
       }
 
-      function selectTool(id) {
+      function selectTool(id, preset) {
         selected = manifests.find((t) => t.id === id);
         renderList();
         renderDetail();
+        if (preset) applyPreset(preset);
+        writePermalink();
+      }
+
+      // --- Permalinks -------------------------------------------------------
+      // Encode the selected tool and any non-default field values into the URL
+      // query string (?tool=<id>&<param>=<value>...), so a configured tool can
+      // be bookmarked or shared. File inputs can't live in a URL and are
+      // skipped; the free-form extra flags ride along as `args`.
+      function writePermalink() {
+        try {
+          if (!selected) return;
+          const params = new URLSearchParams();
+          params.set("tool", selected.id);
+          const form = $("form");
+          if (form) {
+            form.querySelectorAll("[data-name]").forEach((el) => {
+              if (el.dataset.kind === "file") return;
+              const def = el.dataset.default ?? "";
+              const val = el.dataset.kind === "bool" ? (el.checked ? "true" : "false") : String(el.value);
+              if (val !== def) params.set(el.dataset.name, val);
+            });
+            const extra = form.querySelector("[data-extra]");
+            if (extra && extra.value.trim()) params.set("args", extra.value.trim());
+          }
+          history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+        } catch {
+          /* replaceState can throw on some origins (e.g. file://); ignore. */
+        }
+      }
+
+      // Apply URL query params onto the freshly rendered form for `selected`.
+      function applyPreset(params) {
+        const form = $("form");
+        if (!form) return;
+        form.querySelectorAll("[data-name]").forEach((el) => {
+          if (el.dataset.kind === "file" || !params.has(el.dataset.name)) return;
+          const v = params.get(el.dataset.name);
+          if (el.dataset.kind === "bool") {
+            el.checked = v === "true";
+          } else {
+            // A shared enum value may be outside the built-in option list.
+            if (el.tagName === "SELECT" && v && ![...el.options].some((o) => o.value === v))
+              el.add(new Option(v, v));
+            el.value = v;
+          }
+        });
+        if (params.has("args")) {
+          const extra = form.querySelector("[data-extra]");
+          if (extra) extra.value = params.get("args");
+        }
+        updateCmd();
       }
 
       // Some tools (~140) ship an empty `params` array in their manifest, but
@@ -209,14 +315,29 @@
                 `<div class="desc">Leave empty to use ${c.primary ? "the sample DEM" : "no file"}${note}.</div>`;
             } else if (c.kind === "output") {
               const val = outputDefault(t, p, c.hint);
-              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="output" value="${esc(val)}" />`;
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="output" data-default="${esc(val)}" value="${esc(val)}" />`;
             } else if (c.kind === "bool") {
               const checked = c.hint ? " checked" : "";
-              control = `<input type="checkbox" id="${id}" data-name="${p.name}" data-kind="bool"${checked} />`;
+              control = `<input type="checkbox" id="${id}" data-name="${p.name}" data-kind="bool" data-default="${c.hint ? "true" : "false"}"${checked} />`;
+            } else if (c.kind === "enum") {
+              // Known choices -> a real dropdown instead of a free-form box.
+              const cur = c.hint != null ? String(c.hint) : "";
+              const opts = c.options.slice();
+              if (cur && !opts.includes(cur)) opts.unshift(cur); // keep example value selectable
+              // Optional params get a blank "(default)" entry so the tool's own
+              // default applies; required ones default to the first option.
+              const def = p.required ? cur || opts[0] || "" : cur;
+              const blank = p.required ? "" : `<option value=""${cur ? "" : " selected"}>(default)</option>`;
+              const optionsHtml = opts
+                .map((o) => `<option value="${esc(o)}"${o === cur ? " selected" : ""}>${esc(o)}</option>`)
+                .join("");
+              control = `<select id="${id}" data-name="${p.name}" data-kind="enum" data-default="${esc(def)}">${blank}${optionsHtml}</select>`;
             } else if (c.kind === "number") {
-              control = `<input type="number" step="any" id="${id}" data-name="${p.name}" data-kind="number" value="${esc(c.hint ?? "")}" />`;
+              // Integers step by 1 (and reject decimals); floats step freely.
+              const step = c.scalar === "integer" ? "1" : "any";
+              control = `<input type="number" step="${step}" id="${id}" data-name="${p.name}" data-kind="number" data-default="${esc(c.hint ?? "")}" value="${esc(c.hint ?? "")}" />`;
             } else {
-              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="text" value="${esc(c.hint ?? "")}" />`;
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="text" data-default="${esc(c.hint ?? "")}" value="${esc(c.hint ?? "")}" />`;
             }
             return `<div class="field"><label for="${id}">${esc(p.name)}${req}</label>${desc}${control}</div>`;
           })
@@ -242,9 +363,18 @@
           `</div>` +
           `<pre id="output" hidden></pre>`;
 
-        d.querySelectorAll("input").forEach((el) => el.addEventListener("input", updateCmd));
+        d.querySelectorAll("input, select").forEach((el) => {
+          el.addEventListener("input", onFormChange);
+          el.addEventListener("change", onFormChange);
+        });
         $("run").addEventListener("click", run);
         updateCmd();
+      }
+
+      // Reflect form edits into both the command preview and the shareable URL.
+      function onFormChange() {
+        updateCmd();
+        writePermalink();
       }
 
       // Build {argv, inputs, outputs} from the current form state.
@@ -368,6 +498,12 @@
             const item = e.target.closest(".item[data-id]");
             if (item) selectTool(item.dataset.id);
           });
+
+          // Deeplink: ?tool=<id>&<param>=<value>... selects the tool and
+          // prefills the form so a shared link lands on a configured run.
+          const url = new URLSearchParams(location.search);
+          const want = url.get("tool");
+          if (want && manifests.some((t) => t.id === want)) selectTool(want, url);
         } catch (e) {
           $("status").textContent = "Failed to load: " + e;
         }

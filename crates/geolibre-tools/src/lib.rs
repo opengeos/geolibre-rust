@@ -212,6 +212,59 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     Some(map)
 }
 
+/// Curated parameter-schema corrections for a handful of upstream
+/// `whitebox_next_gen` tools that wbcore's name/description-based inference
+/// mis-types.
+///
+/// These tools are *not* GeoLibre-authored, so they don't appear in
+/// [`geolibre_param_schemas`]; but their inferred schemas are wrong enough to
+/// break a host UI. `spatial_join`, for instance, infers its `target`/`join`
+/// layer paths as plain strings (so a UI renders a text box instead of a file
+/// picker), its numeric `distance` as a string, and its `strategy` enum as a
+/// LiDAR input file. Supplying explicit schemas here lets the manifest emitter
+/// hand consumers an accurate `io_role`/`data_kind`/`schema` for each param.
+///
+/// Keep this list small and evidence-driven: only override a tool whose
+/// inferred schema is demonstrably wrong, and mirror the param order and option
+/// lists the tool documents in its own descriptions.
+pub fn whitebox_param_schema_overrides(
+    tool_id: &str,
+) -> Option<BTreeMap<String, ToolParamSchema>> {
+    let vector_in = ToolParamSchema::input_vector_any;
+    let vector_out = ToolParamSchema::output_vector_any;
+    let float = ToolParamSchema::scalar_float;
+
+    let map = match tool_id {
+        "spatial_join" => schemas(&[
+            ("target", vector_in()),
+            ("join", vector_in()),
+            (
+                "predicate",
+                ToolParamSchema::enum_values(&[
+                    "intersects",
+                    "within",
+                    "contains",
+                    "touches",
+                    "crosses",
+                    "overlaps",
+                    "within_distance",
+                ]),
+            ),
+            ("distance", float()),
+            (
+                "strategy",
+                ToolParamSchema::enum_values(&[
+                    "first", "last", "count", "sum", "mean", "min", "max",
+                ]),
+            ),
+            ("prefix", ToolParamSchema::string()),
+            ("output", vector_out()),
+        ]),
+        _ => return None,
+    };
+    Some(map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +297,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn spatial_join_override_has_typed_inputs() {
+        // Guard the curated correction: the layer paths must be file inputs, the
+        // enums must carry their options, and `distance` must be numeric. (The
+        // registry-sync check that these keys match the real tool params lives in
+        // geolibre-cli, which can build the whitebox registry.)
+        let map = whitebox_param_schema_overrides("spatial_join")
+            .expect("missing spatial_join override");
+        let keys: std::collections::BTreeSet<_> = map.keys().map(String::as_str).collect();
+        let expected: std::collections::BTreeSet<_> =
+            ["target", "join", "predicate", "distance", "strategy", "prefix", "output"]
+                .into_iter()
+                .collect();
+        assert_eq!(keys, expected);
+        assert!(whitebox_param_schema_overrides("definitely_not_a_tool").is_none());
     }
 }

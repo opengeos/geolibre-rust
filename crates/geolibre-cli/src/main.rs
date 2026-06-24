@@ -70,10 +70,14 @@ fn tag_source(manifest: &mut Value, geolibre_ids: &HashSet<String>) {
 }
 
 /// Serializes a manifest with per-param I/O schema. GeoLibre-authored tools use
-/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); every
+/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); a few
+/// upstream whitebox tools whose inference is demonstrably wrong get curated
+/// corrections ([`geolibre_tools::whitebox_param_schema_overrides`]); every
 /// other tool falls back to wbcore's name/description-based inference.
 fn enriched_manifest(manifest: &wbcore::ToolManifest) -> Value {
-    match geolibre_tools::geolibre_param_schemas(&manifest.id) {
+    let explicit = geolibre_tools::geolibre_param_schemas(&manifest.id)
+        .or_else(|| geolibre_tools::whitebox_param_schema_overrides(&manifest.id));
+    match explicit {
         Some(schemas) => wbcore::manifest_with_param_schema_json(manifest, &schemas),
         None => wbcore::manifest_with_io_schema_json(manifest),
     }
@@ -272,5 +276,65 @@ mod tests {
     fn registry_lists_tools() {
         let registry = build_registry();
         assert!(!registry.list().is_empty());
+    }
+
+    // Looks up an enriched-manifest param by name; panics if it's absent.
+    fn param<'a>(manifest: &'a Value, name: &str) -> &'a Value {
+        manifest["params"]
+            .as_array()
+            .expect("params array")
+            .iter()
+            .find(|p| p["name"] == name)
+            .unwrap_or_else(|| panic!("param '{name}' not found"))
+    }
+
+    #[test]
+    fn spatial_join_override_matches_real_params() {
+        // The curated override keys must line up with the tool's actual params,
+        // or a renamed/removed param silently reverts to the bad inference.
+        let registry = build_registry();
+        let manifest = registry
+            .manifests()
+            .into_iter()
+            .find(|m| m.id == "spatial_join")
+            .expect("upstream whitebox_next_gen no longer ships 'spatial_join'");
+        let real: std::collections::BTreeSet<_> =
+            manifest.params.iter().map(|p| p.name.clone()).collect();
+        let keys: std::collections::BTreeSet<_> =
+            geolibre_tools::whitebox_param_schema_overrides("spatial_join")
+                .expect("missing spatial_join override")
+                .into_keys()
+                .collect();
+        assert_eq!(keys, real, "override keys must match spatial_join's params");
+    }
+
+    #[test]
+    fn spatial_join_manifest_renders_correct_controls() {
+        // Regression for the broken demo inputs: layer paths are file inputs, the
+        // strategy/predicate are enums (not a free-form box or a file picker),
+        // and the distance threshold is numeric.
+        let registry = build_registry();
+        let manifest = registry
+            .manifests()
+            .into_iter()
+            .find(|m| m.id == "spatial_join")
+            .expect("spatial_join present");
+        let json = enriched_manifest(&manifest);
+
+        for layer in ["target", "join"] {
+            assert_eq!(param(&json, layer)["schema"]["kind"], "input");
+            assert_eq!(param(&json, layer)["io_role"], "input");
+        }
+        assert_eq!(param(&json, "output")["schema"]["kind"], "output");
+        assert_eq!(param(&json, "distance")["schema"]["kind"], "scalar");
+
+        for enum_param in ["predicate", "strategy"] {
+            let schema = &param(&json, enum_param)["schema"];
+            assert_eq!(schema["kind"], "enum", "{enum_param} should be an enum");
+            assert!(
+                schema["options"].as_array().is_some_and(|o| !o.is_empty()),
+                "{enum_param} should carry its option list"
+            );
+        }
     }
 }

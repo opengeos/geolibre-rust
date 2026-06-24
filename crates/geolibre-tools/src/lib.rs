@@ -14,6 +14,8 @@ mod dem_filter;
 mod extract_sinks;
 mod fill;
 mod geoparquet_io;
+mod h3_polyfill;
+mod h3_to_vector;
 mod hilbert;
 mod polygonize;
 mod pmtiles;
@@ -61,6 +63,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
         Box::new(vector_to_h3::VectorToH3Tool),
+        Box::new(h3_to_vector::H3ToVectorTool),
+        Box::new(h3_polyfill::H3PolyfillTool),
         Box::new(render_vector_png::RenderVectorPngTool),
         Box::new(write_pmtiles::WritePmTilesTool),
     ]
@@ -200,6 +204,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         ]),
         "vector_convert" => schemas(&[("input", vector_in()), ("output", vector_out())]),
         "vector_to_h3" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("resolution", int()),
+        ]),
+        "h3_to_vector" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("field", ToolParamSchema::string()),
+        ]),
+        "h3_polyfill" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
             ("resolution", int()),

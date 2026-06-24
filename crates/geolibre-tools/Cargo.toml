@@ -25,6 +25,12 @@ serde_json = "1"
 png = "0.17"
 # Pure-Rust gzip (miniz_oxide backend) for the PMTiles directory + metadata.
 flate2 = "1"
-# Pure-Rust H3 (no C deps); powers the vector_to_h3 DGGS-binning tool. Verified
-# to compile for both wasm32-unknown-unknown and wasm32-wasip1.
-h3o = "0.10.0"
+# Pure-Rust H3 (no C deps); powers the vector_to_h3 / h3_to_vector / h3_polyfill
+# DGGS tools. Verified to compile for both wasm32-unknown-unknown and
+# wasm32-wasip1. The `geo` feature pulls the pure-Rust `geo` crate and enables
+# the polygon tiler (h3o::geom) used by h3_polyfill.
+h3o = { version = "0.10.0", features = ["geo"] }
+# Geometry types for building polygons handed to h3o's tiler. Pinned to the same
+# minor `geo` uses internally so the `geo::Polygon` types unify (no duplicate
+# geo crate in the graph). Pure Rust, compiles to the wasm targets.
+geo = { version = "0.33", default-features = false }

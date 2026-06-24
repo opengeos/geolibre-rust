@@ -20,6 +20,7 @@ mod hilbert;
 mod polygonize;
 mod pmtiles;
 mod raster_normalize;
+mod raster_to_h3;
 mod raster_to_tiles;
 mod regions;
 mod render;
@@ -65,6 +66,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
+        Box::new(raster_to_h3::RasterToH3Tool),
         Box::new(render_vector_png::RenderVectorPngTool),
         Box::new(write_pmtiles::WritePmTilesTool),
     ]
@@ -217,6 +219,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("resolution", int()),
+        ]),
+        "raster_to_h3" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("resolution", int()),
+            ("band", int()),
+            ("aggregate", ToolParamSchema::enum_values(&["mean", "sum", "min", "max", "count", "median"])),
         ]),
         "render_vector_png" => schemas(&[
             ("input", vector_in()),

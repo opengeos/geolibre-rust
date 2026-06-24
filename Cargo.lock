@@ -2972,7 +2972,7 @@ dependencies = [
 [[package]]
 name = "wbcore"
 version = "0.1.1"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "serde",
  "serde_json",
@@ -2982,7 +2982,7 @@ dependencies = [
 [[package]]
 name = "wbgeotiff"
 version = "0.1.2"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "flate2",
  "jpeg-decoder",
@@ -3001,7 +3001,7 @@ dependencies = [
 [[package]]
 name = "wbhdf"
 version = "0.1.0"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "byteorder",
  "flate2",
@@ -3012,7 +3012,7 @@ dependencies = [
 [[package]]
 name = "wblidar"
 version = "0.1.2"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "rayon",
  "wbhdf",
@@ -3023,7 +3023,7 @@ dependencies = [
 [[package]]
 name = "wbprojection"
 version = "0.3.0"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "thiserror 1.0.69",
  "wide 1.5.0",
@@ -3032,7 +3032,7 @@ dependencies = [
 [[package]]
 name = "wbraster"
 version = "0.2.0"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "flate2",
  "jpeg-decoder",
@@ -3055,7 +3055,7 @@ dependencies = [
 [[package]]
 name = "wbspatialstats"
 version = "0.1.0"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "log",
  "nalgebra",
@@ -3070,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "wbtools_oss"
 version = "0.1.2"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "bincode",
  "chrono",
@@ -3100,7 +3100,7 @@ dependencies = [
 [[package]]
 name = "wbtopology"
 version = "0.2.0"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "rayon",
  "robust",
@@ -3110,7 +3110,7 @@ dependencies = [
 [[package]]
 name = "wbvector"
 version = "0.1.4"
-source = "git+https://github.com/opengeos/whitebox-wasm#1ed146da9f664e7417e77a269a3b1eac41167092"
+source = "git+https://github.com/opengeos/whitebox-wasm#f723de68211334c280d96a2be7d01a04a73e0722"
 dependencies = [
  "bytes",
  "flatbuffers 24.12.23",

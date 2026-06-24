@@ -70,14 +70,10 @@ fn tag_source(manifest: &mut Value, geolibre_ids: &HashSet<String>) {
 }
 
 /// Serializes a manifest with per-param I/O schema. GeoLibre-authored tools use
-/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); a few
-/// upstream whitebox tools whose inference is demonstrably wrong get curated
-/// corrections ([`geolibre_tools::whitebox_param_schema_overrides`]); every
+/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); every
 /// other tool falls back to wbcore's name/description-based inference.
 fn enriched_manifest(manifest: &wbcore::ToolManifest) -> Value {
-    let explicit = geolibre_tools::geolibre_param_schemas(&manifest.id)
-        .or_else(|| geolibre_tools::whitebox_param_schema_overrides(&manifest.id));
-    match explicit {
+    match geolibre_tools::geolibre_param_schemas(&manifest.id) {
         Some(schemas) => wbcore::manifest_with_param_schema_json(manifest, &schemas),
         None => wbcore::manifest_with_io_schema_json(manifest),
     }
@@ -289,30 +285,11 @@ mod tests {
     }
 
     #[test]
-    fn spatial_join_override_matches_real_params() {
-        // The curated override keys must line up with the tool's actual params,
-        // or a renamed/removed param silently reverts to the bad inference.
-        let registry = build_registry();
-        let manifest = registry
-            .manifests()
-            .into_iter()
-            .find(|m| m.id == "spatial_join")
-            .expect("upstream whitebox_next_gen no longer ships 'spatial_join'");
-        let real: std::collections::BTreeSet<_> =
-            manifest.params.iter().map(|p| p.name.clone()).collect();
-        let keys: std::collections::BTreeSet<_> =
-            geolibre_tools::whitebox_param_schema_overrides("spatial_join")
-                .expect("missing spatial_join override")
-                .into_keys()
-                .collect();
-        assert_eq!(keys, real, "override keys must match spatial_join's params");
-    }
-
-    #[test]
     fn spatial_join_manifest_renders_correct_controls() {
-        // Regression for the broken demo inputs: layer paths are file inputs, the
-        // strategy/predicate are enums (not a free-form box or a file picker),
-        // and the distance threshold is numeric.
+        // Regression for the broken demo inputs (opengeos/geolibre-rust#17). These
+        // controls now come from wbcore's improved manifest inference rather than a
+        // curated override: layer paths are file inputs, strategy/predicate are
+        // enums (not a free-form box or a file picker), and distance is numeric.
         let registry = build_registry();
         let manifest = registry
             .manifests()

@@ -11,12 +11,13 @@
 //   });
 //   const slopeCog = files["slope.tif"];  // Uint8Array
 import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
-import initGeoLibre, { CogBuilder, CogStream, GeoTiffReader, transform_bbox_epsg } from "./geolibre_wasm.js";
+import initGeoLibre, { CogBuilder, CogStream, GeoTiffReader, transform_bbox_epsg, transform_points_epsg } from "./geolibre_wasm.js";
 
 let _module = null;
 let _libraryReady = null;
 const COG_SUBSET_TOOL_ID = "extract_cog_subset";
 const WMS_SUBSET_TOOL_ID = "extract_wms_subset";
+const XYZ_SUBSET_TOOL_ID = "extract_xyz_tile_subset";
 const COG_SUBSET_MANIFEST = {
   id: COG_SUBSET_TOOL_ID,
   display_name: "Extract COG Subset",
@@ -57,6 +58,28 @@ const WMS_SUBSET_MANIFEST = {
     { name: "format", description: "WMS image format. Defaults to image/geotiff.", required: false, schema: { type: "string" } },
     { name: "version", description: "WMS version. Defaults to 1.1.1.", required: false, schema: { type: "string" } },
     { name: "nodata", description: "Optional output nodata value.", required: false, schema: { kind: "scalar", scalar: "float" } },
+  ],
+};
+const XYZ_SUBSET_MANIFEST = {
+  id: XYZ_SUBSET_TOOL_ID,
+  display_name: "Extract XYZ Tile Subset",
+  summary: "Fetch XYZ raster tiles for a bbox, mosaic them, and write a Deflate RGB COG.",
+  category: "Raster",
+  license_tier: "Open",
+  source: "geolibre",
+  params: [
+    { name: "url", description: "XYZ tile URL template, e.g. https://.../{z}/{x}/{y}.png.", required: true, schema: { type: "string" } },
+    { name: "zoom", description: "XYZ zoom level.", required: true, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "bbox", description: "Bounding box as minX,minY,maxX,maxY in bbox_crs.", required: true, schema: { type: "string" } },
+    { name: "bbox_crs", description: "EPSG code of bbox coordinates.", required: true, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "output", description: "Output COG path.", required: false, schema: { type: "string" } },
+    { name: "resolution", description: "Target output pixel size in output_crs units. Defaults to native tile resolution.", required: false, schema: { kind: "scalar", scalar: "float" } },
+    { name: "width", description: "Output width in pixels. Used when resolution is omitted.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "height", description: "Output height in pixels. Used when resolution is omitted.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "output_crs", description: "Optional output EPSG code. Defaults to bbox_crs.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "tile_size", description: "Tile size in pixels. Defaults to 256.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "subdomains", description: "Optional subdomain letters for {s}, e.g. abc.", required: false, schema: { type: "string" } },
+    { name: "nodata", description: "Optional output nodata value used for missing/transparent pixels.", required: false, schema: { kind: "scalar", scalar: "float" } },
   ],
 };
 
@@ -145,6 +168,7 @@ export async function listTools() {
   const tools = stdout.map((s) => s.trim()).filter(Boolean);
   if (!tools.includes(COG_SUBSET_TOOL_ID)) tools.push(COG_SUBSET_TOOL_ID);
   if (!tools.includes(WMS_SUBSET_TOOL_ID)) tools.push(WMS_SUBSET_TOOL_ID);
+  if (!tools.includes(XYZ_SUBSET_TOOL_ID)) tools.push(XYZ_SUBSET_TOOL_ID);
   return tools;
 }
 
@@ -162,6 +186,9 @@ export async function listManifests() {
   if (!manifests.some((m) => m.id === WMS_SUBSET_TOOL_ID)) {
     manifests.push(WMS_SUBSET_MANIFEST);
   }
+  if (!manifests.some((m) => m.id === XYZ_SUBSET_TOOL_ID)) {
+    manifests.push(XYZ_SUBSET_MANIFEST);
+  }
   return manifests;
 }
 
@@ -178,6 +205,7 @@ export async function runTool(tool, opts = {}) {
   const { args = [], input = {} } = opts;
   if (tool === COG_SUBSET_TOOL_ID) return runCogSubsetTool(args, input);
   if (tool === WMS_SUBSET_TOOL_ID) return runWmsSubsetTool(args);
+  if (tool === XYZ_SUBSET_TOOL_ID) return runXyzTileSubsetTool(args);
   return exec([tool, ...args], input);
 }
 
@@ -278,6 +306,34 @@ async function runWmsSubsetTool(args) {
   try {
     const bytes = await extractWmsSubset(url, {
       layers, styles, bbox, bboxCrs, resolution, width, height, outputCrs, nodata, format, version,
+    });
+    stdout.push(JSON.stringify({ output: `/work/${key}`, bytes: bytes.byteLength }));
+    return { exitCode: 0, stdout, files: { [key]: bytes } };
+  } catch (error) {
+    stdout.push(String(error?.message || error));
+    return { exitCode: 1, stdout, files: {} };
+  }
+}
+
+async function runXyzTileSubsetTool(args) {
+  const flags = parseFlagArgs(args);
+  const url = flags.url;
+  const zoom = parseOptionalInteger(flags.zoom, "zoom");
+  const bbox = parseBbox(flags.bbox);
+  const bboxCrs = Number(flags.bbox_crs ?? flags.bboxCrs ?? flags.crs);
+  const resolution = parseOptionalNumber(flags.resolution, "resolution");
+  const width = parseOptionalInteger(flags.width, "width");
+  const height = parseOptionalInteger(flags.height, "height");
+  const outputCrs = parseOptionalEpsg(flags.output_crs ?? flags.outputCrs, "output_crs");
+  const tileSize = parseOptionalInteger(flags.tile_size ?? flags.tileSize, "tile_size");
+  const nodata = parseOptionalNumber(flags.nodata, "nodata");
+  const subdomains = flags.subdomains == null || flags.subdomains === true ? undefined : String(flags.subdomains);
+  const key = outputKey(flags.output);
+  const stdout = [];
+
+  try {
+    const bytes = await extractXyzTileSubset(url, {
+      zoom, bbox, bboxCrs, resolution, width, height, outputCrs, tileSize, subdomains, nodata,
     });
     stdout.push(JSON.stringify({ output: `/work/${key}`, bytes: bytes.byteLength }));
     return { exitCode: 0, stdout, files: { [key]: bytes } };
@@ -665,6 +721,65 @@ function dimensionsForBbox(bbox, resolution, width, height) {
     : { width: Math.max(1, Math.round(maxDim * bboxWidth / bboxHeight)), height: maxDim };
 }
 
+const WEB_MERCATOR_EXTENT = 20037508.342789244;
+
+function lonLatToTile(lon, lat, zoom) {
+  const n = 2 ** zoom;
+  const clampedLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const latRad = clampedLat * Math.PI / 180;
+  return {
+    x: Math.floor(((lon + 180) / 360) * n),
+    y: Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n),
+  };
+}
+
+function tileMercatorBounds(x, y, zoom) {
+  const n = 2 ** zoom;
+  const span = (WEB_MERCATOR_EXTENT * 2) / n;
+  const minX = -WEB_MERCATOR_EXTENT + x * span;
+  const maxY = WEB_MERCATOR_EXTENT - y * span;
+  return [minX, maxY - span, minX + span, maxY];
+}
+
+function xyzTileUrl(template, x, y, z, subdomains) {
+  const s = subdomains ? subdomains[Math.abs(x + y + z) % subdomains.length] : "";
+  return template
+    .replaceAll("{x}", String(x))
+    .replaceAll("{y}", String(y))
+    .replaceAll("{z}", String(z))
+    .replaceAll("{s}", s);
+}
+
+function canvasFor(width, height) {
+  if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(width, height);
+  if (typeof document !== "undefined" && document.createElement) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  throw new Error("extract_xyz_tile_subset requires browser image decoding support");
+}
+
+async function decodeImageRgba(bytes) {
+  if (typeof createImageBitmap === "undefined" || typeof Blob === "undefined") {
+    throw new Error("extract_xyz_tile_subset requires createImageBitmap support to decode PNG/JPEG tiles");
+  }
+  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const canvas = canvasFor(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0);
+  const image = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+  if (bitmap.close) bitmap.close();
+  return { width: image.width, height: image.height, data: image.data };
+}
+
+async function fetchTileRgba(url, fetchOptions) {
+  const resp = await fetch(url, fetchOptions);
+  if (!resp.ok) throw new Error(`tile request failed (${resp.status}): ${url}`);
+  return decodeImageRgba(new Uint8Array(await resp.arrayBuffer()));
+}
+
 function buildWmsGetMapUrl(endpoint, opts) {
   const u = new URL(endpoint);
   const version = opts.version || "1.1.1";
@@ -762,6 +877,153 @@ export async function extractWmsSubset(url, opts) {
     epsg: outputCrs,
     nodata: nodata ?? reader.nodata,
     palette,
+  });
+}
+
+/**
+ * Fetch XYZ raster tiles for a bbox, mosaic them, and write a Deflate RGB COG.
+ *
+ * Tiles are assumed to be in the standard XYZ Web Mercator grid (EPSG:3857).
+ * The output CRS defaults to `bboxCrs`.
+ *
+ * @param {string} url XYZ tile URL template with `{z}`, `{x}`, `{y}` and optional `{s}`.
+ * @param {object} opts
+ * @param {number} opts.zoom XYZ zoom level.
+ * @param {[number, number, number, number]} opts.bbox [minX,minY,maxX,maxY].
+ * @param {number} opts.bboxCrs EPSG code of `bbox`.
+ * @param {number} [opts.resolution] Target output pixel size in output CRS units.
+ * @param {number} [opts.width] Output width in pixels; used when resolution is omitted.
+ * @param {number} [opts.height] Output height in pixels; used when resolution is omitted.
+ * @param {number} [opts.outputCrs] Optional output EPSG code; defaults to bboxCrs.
+ * @param {number} [opts.tileSize=256] Tile size in pixels.
+ * @param {string} [opts.subdomains] Optional subdomain letters for `{s}`.
+ * @param {number} [opts.nodata] Optional output nodata/fill value for missing or transparent pixels.
+ * @param {RequestInit} [opts.fetchOptions] Extra fetch options for tile requests.
+ * @returns {Promise<Uint8Array>}
+ */
+export async function extractXyzTileSubset(url, opts) {
+  opts = opts || {};
+  await initLibrary();
+  const { zoom, bbox, bboxCrs, resolution, width, height, nodata, subdomains } = opts;
+  const outputCrs = opts.outputCrs ?? bboxCrs;
+  const tileSize = opts.tileSize ?? 256;
+  if (!/^https?:\/\//i.test(url)) throw new Error(`url must be HTTP(S), got: ${url}`);
+  if (!Number.isInteger(zoom) || zoom < 0 || zoom > 30) throw new Error("opts.zoom must be an integer 0-30");
+  if (!Number.isInteger(tileSize) || tileSize <= 0) throw new Error("opts.tileSize must be a positive integer");
+  if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v)) || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+    throw new Error("opts.bbox must be finite and ordered [minX,minY,maxX,maxY]");
+  }
+  if (!Number.isInteger(bboxCrs) || bboxCrs <= 0) throw new Error("opts.bboxCrs must be a positive EPSG code");
+  if (!Number.isInteger(outputCrs) || outputCrs <= 0) throw new Error("opts.outputCrs must be a positive EPSG code");
+  if (nodata != null && !Number.isFinite(nodata)) throw new Error("opts.nodata must be a finite number");
+
+  const bbox4326 = bboxCrs === 4326 ? bbox : Array.from(transform_bbox_epsg(bboxCrs, 4326, bbox));
+  const n = 2 ** zoom;
+  const nw = lonLatToTile(bbox4326[0], bbox4326[3], zoom);
+  const se = lonLatToTile(bbox4326[2], bbox4326[1], zoom);
+  const minTileX = Math.max(0, Math.min(n - 1, nw.x));
+  const maxTileX = Math.max(0, Math.min(n - 1, se.x));
+  const minTileY = Math.max(0, Math.min(n - 1, nw.y));
+  const maxTileY = Math.max(0, Math.min(n - 1, se.y));
+  if (maxTileX < minTileX || maxTileY < minTileY) throw new Error("bbox does not intersect the XYZ tile grid");
+
+  const tileCols = maxTileX - minTileX + 1;
+  const tileRows = maxTileY - minTileY + 1;
+  if (tileCols * tileRows > 512) throw new Error(`bbox intersects too many tiles at zoom ${zoom}: ${tileCols * tileRows}`);
+  const mosaicWidth = tileCols * tileSize;
+  const mosaicHeight = tileRows * tileSize;
+  const fill = nodata == null ? 0 : Math.max(0, Math.min(255, Math.round(nodata)));
+  const mosaic = new Uint8Array(mosaicWidth * mosaicHeight * 4);
+  for (let i = 0; i < mosaic.length; i += 4) {
+    mosaic[i] = fill;
+    mosaic[i + 1] = fill;
+    mosaic[i + 2] = fill;
+    mosaic[i + 3] = 0;
+  }
+
+  for (let ty = minTileY; ty <= maxTileY; ty++) {
+    for (let tx = minTileX; tx <= maxTileX; tx++) {
+      const tileUrl = xyzTileUrl(url, tx, ty, zoom, subdomains);
+      const tile = await fetchTileRgba(tileUrl, opts.fetchOptions);
+      const copyW = Math.min(tileSize, tile.width);
+      const copyH = Math.min(tileSize, tile.height);
+      const dstX = (tx - minTileX) * tileSize;
+      const dstY = (ty - minTileY) * tileSize;
+      for (let row = 0; row < copyH; row++) {
+        for (let col = 0; col < copyW; col++) {
+          const src = (row * tile.width + col) * 4;
+          const dst = ((dstY + row) * mosaicWidth + dstX + col) * 4;
+          mosaic[dst] = tile.data[src];
+          mosaic[dst + 1] = tile.data[src + 1];
+          mosaic[dst + 2] = tile.data[src + 2];
+          mosaic[dst + 3] = tile.data[src + 3];
+        }
+      }
+    }
+  }
+
+  const mb0 = tileMercatorBounds(minTileX, maxTileY, zoom);
+  const mb1 = tileMercatorBounds(maxTileX, minTileY, zoom);
+  const mosaicBbox3857 = [mb0[0], mb0[1], mb1[2], mb1[3]];
+  const mosaicPx = (mosaicBbox3857[2] - mosaicBbox3857[0]) / mosaicWidth;
+  const mosaicPy = -(mosaicBbox3857[3] - mosaicBbox3857[1]) / mosaicHeight;
+
+  const outBbox = outputBboxForCrs(bbox, bboxCrs, outputCrs);
+  const nativeResolution = outputCrs === 3857
+    ? Math.abs(mosaicPx)
+    : Math.max((outBbox[2] - outBbox[0]) / Math.max(1, Math.round((transform_bbox_epsg(outputCrs, 3857, outBbox)[2] - transform_bbox_epsg(outputCrs, 3857, outBbox)[0]) / Math.abs(mosaicPx))), 1e-12);
+  const dims = dimensionsForBbox(outBbox, resolution ?? nativeResolution, width, height);
+  const out = new Float64Array(dims.width * dims.height * 3);
+  const outPx = (outBbox[2] - outBbox[0]) / dims.width;
+  const outPy = -(outBbox[3] - outBbox[1]) / dims.height;
+
+  const batchRows = 32;
+  for (let row0 = 0; row0 < dims.height; row0 += batchRows) {
+    const row1 = Math.min(dims.height, row0 + batchRows);
+    const coords = new Array((row1 - row0) * dims.width * 2);
+    let k = 0;
+    for (let row = row0; row < row1; row++) {
+      const y = outBbox[3] + (row + 0.5) * outPy;
+      for (let col = 0; col < dims.width; col++) {
+        coords[k++] = outBbox[0] + (col + 0.5) * outPx;
+        coords[k++] = y;
+      }
+    }
+    const merc = outputCrs === 3857 ? coords : Array.from(transform_points_epsg(outputCrs, 3857, coords));
+    k = 0;
+    for (let row = row0; row < row1; row++) {
+      for (let col = 0; col < dims.width; col++) {
+        const x = merc[k++];
+        const y = merc[k++];
+        const srcCol = Math.floor((x - mosaicBbox3857[0]) / mosaicPx);
+        const srcRow = Math.floor((y - mosaicBbox3857[3]) / mosaicPy);
+        const dst = (row * dims.width + col) * 3;
+        if (srcCol < 0 || srcRow < 0 || srcCol >= mosaicWidth || srcRow >= mosaicHeight) {
+          out[dst] = fill; out[dst + 1] = fill; out[dst + 2] = fill;
+          continue;
+        }
+        const src = (srcRow * mosaicWidth + srcCol) * 4;
+        if (mosaic[src + 3] === 0) {
+          out[dst] = fill; out[dst + 1] = fill; out[dst + 2] = fill;
+        } else {
+          out[dst] = mosaic[src];
+          out[dst + 1] = mosaic[src + 1];
+          out[dst + 2] = mosaic[src + 2];
+        }
+      }
+    }
+  }
+
+  return writeTypedCog({
+    data: out,
+    width: dims.width,
+    height: dims.height,
+    bands: 3,
+    sampleFormat: "uint",
+    bitsPerSample: 8,
+    geoTransform: [outBbox[0], outPx, 0, outBbox[3], 0, outPy],
+    epsg: outputCrs,
+    nodata,
   });
 }
 

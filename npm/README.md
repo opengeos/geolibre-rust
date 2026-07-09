@@ -100,6 +100,22 @@ const { files } = await runTool("extract_wms_subset", {
 });
 ```
 
+XYZ tile subsets can be mosaicked from raster tiles and written as an RGB COG:
+
+```js
+const { files } = await runTool("extract_xyz_tile_subset", {
+  args: [
+    "--url=https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "--zoom=10",
+    "--bbox=-122.55,37.70,-122.35,37.84",
+    "--bbox_crs=4326",
+    "--width=512",
+    "--height=512",
+    "--output=/work/xyz_subset.tif",
+  ],
+});
+```
+
 For a local COG, upload/provide bytes through `input` and point `--input` at
 the `/work` path:
 
@@ -140,6 +156,7 @@ their source ColorMap.
 | `runTool(tool, { args?, input? }): Promise<ToolResult>` | Run one tool over the in-memory filesystem. |
 | `extractCogSubset(source, opts): Promise<Uint8Array>` | Extract a local or HTTP COG subset directly. |
 | `extractWmsSubset(url, opts): Promise<Uint8Array>` | Request a WMS GeoTIFF subset and encode it as a COG. |
+| `extractXyzTileSubset(url, opts): Promise<Uint8Array>` | Mosaic XYZ raster tiles and encode them as an RGB COG. |
 
 `ToolResult` is `{ exitCode: number, stdout: string[], files: Record<string, Uint8Array> }`.
 

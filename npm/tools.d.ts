@@ -67,6 +67,31 @@ export interface ExtractWmsSubsetOptions {
   fetchOptions?: RequestInit;
 }
 
+export interface ExtractXyzTileSubsetOptions {
+  /** XYZ zoom level. */
+  zoom: number;
+  /** Bounding box as [minX, minY, maxX, maxY]. */
+  bbox: [number, number, number, number];
+  /** EPSG code of bbox coordinates. */
+  bboxCrs: number;
+  /** Target output pixel size in output CRS units. */
+  resolution?: number;
+  /** Output width in pixels; used when resolution is omitted. */
+  width?: number;
+  /** Output height in pixels; used when resolution is omitted. */
+  height?: number;
+  /** Optional output EPSG code. Defaults to bboxCrs. */
+  outputCrs?: number;
+  /** Tile size in pixels. Defaults to 256. */
+  tileSize?: number;
+  /** Optional subdomain letters for {s}. */
+  subdomains?: string;
+  /** Optional output nodata/fill value. */
+  nodata?: number;
+  /** Extra fetch options used for tile requests. */
+  fetchOptions?: RequestInit;
+}
+
 /** A single parameter in a tool manifest. */
 export interface ToolParam {
   name: string;
@@ -105,4 +130,10 @@ export function extractCogSubset(
 export function extractWmsSubset(
   url: string,
   opts: ExtractWmsSubsetOptions,
+): Promise<Uint8Array>;
+
+/** Fetch XYZ raster tiles for a bbox, mosaic them, and write a Deflate RGB COG. */
+export function extractXyzTileSubset(
+  url: string,
+  opts: ExtractXyzTileSubsetOptions,
 ): Promise<Uint8Array>;

@@ -19,6 +19,27 @@ export interface RunToolOptions {
   input?: Record<string, Uint8Array | ArrayBuffer | string>;
 }
 
+export interface ExtractCogSubsetOptions {
+  /** Bounding box as [minX, minY, maxX, maxY]. */
+  bbox: [number, number, number, number];
+  /** EPSG code of bbox coordinates. */
+  bboxCrs: number;
+  /** COG overview level to read. Level 0 is full resolution. */
+  level?: number;
+  /** Target output pixel size in outputCrs units when outputCrs is set; otherwise bboxCrs units. */
+  resolution?: number;
+  /** Optional output EPSG code. User-defined source CRSs default to bboxCrs output when omitted. */
+  outputCrs?: number;
+  /** Optional output nodata value. Used as reprojection fill and output nodata metadata. */
+  nodata?: number;
+  /** Extra fetch options used for header and tile range requests. */
+  fetchOptions?: RequestInit;
+  /** Initial COG header prefix size in bytes. Default 262144. */
+  initialHeaderBytes?: number;
+  /** Maximum COG header prefix size in bytes. Default 8388608. */
+  maxHeaderBytes?: number;
+}
+
 /** A single parameter in a tool manifest. */
 export interface ToolParam {
   name: string;
@@ -46,3 +67,9 @@ export function listManifests(): Promise<ToolManifest[]>;
 
 /** Run one tool over an in-memory filesystem. */
 export function runTool(tool: string, opts?: RunToolOptions): Promise<ToolResult>;
+
+/** Extract a bbox subset from a local COG or HTTP COG. HTTP sources use byte-range requests. */
+export function extractCogSubset(
+  source: string | Uint8Array | ArrayBuffer,
+  opts: ExtractCogSubsetOptions,
+): Promise<Uint8Array>;

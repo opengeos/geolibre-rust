@@ -112,6 +112,102 @@ fn bounds_lonlat(epsg: Option<u16>, proj_string: Option<&str>, b: [f64; 4]) -> V
     if any { vec![min_lon, min_lat, max_lon, max_lat] } else { Vec::new() }
 }
 
+fn transform_bbox_between_crs(src: &wbprojection::Crs, dst: &wbprojection::Crs, bbox: &[f64]) -> Result<Vec<f64>, JsValue> {
+    let (min_x, min_y, max_x, max_y) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+    if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite())
+        || min_x >= max_x
+        || min_y >= max_y
+    {
+        return Err(JsValue::from_str("bbox must be finite and ordered min < max"));
+    }
+
+    let mut out_min_x = f64::INFINITY;
+    let mut out_min_y = f64::INFINITY;
+    let mut out_max_x = f64::NEG_INFINITY;
+    let mut out_max_y = f64::NEG_INFINITY;
+
+    for i in 0..=8 {
+        let t = i as f64 / 8.0;
+        let x = min_x + (max_x - min_x) * t;
+        let y = min_y + (max_y - min_y) * t;
+        let points = [(x, min_y), (x, max_y), (min_x, y), (max_x, y)];
+        for (px, py) in points {
+            let (tx, ty) = src
+                .transform_to(px, py, dst)
+                .map_err(|e| JsValue::from_str(&format!("bbox reprojection failed: {e}")))?;
+            if tx.is_finite() && ty.is_finite() {
+                out_min_x = out_min_x.min(tx);
+                out_min_y = out_min_y.min(ty);
+                out_max_x = out_max_x.max(tx);
+                out_max_y = out_max_y.max(ty);
+            }
+        }
+    }
+
+    if !out_min_x.is_finite() {
+        return Err(JsValue::from_str("bbox reprojection produced no finite coordinates"));
+    }
+    Ok(vec![out_min_x, out_min_y, out_max_x, out_max_y])
+}
+
+/// Reproject a bbox between two EPSG CRSs.
+///
+/// Input and output order is `[min_x, min_y, max_x, max_y]`. The bbox edges are
+/// densified so projected extrema that fall along an edge are preserved better
+/// than a corner-only transform.
+#[wasm_bindgen]
+pub fn transform_bbox_epsg(src_epsg: u32, dst_epsg: u32, bbox: Vec<f64>) -> Result<Vec<f64>, JsValue> {
+    if bbox.len() != 4 {
+        return Err(JsValue::from_str("bbox must contain [min_x,min_y,max_x,max_y]"));
+    }
+    if src_epsg == dst_epsg {
+        return Ok(bbox);
+    }
+
+    let src = wbprojection::Crs::from_epsg(src_epsg)
+        .map_err(|e| JsValue::from_str(&format!("invalid source EPSG:{src_epsg}: {e}")))?;
+    let dst = wbprojection::Crs::from_epsg(dst_epsg)
+        .map_err(|e| JsValue::from_str(&format!("invalid destination EPSG:{dst_epsg}: {e}")))?;
+
+    transform_bbox_between_crs(&src, &dst, &bbox)
+}
+
+fn transform_points_between_crs(src: &wbprojection::Crs, dst: &wbprojection::Crs, xy: &[f64]) -> Result<Vec<f64>, JsValue> {
+    if xy.len() % 2 != 0 {
+        return Err(JsValue::from_str("coordinates must contain x,y pairs"));
+    }
+    let mut out = Vec::with_capacity(xy.len());
+    for pair in xy.chunks_exact(2) {
+        let x = pair[0];
+        let y = pair[1];
+        if !(x.is_finite() && y.is_finite()) {
+            out.push(f64::NAN);
+            out.push(f64::NAN);
+            continue;
+        }
+        let (tx, ty) = src
+            .transform_to(x, y, dst)
+            .map_err(|e| JsValue::from_str(&format!("point reprojection failed: {e}")))?;
+        out.push(tx);
+        out.push(ty);
+    }
+    Ok(out)
+}
+
+/// Reproject x,y coordinate pairs between two EPSG CRSs.
+#[wasm_bindgen]
+pub fn transform_points_epsg(src_epsg: u32, dst_epsg: u32, xy: Vec<f64>) -> Result<Vec<f64>, JsValue> {
+    if src_epsg == dst_epsg {
+        return Ok(xy);
+    }
+    let src = wbprojection::Crs::from_epsg(src_epsg)
+        .map_err(|e| JsValue::from_str(&format!("invalid source EPSG:{src_epsg}: {e}")))?;
+    let dst = wbprojection::Crs::from_epsg(dst_epsg)
+        .map_err(|e| JsValue::from_str(&format!("invalid destination EPSG:{dst_epsg}: {e}")))?;
+
+    transform_points_between_crs(&src, &dst, &xy)
+}
+
 /// Largest full-raster allocation we will attempt, in bytes. WASM is 32-bit
 /// (4 GiB linear memory) and the input file already occupies part of it, so we
 /// cap whole-raster decodes well below that. Beyond this, callers get a clean
@@ -567,6 +663,9 @@ impl CogStream {
     /// EPSG code of the full-resolution level, if any.
     #[wasm_bindgen(getter)]
     pub fn epsg(&self) -> Option<u32> { self.layout.epsg.map(|e| e as u32) }
+    /// True when the COG CRS is represented by a user-defined projection string.
+    #[wasm_bindgen(getter)]
+    pub fn has_projection_string(&self) -> bool { self.layout.proj_string.is_some() }
     /// No-data sentinel, if declared.
     #[wasm_bindgen(getter)]
     pub fn nodata(&self) -> Option<f64> { self.layout.no_data }
@@ -619,6 +718,40 @@ impl CogStream {
             Some(b) => bounds_lonlat(self.layout.epsg, self.layout.proj_string.as_deref(), b),
             None => Vec::new(),
         }
+    }
+
+    /// Reproject a bbox from `bbox_epsg` into this COG's dataset CRS.
+    ///
+    /// The COG projection string is preferred over its EPSG tag when available,
+    /// because some user-defined projected GeoTIFFs expose only their geographic
+    /// base EPSG code.
+    pub fn bbox_to_dataset_crs(&self, bbox_epsg: u32, bbox: Vec<f64>) -> Result<Vec<f64>, JsValue> {
+        if bbox.len() != 4 {
+            return Err(JsValue::from_str("bbox must contain [min_x,min_y,max_x,max_y]"));
+        }
+        let src = wbprojection::Crs::from_epsg(bbox_epsg)
+            .map_err(|e| JsValue::from_str(&format!("invalid bbox EPSG:{bbox_epsg}: {e}")))?;
+        let dst = lonlat_crs(self.layout.epsg, self.layout.proj_string.as_deref())
+            .ok_or_else(|| JsValue::from_str("COG has no supported CRS"))?;
+        transform_bbox_between_crs(&src, &dst, &bbox)
+    }
+
+    /// Reproject x,y coordinate pairs from an EPSG CRS into this COG's dataset CRS.
+    pub fn points_to_dataset_crs(&self, src_epsg: u32, xy: Vec<f64>) -> Result<Vec<f64>, JsValue> {
+        let src = wbprojection::Crs::from_epsg(src_epsg)
+            .map_err(|e| JsValue::from_str(&format!("invalid source EPSG:{src_epsg}: {e}")))?;
+        let dst = lonlat_crs(self.layout.epsg, self.layout.proj_string.as_deref())
+            .ok_or_else(|| JsValue::from_str("COG has no supported CRS"))?;
+        transform_points_between_crs(&src, &dst, &xy)
+    }
+
+    /// Reproject x,y coordinate pairs from this COG's dataset CRS to an EPSG CRS.
+    pub fn points_from_dataset_crs(&self, dst_epsg: u32, xy: Vec<f64>) -> Result<Vec<f64>, JsValue> {
+        let src = lonlat_crs(self.layout.epsg, self.layout.proj_string.as_deref())
+            .ok_or_else(|| JsValue::from_str("COG has no supported CRS"))?;
+        let dst = wbprojection::Crs::from_epsg(dst_epsg)
+            .map_err(|e| JsValue::from_str(&format!("invalid destination EPSG:{dst_epsg}: {e}")))?;
+        transform_points_between_crs(&src, &dst, &xy)
     }
 
     /// JSON array describing every level: `[{level,width,height,tile_width,

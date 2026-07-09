@@ -194,7 +194,7 @@
             options = opts;
           }
         }
-        return { kind, hint: v, options, scalar, primary: p.name === "input" };
+        return { kind, hint: v, options, scalar, primary: p.name === "input", sampleDefault: p.schema?.sample_default !== false };
       }
 
       // Some params only make sense for one choice of a sibling enum — e.g.
@@ -348,9 +348,9 @@
             const id = `f_${p.name}`;
             let control;
             if (c.kind === "file") {
-              const note = c.primary ? " (defaults to bundled sample.tif)" : "";
-              control = `<input type="file" id="${id}" data-name="${p.name}" data-kind="file" />` +
-                `<div class="desc">Leave empty to use ${c.primary ? "the sample DEM" : "no file"}${note}.</div>`;
+              const note = c.primary && c.sampleDefault ? " (defaults to bundled sample.tif)" : "";
+              control = `<input type="file" id="${id}" data-name="${p.name}" data-kind="file" data-sample-default="${c.sampleDefault ? "true" : "false"}" />` +
+                `<div class="desc">Leave empty to use ${c.primary && c.sampleDefault ? "the sample DEM" : "no file"}${note}.</div>`;
             } else if (c.kind === "output") {
               const val = outputDefault(t, p, c.hint);
               control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="output" data-default="${esc(val)}" value="${esc(val)}" />`;
@@ -437,7 +437,7 @@
             if (el.files && el.files[0]) {
               fname = el.files[0].name;
               bytes = new Uint8Array(await el.files[0].arrayBuffer());
-            } else if (el.dataset.name === "input" || $("form").querySelector('[data-kind="file"]') === el) {
+            } else if (el.dataset.sampleDefault !== "false" && (el.dataset.name === "input" || $("form").querySelector('[data-kind="file"]') === el)) {
               // primary input: fall back to the bundled sample
               if (!sampleBytes) sampleBytes = new Uint8Array(await (await fetch("./sample.tif")).arrayBuffer());
               if (sampleBytes) { fname = "sample.tif"; bytes = sampleBytes; }

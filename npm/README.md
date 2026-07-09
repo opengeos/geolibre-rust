@@ -65,9 +65,53 @@ const { exitCode, stdout, files } = await runTool("slope", {
 const slopeCog = files["slope.tif"]; // Uint8Array (Cloud Optimized GeoTIFF)
 ```
 
+COG subsets can be extracted from a local file or an HTTP source. HTTP sources
+use byte-range requests and do not download the full object:
+
+```js
+const { files } = await runTool("extract_cog_subset", {
+  args: [
+    "--url=https://example.com/scene.cog.tif",
+    "--bbox=-122.55,37.70,-122.35,37.84",
+    "--bbox_crs=4326",
+    "--output_crs=3857",
+    "--resolution=10",
+    "--nodata=-9999",
+    "--output=/work/subset.tif",
+  ],
+});
+const subsetCog = files["subset.tif"];
+```
+
+For a local COG, upload/provide bytes through `input` and point `--input` at
+the `/work` path:
+
+```js
+const { files } = await runTool("extract_cog_subset", {
+  args: [
+    "--input=/work/local.cog.tif",
+    "--bbox=-122.55,37.70,-122.35,37.84",
+    "--bbox_crs=4326",
+    "--output=/work/subset.tif",
+  ],
+  input: { "local.cog.tif": localCogBytes },
+});
+```
+
 Inputs are placed under `/work` (keyed by filename); any file a tool writes is
 returned in `files`. Raster outputs are Cloud Optimized GeoTIFFs; vector outputs
 are GeoJSON.
+
+When `output_crs` is set, `resolution` is interpreted in output CRS units and
+the subset is reprojected with nearest-neighbor resampling. Without
+`output_crs`, the output usually stays on the source COG grid. Sources with
+user-defined projection strings that cannot be written as EPSG metadata, such as
+the NLCD sample, default to `bbox_crs` output so GIS viewers can place the
+result. Outputs are Deflate-compressed by default. `nodata` overrides the output
+nodata metadata and is used to fill pixels introduced during reprojection.
+The subset writer preserves the source sample type for supported COG types
+(`uint8`, `float32`, and `float64`); palette-indexed `uint8` rasters retain
+their source ColorMap.
 
 ## API
 
@@ -77,6 +121,7 @@ are GeoJSON.
 | `listTools(): Promise<string[]>` | Every available tool id. |
 | `listManifests(): Promise<ToolManifest[]>` | All tool manifests (parameter schemas), for building UIs offline. |
 | `runTool(tool, { args?, input? }): Promise<ToolResult>` | Run one tool over the in-memory filesystem. |
+| `extractCogSubset(source, opts): Promise<Uint8Array>` | Extract a local or HTTP COG subset directly. |
 
 `ToolResult` is `{ exitCode: number, stdout: string[], files: Record<string, Uint8Array> }`.
 

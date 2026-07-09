@@ -40,6 +40,33 @@ export interface ExtractCogSubsetOptions {
   maxHeaderBytes?: number;
 }
 
+export interface ExtractWmsSubsetOptions {
+  /** WMS layer name(s), comma-separated. */
+  layers: string;
+  /** WMS style name(s), comma-separated. */
+  styles?: string;
+  /** Bounding box as [minX, minY, maxX, maxY]. */
+  bbox: [number, number, number, number];
+  /** EPSG code of bbox coordinates. */
+  bboxCrs: number;
+  /** Target output pixel size in output CRS units. */
+  resolution?: number;
+  /** Request width in pixels; used when resolution is omitted. */
+  width?: number;
+  /** Request height in pixels; used when resolution is omitted. */
+  height?: number;
+  /** Optional output/request EPSG code. Defaults to bboxCrs. */
+  outputCrs?: number;
+  /** WMS image format. Defaults to image/geotiff. */
+  format?: string;
+  /** WMS version. Defaults to 1.1.1. */
+  version?: string;
+  /** Optional output nodata value. */
+  nodata?: number;
+  /** Extra fetch options used for the GetMap request. */
+  fetchOptions?: RequestInit;
+}
+
 /** A single parameter in a tool manifest. */
 export interface ToolParam {
   name: string;
@@ -72,4 +99,10 @@ export function runTool(tool: string, opts?: RunToolOptions): Promise<ToolResult
 export function extractCogSubset(
   source: string | Uint8Array | ArrayBuffer,
   opts: ExtractCogSubsetOptions,
+): Promise<Uint8Array>;
+
+/** Request a bbox subset from a WMS GetMap endpoint and write it as a Deflate COG. */
+export function extractWmsSubset(
+  url: string,
+  opts: ExtractWmsSubsetOptions,
 ): Promise<Uint8Array>;

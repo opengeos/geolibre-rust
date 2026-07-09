@@ -83,6 +83,23 @@ const { files } = await runTool("extract_cog_subset", {
 const subsetCog = files["subset.tif"];
 ```
 
+WMS subsets can be requested from a GetMap endpoint that supports GeoTIFF
+responses:
+
+```js
+const { files } = await runTool("extract_wms_subset", {
+  args: [
+    "--url=https://example.com/geoserver/wms",
+    "--layers=workspace:layer",
+    "--bbox=-122.55,37.70,-122.35,37.84",
+    "--bbox_crs=4326",
+    "--resolution=0.0001",
+    "--format=image/geotiff",
+    "--output=/work/wms_subset.tif",
+  ],
+});
+```
+
 For a local COG, upload/provide bytes through `input` and point `--input` at
 the `/work` path:
 
@@ -122,6 +139,7 @@ their source ColorMap.
 | `listManifests(): Promise<ToolManifest[]>` | All tool manifests (parameter schemas), for building UIs offline. |
 | `runTool(tool, { args?, input? }): Promise<ToolResult>` | Run one tool over the in-memory filesystem. |
 | `extractCogSubset(source, opts): Promise<Uint8Array>` | Extract a local or HTTP COG subset directly. |
+| `extractWmsSubset(url, opts): Promise<Uint8Array>` | Request a WMS GeoTIFF subset and encode it as a COG. |
 
 `ToolResult` is `{ exitCode: number, stdout: string[], files: Record<string, Uint8Array> }`.
 

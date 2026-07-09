@@ -11,11 +11,12 @@
 //   });
 //   const slopeCog = files["slope.tif"];  // Uint8Array
 import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
-import initGeoLibre, { CogBuilder, CogStream, transform_bbox_epsg } from "./geolibre_wasm.js";
+import initGeoLibre, { CogBuilder, CogStream, GeoTiffReader, transform_bbox_epsg } from "./geolibre_wasm.js";
 
 let _module = null;
 let _libraryReady = null;
 const COG_SUBSET_TOOL_ID = "extract_cog_subset";
+const WMS_SUBSET_TOOL_ID = "extract_wms_subset";
 const COG_SUBSET_MANIFEST = {
   id: COG_SUBSET_TOOL_ID,
   display_name: "Extract COG Subset",
@@ -33,6 +34,29 @@ const COG_SUBSET_MANIFEST = {
     { name: "resolution", description: "Target output pixel size. Uses output_crs units when output_crs is set; otherwise bbox_crs units. Selects the closest COG overview when level is omitted.", required: false, schema: { kind: "scalar", scalar: "float" } },
     { name: "output_crs", description: "Optional output EPSG code. When set, the subset is reprojected to this CRS. For source CRSs that cannot be written as EPSG metadata, defaults to bbox_crs.", required: false, schema: { kind: "scalar", scalar: "integer" } },
     { name: "nodata", description: "Optional output nodata value. Used as reprojection fill and written as output nodata metadata.", required: false, schema: { kind: "scalar", scalar: "float" } },
+  ],
+};
+const WMS_SUBSET_MANIFEST = {
+  id: WMS_SUBSET_TOOL_ID,
+  display_name: "Extract WMS Subset",
+  summary: "Request a bbox subset from a WMS GetMap endpoint and write it as a Deflate COG.",
+  category: "Raster",
+  license_tier: "Open",
+  source: "geolibre",
+  params: [
+    { name: "url", description: "WMS endpoint URL.", required: true, schema: { type: "string" } },
+    { name: "layers", description: "WMS layer name(s), comma-separated.", required: true, schema: { type: "string" } },
+    { name: "styles", description: "WMS style name(s), comma-separated. Defaults to empty.", required: false, schema: { type: "string" } },
+    { name: "bbox", description: "Bounding box as minX,minY,maxX,maxY in bbox_crs.", required: true, schema: { type: "string" } },
+    { name: "bbox_crs", description: "EPSG code of bbox coordinates.", required: true, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "output", description: "Output COG path.", required: false, schema: { type: "string" } },
+    { name: "resolution", description: "Target output pixel size in output_crs units when output_crs is set; otherwise bbox_crs units.", required: false, schema: { kind: "scalar", scalar: "float" } },
+    { name: "width", description: "Output request width in pixels. Used when resolution is omitted.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "height", description: "Output request height in pixels. Used when resolution is omitted.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "output_crs", description: "Optional output/request EPSG code. Defaults to bbox_crs.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+    { name: "format", description: "WMS image format. Defaults to image/geotiff.", required: false, schema: { type: "string" } },
+    { name: "version", description: "WMS version. Defaults to 1.1.1.", required: false, schema: { type: "string" } },
+    { name: "nodata", description: "Optional output nodata value.", required: false, schema: { kind: "scalar", scalar: "float" } },
   ],
 };
 
@@ -120,6 +144,7 @@ export async function listTools() {
   const { stdout } = await exec(["list"], {});
   const tools = stdout.map((s) => s.trim()).filter(Boolean);
   if (!tools.includes(COG_SUBSET_TOOL_ID)) tools.push(COG_SUBSET_TOOL_ID);
+  if (!tools.includes(WMS_SUBSET_TOOL_ID)) tools.push(WMS_SUBSET_TOOL_ID);
   return tools;
 }
 
@@ -133,6 +158,9 @@ export async function listManifests() {
   const manifests = JSON.parse(stdout.join(""));
   if (!manifests.some((m) => m.id === COG_SUBSET_TOOL_ID)) {
     manifests.push(COG_SUBSET_MANIFEST);
+  }
+  if (!manifests.some((m) => m.id === WMS_SUBSET_TOOL_ID)) {
+    manifests.push(WMS_SUBSET_MANIFEST);
   }
   return manifests;
 }
@@ -149,6 +177,7 @@ export async function listManifests() {
 export async function runTool(tool, opts = {}) {
   const { args = [], input = {} } = opts;
   if (tool === COG_SUBSET_TOOL_ID) return runCogSubsetTool(args, input);
+  if (tool === WMS_SUBSET_TOOL_ID) return runWmsSubsetTool(args);
   return exec([tool, ...args], input);
 }
 
@@ -185,6 +214,13 @@ function parseOptionalNumber(raw, name) {
   return value;
 }
 
+function parseOptionalInteger(raw, name) {
+  if (raw == null || raw === true || String(raw).trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} must be a positive integer`);
+  return value;
+}
+
 function parseOptionalEpsg(raw, name) {
   if (raw == null || raw === true || String(raw).trim() === "") return undefined;
   const value = Number(raw);
@@ -214,6 +250,35 @@ async function runCogSubsetTool(args, inputFiles) {
   try {
     const source = await resolveCogSubsetSource({ url, inputPath, inputFiles });
     const bytes = await extractCogSubset(source, { bbox, bboxCrs, level, resolution, outputCrs, nodata });
+    stdout.push(JSON.stringify({ output: `/work/${key}`, bytes: bytes.byteLength }));
+    return { exitCode: 0, stdout, files: { [key]: bytes } };
+  } catch (error) {
+    stdout.push(String(error?.message || error));
+    return { exitCode: 1, stdout, files: {} };
+  }
+}
+
+async function runWmsSubsetTool(args) {
+  const flags = parseFlagArgs(args);
+  const url = flags.url;
+  const layers = flags.layers;
+  const styles = flags.styles;
+  const bbox = parseBbox(flags.bbox);
+  const bboxCrs = Number(flags.bbox_crs ?? flags.bboxCrs ?? flags.crs);
+  const resolution = parseOptionalNumber(flags.resolution, "resolution");
+  const width = parseOptionalInteger(flags.width, "width");
+  const height = parseOptionalInteger(flags.height, "height");
+  const outputCrs = parseOptionalEpsg(flags.output_crs ?? flags.outputCrs, "output_crs");
+  const nodata = parseOptionalNumber(flags.nodata, "nodata");
+  const format = flags.format == null || flags.format === true ? undefined : String(flags.format);
+  const version = flags.version == null || flags.version === true ? undefined : String(flags.version);
+  const key = outputKey(flags.output);
+  const stdout = [];
+
+  try {
+    const bytes = await extractWmsSubset(url, {
+      layers, styles, bbox, bboxCrs, resolution, width, height, outputCrs, nodata, format, version,
+    });
     stdout.push(JSON.stringify({ output: `/work/${key}`, bytes: bytes.byteLength }));
     return { exitCode: 0, stdout, files: { [key]: bytes } };
   } catch (error) {
@@ -517,6 +582,42 @@ function reprojectSubsetNearest(stream, source, src, dst, outputCrs, nodata) {
   return out;
 }
 
+function readGeotiffInterleaved(reader) {
+  const bands = reader.bands;
+  const pixels = reader.width * reader.height;
+  const out = new Float64Array(pixels * bands);
+  for (let band = 0; band < bands; band++) {
+    const values = reader.read_band_f64(band);
+    for (let i = 0; i < pixels; i++) out[i * bands + band] = values[i];
+  }
+  return out;
+}
+
+function writeTypedCog({ data, width, height, bands, sampleFormat, bitsPerSample, geoTransform, epsg, nodata, palette }) {
+  const builder = new CogBuilder(width, height, bands);
+  builder.set_geo_transform(geoTransform);
+  builder.set_compression("deflate");
+  if (epsg != null) builder.set_epsg(epsg);
+  if (nodata != null) builder.set_nodata(nodata);
+  if (sampleFormat === "uint" && bitsPerSample === 8) {
+    const u8 = new Uint8Array(data.length);
+    const fill = nodata == null ? 0 : Math.max(0, Math.min(255, Math.round(nodata)));
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i];
+      u8[i] = Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v))) : fill;
+    }
+    const bytes = builder.write_u8(u8);
+    return bands === 1 && palette ? patchTiffPalette(bytes, palette) : bytes;
+  }
+  if (sampleFormat === "ieeefloat" && bitsPerSample === 32) {
+    return builder.write_f32(Float32Array.from(data));
+  }
+  if (sampleFormat === "ieeefloat" && bitsPerSample === 64) {
+    return builder.write_f64(data);
+  }
+  throw new Error(`preserving source sample type is not yet supported for ${sampleFormat}/${bitsPerSample}-bit rasters`);
+}
+
 function windowFromBbox(gt, baseLevel, level, bbox) {
   const [x0, pixelWidth, rowRotation, y0, colRotation, pixelHeight] = gt;
   if (Math.abs(rowRotation) > 1e-12 || Math.abs(colRotation) > 1e-12) {
@@ -544,17 +645,138 @@ function windowFromBbox(gt, baseLevel, level, bbox) {
   return { x, y, width: x2 - x, height: y2 - y, pixelWidth: px, pixelHeight: py };
 }
 
+function dimensionsForBbox(bbox, resolution, width, height) {
+  const bboxWidth = bbox[2] - bbox[0];
+  const bboxHeight = bbox[3] - bbox[1];
+  if (!(bboxWidth > 0) || !(bboxHeight > 0)) throw new Error("bbox dimensions must be positive");
+  if (resolution != null) {
+    if (!(resolution > 0)) throw new Error("resolution must be positive");
+    return {
+      width: Math.max(1, Math.ceil(bboxWidth / resolution)),
+      height: Math.max(1, Math.ceil(bboxHeight / resolution)),
+    };
+  }
+  if (width != null && height != null) return { width, height };
+  if (width != null) return { width, height: Math.max(1, Math.round(width * bboxHeight / bboxWidth)) };
+  if (height != null) return { width: Math.max(1, Math.round(height * bboxWidth / bboxHeight)), height };
+  const maxDim = 1024;
+  return bboxWidth >= bboxHeight
+    ? { width: maxDim, height: Math.max(1, Math.round(maxDim * bboxHeight / bboxWidth)) }
+    : { width: Math.max(1, Math.round(maxDim * bboxWidth / bboxHeight)), height: maxDim };
+}
+
+function buildWmsGetMapUrl(endpoint, opts) {
+  const u = new URL(endpoint);
+  const version = opts.version || "1.1.1";
+  const crsParam = version.startsWith("1.3") ? "CRS" : "SRS";
+  const params = {
+    SERVICE: "WMS",
+    VERSION: version,
+    REQUEST: "GetMap",
+    LAYERS: opts.layers,
+    STYLES: opts.styles ?? "",
+    FORMAT: opts.format,
+    TRANSPARENT: "FALSE",
+    WIDTH: String(opts.width),
+    HEIGHT: String(opts.height),
+    BBOX: opts.bbox.join(","),
+    [crsParam]: `EPSG:${opts.crs}`,
+  };
+  for (const [key, value] of Object.entries(params)) u.searchParams.set(key, value);
+  return u.toString();
+}
+
+/**
+ * Request a bbox subset from a WMS GetMap endpoint and write it as a Deflate COG.
+ *
+ * The WMS response must be a GeoTIFF-compatible format, typically
+ * `image/geotiff` or `image/tiff`. The request CRS defaults to `bboxCrs` unless
+ * `outputCrs` is supplied.
+ *
+ * @param {string} url WMS endpoint URL.
+ * @param {object} opts
+ * @param {string} opts.layers WMS layer name(s), comma-separated.
+ * @param {string} [opts.styles] WMS style name(s), comma-separated.
+ * @param {[number, number, number, number]} opts.bbox [minX,minY,maxX,maxY].
+ * @param {number} opts.bboxCrs EPSG code of `bbox`.
+ * @param {number} [opts.resolution] Target output pixel size in output CRS units.
+ * @param {number} [opts.width] Request width in pixels; used when resolution is omitted.
+ * @param {number} [opts.height] Request height in pixels; used when resolution is omitted.
+ * @param {number} [opts.outputCrs] Optional output/request EPSG code.
+ * @param {string} [opts.format="image/geotiff"] WMS response format.
+ * @param {string} [opts.version="1.1.1"] WMS version.
+ * @param {number} [opts.nodata] Optional output nodata value.
+ * @param {RequestInit} [opts.fetchOptions] Extra fetch options for the GetMap request.
+ * @returns {Promise<Uint8Array>}
+ */
+export async function extractWmsSubset(url, opts) {
+  opts = opts || {};
+  await initLibrary();
+  const { layers, styles, bbox, bboxCrs, resolution, width, height, nodata } = opts;
+  const outputCrs = opts.outputCrs ?? bboxCrs;
+  const format = opts.format || "image/geotiff";
+  const version = opts.version || "1.1.1";
+  if (!/^https?:\/\//i.test(url)) throw new Error(`url must be HTTP(S), got: ${url}`);
+  if (!layers || String(layers).trim() === "") throw new Error("opts.layers is required");
+  if (!/tiff|geotiff|geotif/i.test(format)) {
+    throw new Error("extract_wms_subset requires a GeoTIFF WMS format such as image/geotiff or image/tiff");
+  }
+  if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v)) || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+    throw new Error("opts.bbox must be finite and ordered [minX,minY,maxX,maxY]");
+  }
+  if (!Number.isInteger(bboxCrs) || bboxCrs <= 0) throw new Error("opts.bboxCrs must be a positive EPSG code");
+  if (!Number.isInteger(outputCrs) || outputCrs <= 0) throw new Error("opts.outputCrs must be a positive EPSG code");
+  if (nodata != null && !Number.isFinite(nodata)) throw new Error("opts.nodata must be a finite number");
+
+  const requestBbox = outputBboxForCrs(bbox, bboxCrs, outputCrs);
+  const dims = dimensionsForBbox(requestBbox, resolution, width, height);
+  const requestUrl = buildWmsGetMapUrl(url, {
+    layers: String(layers),
+    styles: styles == null ? "" : String(styles),
+    bbox: requestBbox,
+    crs: outputCrs,
+    width: dims.width,
+    height: dims.height,
+    format,
+    version,
+  });
+  const resp = await fetch(requestUrl, opts.fetchOptions);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  const contentType = resp.headers.get("content-type") || "";
+  if (!resp.ok) throw new Error(`WMS GetMap failed (${resp.status}): ${new TextDecoder().decode(bytes.slice(0, 512))}`);
+  if (/xml|text/i.test(contentType)) {
+    throw new Error(`WMS returned an exception instead of GeoTIFF: ${new TextDecoder().decode(bytes.slice(0, 1024))}`);
+  }
+
+  const reader = new GeoTiffReader(bytes);
+  const data = readGeotiffInterleaved(reader);
+  const palette = parseTiffPalette(bytes);
+  return writeTypedCog({
+    data,
+    width: reader.width,
+    height: reader.height,
+    bands: reader.bands,
+    sampleFormat: reader.sample_format,
+    bitsPerSample: reader.bits_per_sample,
+    geoTransform: [requestBbox[0], (requestBbox[2] - requestBbox[0]) / reader.width, 0, requestBbox[3], 0, -(requestBbox[3] - requestBbox[1]) / reader.height],
+    epsg: outputCrs,
+    nodata: nodata ?? reader.nodata,
+    palette,
+  });
+}
+
 /**
  * Extract a bbox subset from a local or HTTP Cloud Optimized GeoTIFF. HTTP
  * sources are read with byte-range requests, without downloading the full COG.
  *
- * The returned bytes are a new f64 COG containing all bands from the selected
- * source level. `bboxCrs` is an EPSG code for `bbox`; it is reprojected to the
- * COG CRS before selecting tiles. If `resolution` is set and `level` is omitted,
- * the closest available COG overview level is selected. If `outputCrs` is set,
- * the extracted source window is reprojected to that EPSG CRS with nearest
- * neighbor resampling. Sources with user-defined projection strings default to
- * `bboxCrs` output so the result can be written with standard EPSG metadata.
+ * The returned bytes are a new COG containing all bands from the selected
+ * source level, preserving supported source sample types. `bboxCrs` is an EPSG
+ * code for `bbox`; it is reprojected to the COG CRS before selecting tiles. If
+ * `resolution` is set and `level` is omitted, the closest available COG overview
+ * level is selected. If `outputCrs` is set, the extracted source window is
+ * reprojected to that EPSG CRS with nearest-neighbor resampling. Sources with
+ * user-defined projection strings default to `bboxCrs` output so the result can
+ * be written with standard EPSG metadata.
  *
  * @param {string|Uint8Array|ArrayBuffer} source HTTP(S) COG URL or local COG bytes.
  * @param {object} opts
@@ -677,26 +899,16 @@ export async function extractCogSubset(source, opts) {
     finalEpsg = outputCrs;
   }
 
-  const builder = new CogBuilder(finalWidth, finalHeight, selected.bands);
-  builder.set_geo_transform([finalX0, finalPixelWidth, 0, finalY0, 0, finalPixelHeight]);
-  builder.set_compression("deflate");
-  if (finalEpsg != null) builder.set_epsg(finalEpsg);
-  if (outputNodata != null) builder.set_nodata(outputNodata);
-  if (selected.sample_format === "uint" && selected.bits_per_sample === 8) {
-    const u8 = new Uint8Array(finalData.length);
-    const fill = outputNodata == null ? 0 : Math.max(0, Math.min(255, Math.round(outputNodata)));
-    for (let i = 0; i < finalData.length; i++) {
-      const v = finalData[i];
-      u8[i] = Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v))) : fill;
-    }
-    const bytes = builder.write_u8(u8);
-    return selected.bands === 1 && sourcePalette ? patchTiffPalette(bytes, sourcePalette) : bytes;
-  }
-  if (selected.sample_format === "ieeefloat" && selected.bits_per_sample === 32) {
-    return builder.write_f32(Float32Array.from(finalData));
-  }
-  if (selected.sample_format === "ieeefloat" && selected.bits_per_sample === 64) {
-    return builder.write_f64(finalData);
-  }
-  throw new Error(`preserving source sample type is not yet supported for ${selected.sample_format}/${selected.bits_per_sample}-bit COGs`);
+  return writeTypedCog({
+    data: finalData,
+    width: finalWidth,
+    height: finalHeight,
+    bands: selected.bands,
+    sampleFormat: selected.sample_format,
+    bitsPerSample: selected.bits_per_sample,
+    geoTransform: [finalX0, finalPixelWidth, 0, finalY0, 0, finalPixelHeight],
+    epsg: finalEpsg,
+    nodata: outputNodata,
+    palette: sourcePalette,
+  });
 }

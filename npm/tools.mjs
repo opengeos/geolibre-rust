@@ -11,13 +11,23 @@
 //   });
 //   const slopeCog = files["slope.tif"];  // Uint8Array
 import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
-import initGeoLibre, { CogBuilder, CogStream, GeoTiffReader, transform_bbox_epsg, transform_points_epsg } from "./geolibre_wasm.js";
+import initGeoLibre, { CogBuilder, CogStream, GeoTiffReader, PmtilesExtractor, transform_bbox_epsg, transform_points_epsg } from "./geolibre_wasm.js";
 
 let _module = null;
 let _libraryReady = null;
 const COG_SUBSET_TOOL_ID = "extract_cog_subset";
 const WMS_SUBSET_TOOL_ID = "extract_wms_subset";
 const XYZ_SUBSET_TOOL_ID = "extract_xyz_tile_subset";
+const PMTILES_EXTRACT_TOOL_ID = "pmtiles_extract";
+// The `url` + `bbox_crs` params the JS interception adds to the WASI
+// `pmtiles_extract` tool's own manifest, so a host can extract from a remote
+// archive by byte-range (no whole-file download) and offer the same
+// "Use map extent" / "Draw on map" bbox affordance the COG/WMS/XYZ extractors
+// get. The native `geolibre` CLI keeps its local file→file behaviour.
+const PMTILES_EXTRACT_EXTRA_PARAMS = [
+  { name: "url", description: "HTTP(S) PMTiles URL. Provide either url or input; HTTP sources use byte-range requests (the host must allow cross-origin Range reads).", required: false, schema: { type: "string" } },
+  { name: "bbox_crs", description: "EPSG code of the bbox coordinates. Defaults to 4326 (WGS84 lon/lat); other CRSs are reprojected to 4326.", required: false, schema: { kind: "scalar", scalar: "integer" } },
+];
 const COG_SUBSET_MANIFEST = {
   id: COG_SUBSET_TOOL_ID,
   display_name: "Extract COG Subset",
@@ -189,6 +199,19 @@ export async function listManifests() {
   if (!manifests.some((m) => m.id === XYZ_SUBSET_TOOL_ID)) {
     manifests.push(XYZ_SUBSET_MANIFEST);
   }
+  // pmtiles_extract is a real WASI tool, so its manifest already lists
+  // input/output/bbox/min_zoom/max_zoom/max_tiles. Augment it with the `url`
+  // and `bbox_crs` params the JS interception handles, so hosts can extract
+  // from a remote archive and reproject the bbox.
+  const pmtiles = manifests.find((m) => m.id === PMTILES_EXTRACT_TOOL_ID);
+  if (pmtiles && Array.isArray(pmtiles.params)) {
+    pmtiles.source = "geolibre";
+    for (const extra of PMTILES_EXTRACT_EXTRA_PARAMS) {
+      if (!pmtiles.params.some((p) => p.name === extra.name)) {
+        pmtiles.params.push({ ...extra });
+      }
+    }
+  }
   return manifests;
 }
 
@@ -206,6 +229,7 @@ export async function runTool(tool, opts = {}) {
   if (tool === COG_SUBSET_TOOL_ID) return runCogSubsetTool(args, input);
   if (tool === WMS_SUBSET_TOOL_ID) return runWmsSubsetTool(args);
   if (tool === XYZ_SUBSET_TOOL_ID) return runXyzTileSubsetTool(args);
+  if (tool === PMTILES_EXTRACT_TOOL_ID) return runPmtilesExtractTool(args, input);
   return exec([tool, ...args], input);
 }
 
@@ -341,6 +365,117 @@ async function runXyzTileSubsetTool(args) {
     stdout.push(String(error?.message || error));
     return { exitCode: 1, stdout, files: {} };
   }
+}
+
+/**
+ * Extract a bbox/zoom subset of a PMTiles archive (local or remote) into a new
+ * self-contained archive, driving the wasm `PmtilesExtractor` with byte-range
+ * reads. Mirrors the COG/WMS/XYZ interception so a remote planet build is
+ * subset by range instead of downloaded whole. The bbox is reprojected from
+ * `bbox_crs` to WGS84 (what PMTiles address); `bbox_crs` defaults to 4326.
+ */
+async function runPmtilesExtractTool(args, inputFiles) {
+  const flags = parseFlagArgs(args);
+  const url = flags.url;
+  const inputPath = flags.input;
+  const rawBbox = parseBbox(flags.bbox);
+  const bboxCrs = parseOptionalEpsg(flags.bbox_crs ?? flags.bboxCrs ?? flags.crs, "bbox_crs");
+  const minZoom = clampZoom(flags.min_zoom ?? flags.minZoom, 0);
+  const maxZoom = clampZoom(flags.max_zoom ?? flags.maxZoom, 30);
+  const maxTiles = parseOptionalInteger(flags.max_tiles ?? flags.maxTiles, "max_tiles");
+  const key = pmtilesOutputKey(flags.output);
+  const stdout = [];
+
+  try {
+    await initLibrary();
+    // PMTiles are addressed in WGS84 lon/lat; reproject if the caller gave a
+    // bbox in another CRS (the map extent affordance always sends 4326).
+    const bbox =
+      bboxCrs && bboxCrs !== 4326
+        ? Array.from(transform_bbox_epsg(bboxCrs, 4326, Float64Array.from(rawBbox)))
+        : rawBbox;
+
+    const reader = makeSourceReader(
+      await resolvePmtilesSource({ url, inputPath, inputFiles }),
+    );
+    const archive = await drivePmtilesExtractor(reader, {
+      bbox,
+      minZoom,
+      maxZoom,
+      maxTiles,
+    });
+    stdout.push(
+      JSON.stringify({ output: `/work/${key}`, bytes: archive.byteLength }),
+    );
+    return { exitCode: 0, stdout, files: { [key]: archive } };
+  } catch (error) {
+    stdout.push(String(error?.message || error));
+    return { exitCode: 1, stdout, files: {} };
+  }
+}
+
+/**
+ * Drive a `PmtilesExtractor` to completion over a range reader, fetching each
+ * round of wanted ranges concurrently.
+ * @param {{range: (offset:number, length:number) => Promise<Uint8Array>}} reader
+ * @param {{bbox:number[], minZoom:number, maxZoom:number, maxTiles?:number}} opts
+ * @returns {Promise<Uint8Array>}
+ */
+async function drivePmtilesExtractor(reader, { bbox, minZoom, maxZoom, maxTiles }) {
+  const extractor = new PmtilesExtractor(
+    bbox[0], bbox[1], bbox[2], bbox[3], minZoom, maxZoom,
+  );
+  try {
+    if (maxTiles != null) extractor.set_max_tiles(maxTiles);
+    while (!extractor.done) {
+      const wanted = JSON.parse(extractor.wanted_json());
+      if (wanted.length === 0) {
+        throw new Error("PMTiles extractor stalled: not done but nothing wanted");
+      }
+      const chunks = await Promise.all(
+        wanted.map(({ offset, length }) => reader.range(offset, length)),
+      );
+      wanted.forEach(({ offset }, i) => extractor.feed(offset, chunks[i]));
+    }
+    return extractor.finish();
+  } finally {
+    extractor.free();
+  }
+}
+
+/** Resolve a PMTiles source to a URL string or local bytes for makeSourceReader. */
+async function resolvePmtilesSource({ url, inputPath, inputFiles }) {
+  const hasUrl = url && url !== true && String(url).trim() !== "";
+  if (!hasUrl && !inputPath) {
+    throw new Error("provide either --url=<http pmtiles> or --input=/work/local.pmtiles");
+  }
+  if (hasUrl && inputPath) {
+    throw new Error("provide only one source: --url or --input");
+  }
+  if (hasUrl) return String(url).trim();
+
+  const key = String(inputPath).replace(/^\/work\/?/, "");
+  if (!inputFiles || !(key in inputFiles)) {
+    throw new Error(`input file not found in /work: ${inputPath}`);
+  }
+  return materializeInput(inputFiles[key]);
+}
+
+/** Clamp/parse a zoom flag to an integer in [0, 30], falling back to a default. */
+function clampZoom(raw, fallback) {
+  if (raw == null || raw === true || String(raw).trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0 || value > 30) {
+    throw new Error("zoom levels must be whole numbers in 0..=30");
+  }
+  return value;
+}
+
+/** Default a PMTiles output path to extract.pmtiles, stripping the /work prefix. */
+function pmtilesOutputKey(path) {
+  if (!path || path === true) return "extract.pmtiles";
+  const normalized = String(path).replace(/^\/work\/?/, "");
+  return normalized || "extract.pmtiles";
 }
 
 async function resolveCogSubsetSource({ url, inputPath, inputFiles }) {

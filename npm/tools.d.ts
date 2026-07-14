@@ -117,7 +117,17 @@ export function listTools(): Promise<string[]>;
 /** Fetch every tool manifest (parameter schemas), for building UIs offline. */
 export function listManifests(): Promise<ToolManifest[]>;
 
-/** Run one tool over an in-memory filesystem. */
+/**
+ * Run one tool over an in-memory filesystem.
+ *
+ * `extract_cog_subset`, `extract_wms_subset`, `extract_xyz_tile_subset`, and
+ * `pmtiles_extract` are intercepted and run as JS-orchestrated byte-range
+ * extractions instead of whole-file WASI reads: pass `--url=<http source>` to
+ * subset a remote archive without downloading it whole (the host must allow
+ * cross-origin Range reads). `pmtiles_extract` also accepts `--bbox_crs` (the
+ * bbox is reprojected to WGS84, which PMTiles address) and still supports a
+ * local `--input=/work/local.pmtiles`.
+ */
 export function runTool(tool: string, opts?: RunToolOptions): Promise<ToolResult>;
 
 /** Extract a bbox subset from a local COG or HTTP COG. HTTP sources use byte-range requests. */

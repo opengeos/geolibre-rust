@@ -98,6 +98,7 @@ rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
 | `render_raster_png` | Render a raster band to a PNG through a colormap (viridis/magma/turbo/terrain/grayscale); no-data becomes transparent. |
 | `raster_to_tiles` | Slice a raster into a Web Mercator (EPSG:3857) XYZ PNG tile pyramid for web maps. |
 | `write_pmtiles` | Render a raster into a single PMTiles archive (the Web Mercator PNG pyramid as one file). |
+| `pmtiles_extract` | Extract a bbox/zoom subset of a PMTiles archive into a new self-contained archive (e.g. an offline basemap from a Protomaps planet build). The browser library exposes the same engine as `PmtilesExtractor`, driven by host `fetch` range requests. |
 | `spectral_index` | Compute a spectral index (NDVI, NDWI, NDBI, NBR, EVI, SAVI) from a multi-band raster. |
 | `write_geoparquet` | Convert any supported vector format to GeoParquet, Hilbert-sorted with a bbox covering column and ZSTD compression by default. |
 | `read_geoparquet` | Read GeoParquet and convert it to another vector format (or store it in memory). |

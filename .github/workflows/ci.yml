@@ -41,7 +41,7 @@ jobs:
           node-version: 22
 
       - name: Host tests
-        run: cargo test -p geolibre-cli -p geolibre-tools
+        run: cargo test -p geolibre-cli -p geolibre-tools -p geolibre-pmtiles
 
       - name: Build both WASM artifacts (library + WASI runner)
         run: ./build.sh

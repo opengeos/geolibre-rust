@@ -20,6 +20,9 @@ wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geo
 wblidar = { git = "https://github.com/opengeos/whitebox-wasm" }
 wbtopology = { git = "https://github.com/opengeos/whitebox-wasm" }
 wbspatialstats = { git = "https://github.com/opengeos/whitebox-wasm" }
+# Shared PMTiles v3 core (format, writer, bbox extract). Lightweight by
+# design (flate2 only) so it doesn't bloat the browser bundle.
+geolibre-pmtiles = { path = "../geolibre-pmtiles" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 

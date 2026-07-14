@@ -19,6 +19,10 @@ wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geo
 # GeoParquet tools can choose the compression codec (ZSTD by default).
 parquet = "58.3"
 
+# Shared PMTiles v3 core (format, writer, bbox extract); also consumed by
+# geolibre-wasm directly, which is why it is its own lightweight crate.
+geolibre-pmtiles = { path = "../geolibre-pmtiles" }
+
 serde_json = "1"
 # Pure-Rust PNG encoder (miniz_oxide backend), used by render_raster_png and
 # raster_to_tiles. Compiles cleanly to wasm32-wasip1.

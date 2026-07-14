@@ -211,6 +211,12 @@ export async function listManifests() {
         pmtiles.params.push({ ...extra });
       }
     }
+    // The native tool requires a local `input`, but through this JS path a
+    // remote `url` is an equal alternative, so `input` is optional here (the
+    // handler enforces exactly-one-source). Matches extract_cog_subset's
+    // optional `input`; without this a host UI blocks a url-only run.
+    const input = pmtiles.params.find((p) => p.name === "input");
+    if (input) input.required = false;
   }
   return manifests;
 }

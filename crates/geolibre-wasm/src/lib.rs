@@ -12,6 +12,7 @@
 mod vector;
 mod lidar;
 mod analysis;
+mod pmtiles;
 use wasm_bindgen::prelude::*;
 use wbgeotiff::{CogLayout, CogWriter, Compression, GeoTiff, GeoTransform, SampleFormat};
 

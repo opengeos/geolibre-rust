@@ -790,11 +790,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "geolibre-pmtiles"
+version = "0.4.3"
+dependencies = [
+ "flate2",
+]
+
+[[package]]
 name = "geolibre-tools"
 version = "0.4.3"
 dependencies = [
  "flate2",
  "geo",
+ "geolibre-pmtiles",
  "h3o",
  "parquet",
  "png 0.17.16",
@@ -809,6 +817,7 @@ name = "geolibre-wasm"
 version = "0.4.3"
 dependencies = [
  "console_error_panic_hook",
+ "geolibre-pmtiles",
  "getrandom 0.2.17",
  "wasm-bindgen",
  "wasm-bindgen-test",

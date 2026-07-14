@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/geolibre-cli", "crates/geolibre-tools", "crates/geolibre-wasm"]
+members = [
+    "crates/geolibre-cli",
+    "crates/geolibre-pmtiles",
+    "crates/geolibre-tools",
+    "crates/geolibre-wasm",
+]
 resolver = "2"
 
 [workspace.package]

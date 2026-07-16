@@ -91,8 +91,15 @@
       import { initTools, listManifests, runTool } from "./tools.mjs?v=__BUILD__";
 
       const $ = (id) => document.getElementById(id);
-      const FILE_RE = /\.(tif|tiff|geojson|json|shp|las|laz|csv|dep|txt|html|asc)$/i;
-      const RASTER_OUT = "image/tiff";
+      const FILE_RE = /\.(tif|tiff|geojson|json|shp|las|laz|csv|dep|txt|html|asc|pmtiles)$/i;
+      const MIME = {
+        tif: "image/tiff", tiff: "image/tiff", png: "image/png",
+        geojson: "application/geo+json", json: "application/json",
+        pmtiles: "application/vnd.pmtiles", csv: "text/csv",
+        txt: "text/plain", html: "text/html",
+      };
+      const mimeFor = (name) =>
+        MIME[String(name).split(".").pop().toLowerCase()] ?? "application/octet-stream";
 
       let manifests = [];
       let sampleBytes = null; // lazily-fetched bundled sample.tif
@@ -497,7 +504,7 @@
             produced.find(([n]) => outputs.includes(n)) || produced[0];
           if (pick) {
             const [name, bytes] = pick;
-            const url = URL.createObjectURL(new Blob([bytes], { type: RASTER_OUT }));
+            const url = URL.createObjectURL(new Blob([bytes], { type: mimeFor(name) }));
             dl.href = url;
             dl.download = name;
             dl.textContent = `Download ${name}`;

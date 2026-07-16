@@ -32,6 +32,7 @@ mod spectral_index;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
+mod vector_to_pmtiles;
 mod write_pmtiles;
 
 use std::collections::BTreeMap;
@@ -70,6 +71,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(raster_to_h3::RasterToH3Tool),
         Box::new(render_vector_png::RenderVectorPngTool),
         Box::new(write_pmtiles::WritePmTilesTool),
+        Box::new(vector_to_pmtiles::VectorToPmTilesTool),
         Box::new(pmtiles_extract::PmtilesExtractTool),
     ]
 }
@@ -184,6 +186,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["bilinear", "nearest", "cubic"])),
             ("min", float()),
             ("max", float()),
+        ]),
+        "vector_to_pmtiles" => schemas(&[
+            ("input", vector_in()),
+            ("output", file_out()),
+            ("min_zoom", int()),
+            ("max_zoom", int()),
+            ("layer_name", ToolParamSchema::string()),
+            ("simplify", ToolParamSchema::bool()),
+            ("drop_rate", float()),
         ]),
         "pmtiles_extract" => schemas(&[
             ("input", ToolParamSchema::input(ToolDatasetSchema::File)),

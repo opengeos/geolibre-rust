@@ -23,6 +23,14 @@ parquet = "58.3"
 # geolibre-wasm directly, which is why it is its own lightweight crate.
 geolibre-pmtiles = { path = "../geolibre-pmtiles" }
 
+# Vector tiling engine (clip, simplify, quantize, MVT encode) behind
+# vector_to_pmtiles. Points at a fork because upstream pins rayon `=1.10.0` and
+# geo 0.29, neither of which can resolve alongside wbraster or our geo 0.33; the
+# fork drops those pins. Upstream keeps them for CRAN's Rust 1.77.2 checks, so
+# the change is not upstreamable. Default features only: `duckdb`/`geoparquet`
+# would pull bundled C++ and arrow, which do not belong in the wasm build.
+freestiler-core = { git = "https://github.com/giswqs/freestiler", branch = "fix/geo-0.33-wasm-compat", default-features = false }
+
 serde_json = "1"
 # Pure-Rust PNG encoder (miniz_oxide backend), used by render_raster_png and
 # raster_to_tiles. Compiles cleanly to wasm32-wasip1.

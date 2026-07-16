@@ -2,18 +2,18 @@
 //!
 //! [`assemble`] is the general path: caller-provided directory entries over an
 //! already-laid-out tile-data section (what [`crate::extract`] produces).
-//! [`build_png`] is the historical convenience used by GeoLibre's tiling tools:
-//! pack loose PNG tiles into a fresh archive.
+//! [`build_png`] and [`build_mvt`] are the conveniences used by GeoLibre's
+//! tiling tools: pack loose raster or vector tiles into a fresh archive.
 
 use std::collections::HashMap;
 
 use crate::format::{
     compress, serialize_directory, Entry, Header, COMPRESSION_GZIP, COMPRESSION_NONE,
-    HEADER_LEN, PRELUDE_LEN, TILETYPE_PNG,
+    HEADER_LEN, PRELUDE_LEN, TILETYPE_MVT, TILETYPE_PNG,
 };
 use crate::{LonLatBounds, PmtilesError};
 
-/// One tile to include in a [`build_png`] archive.
+/// One tile to include in a [`build_png`] or [`build_mvt`] archive.
 pub struct Tile {
     pub z: u8,
     pub x: u32,
@@ -185,6 +185,63 @@ pub fn build_png(
         num_tile_contents: seen.len() as u64,
     };
     assemble(&entries, &tile_data, br#"{"type":"overlay","format":"png"}"#, &params)
+}
+
+/// Builds a complete archive from loose MVT tiles. `tiles` carry *uncompressed*
+/// protobuf; each blob is gzipped here to match the `GZIP` tile compression
+/// recorded in the header, which is what MVT readers expect (unlike PNG, which
+/// is already compressed and so ships as `NONE`). `tiles` need not be sorted;
+/// identical blobs are deduplicated after compression.
+///
+/// `metadata` is uncompressed TileJSON, supplied by the caller rather than
+/// built here so this crate stays free of a JSON dependency. It must carry a
+/// `vector_layers` array, without which MapLibre cannot style the source.
+pub fn build_mvt(
+    mut tiles: Vec<Tile>,
+    bounds: &LonLatBounds,
+    min_zoom: u8,
+    max_zoom: u8,
+    metadata: &[u8],
+) -> Result<Vec<u8>, PmtilesError> {
+    tiles.sort_by_key(|t| crate::tilemath::zxy_to_tile_id(t.z, t.x, t.y));
+
+    let addressed = tiles.len() as u64;
+    let mut tile_data: Vec<u8> = Vec::new();
+    let mut seen: HashMap<Vec<u8>, (u64, u32)> = HashMap::new();
+    let mut entries: Vec<Entry> = Vec::with_capacity(tiles.len());
+    for t in &tiles {
+        let blob = compress(&t.data, COMPRESSION_GZIP)?;
+        let (offset, length) = match seen.get(&blob) {
+            Some(&(off, len)) => (off, len),
+            None => {
+                let off = tile_data.len() as u64;
+                let len = blob.len() as u32;
+                tile_data.extend_from_slice(&blob);
+                seen.insert(blob, (off, len));
+                (off, len)
+            }
+        };
+        entries.push(Entry {
+            tile_id: crate::tilemath::zxy_to_tile_id(t.z, t.x, t.y),
+            offset,
+            length,
+            run_length: 1,
+        });
+    }
+
+    let params = ArchiveParams {
+        tile_type: TILETYPE_MVT,
+        tile_compression: COMPRESSION_GZIP,
+        min_zoom,
+        max_zoom,
+        bounds: *bounds,
+        center_zoom: min_zoom,
+        center_lon: (bounds.min_lon + bounds.max_lon) / 2.0,
+        center_lat: (bounds.min_lat + bounds.max_lat) / 2.0,
+        num_addressed_tiles: addressed,
+        num_tile_contents: seen.len() as u64,
+    };
+    assemble(&entries, &tile_data, metadata, &params)
 }
 
 #[cfg(test)]

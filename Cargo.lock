@@ -824,7 +824,7 @@ dependencies = [
 [[package]]
 name = "freestiler-core"
 version = "0.1.0"
-source = "git+https://github.com/giswqs/freestiler?branch=fix%2Fgeo-0.33-wasm-compat#b77f7f0d76e11bf105e913ab6d553eb2a4a7ca00"
+source = "git+https://github.com/giswqs/freestiler?rev=b77f7f0d76e11bf105e913ab6d553eb2a4a7ca00#b77f7f0d76e11bf105e913ab6d553eb2a4a7ca00"
 dependencies = [
  "flate2",
  "geo",

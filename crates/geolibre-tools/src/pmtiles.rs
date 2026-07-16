@@ -22,3 +22,16 @@ pub fn build(
     geolibre_pmtiles::writer::build_png(tiles, bounds, min_zoom, max_zoom)
         .map_err(|e| ToolError::Execution(e.to_string()))
 }
+
+/// Builds a complete PMTiles v3 archive from uncompressed MVT tiles and
+/// TileJSON `metadata`. See [`geolibre_pmtiles::writer::build_mvt`].
+pub fn build_vector(
+    tiles: Vec<Tile>,
+    bounds: &LonLatBounds,
+    min_zoom: u8,
+    max_zoom: u8,
+    metadata: &[u8],
+) -> Result<Vec<u8>, ToolError> {
+    geolibre_pmtiles::writer::build_mvt(tiles, bounds, min_zoom, max_zoom, metadata)
+        .map_err(|e| ToolError::Execution(e.to_string()))
+}

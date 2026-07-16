@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-cli"
-version = "0.4.3"
+version = "0.8.0"
 dependencies = [
  "geolibre-tools",
  "serde_json",
@@ -945,14 +945,14 @@ dependencies = [
 
 [[package]]
 name = "geolibre-pmtiles"
-version = "0.4.3"
+version = "0.8.0"
 dependencies = [
  "flate2",
 ]
 
 [[package]]
 name = "geolibre-tools"
-version = "0.4.3"
+version = "0.8.0"
 dependencies = [
  "flate2",
  "freestiler-core",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-wasm"
-version = "0.4.3"
+version = "0.8.0"
 dependencies = [
  "console_error_panic_hook",
  "geolibre-pmtiles",

@@ -38,7 +38,7 @@ def _http_get(url: str, timeout: int) -> bytes:
 
 #: Release whose ``geolibre-cli.wasm`` asset this wrapper downloads by default.
 #: Kept in sync with the package version's ``vMAJOR.MINOR.PATCH`` tag.
-RUNTIME_VERSION = "v0.8.0"
+RUNTIME_VERSION = "v0.9.0"
 _ASSET = f"geolibre-cli-{RUNTIME_VERSION}.wasm"
 _RELEASE_URL = (
     "https://github.com/opengeos/geolibre-rust/releases/download/"

@@ -26,6 +26,7 @@ mod raster_normalize;
 mod raster_to_h3;
 mod raster_to_tiles;
 mod regions;
+mod regularize_building_footprints;
 mod render;
 mod render_png;
 mod render_vector_png;
@@ -70,6 +71,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geoparquet_io::ReadGeoParquetTool),
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
+        Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -248,6 +250,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
         ]),
         "vector_convert" => schemas(&[("input", vector_in()), ("output", vector_out())]),
+        "regularize_building_footprints" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&[
+                "right_angles",
+                "right_angles_and_diagonals",
+                "any_angle",
+                "circle",
+            ])),
+            ("tolerance", float()),
+            ("diagonal_penalty", float()),
+            ("min_radius", float()),
+            ("max_radius", float()),
+        ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),

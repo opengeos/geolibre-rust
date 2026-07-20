@@ -104,6 +104,7 @@ rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
 | `vector_to_pmtiles` | Pack a vector layer (GeoJSON, Shapefile, GeoPackage, FlatGeobuf, GeoParquet, ...) into a single PMTiles archive of Mapbox Vector Tiles, ready to style in MapLibre. Clipping, per-zoom simplification and MVT encoding come from [freestiler](https://walker-data.com/freestiler/). |
 | `pmtiles_extract` | Extract a bbox/zoom subset of a PMTiles archive into a new self-contained archive (e.g. an offline basemap from a Protomaps planet build). The browser library exposes the same engine as `PmtilesExtractor`, driven by host `fetch` range requests. |
 | `spectral_index` | Compute a spectral index (NDVI, NDWI, NDBI, NBR, EVI, SAVI) from a multi-band raster. |
+| `regularize_building_footprints` | Normalize noisy building footprint polygons into regular shapes (like ArcGIS's *Regularize Building Footprint*): snap walls to right angles, right angles + 45° diagonals, straighten at any angle, or fit a best-fit circle; features that can't be regularized within the tolerance keep their original shape and are flagged in a `status` field. |
 | `write_geoparquet` | Convert any supported vector format to GeoParquet, Hilbert-sorted with a bbox covering column and ZSTD compression by default. |
 | `read_geoparquet` | Read GeoParquet and convert it to another vector format (or store it in memory). |
 | `vector_convert` | Convert a vector dataset between formats (the output extension picks the driver). |

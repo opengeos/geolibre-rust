@@ -31,6 +31,7 @@ mod render;
 mod render_png;
 mod render_vector_png;
 mod reproject_raster;
+mod smooth_natural_features;
 mod spectral_index;
 mod vector_common;
 mod vector_convert;
@@ -72,6 +73,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
         Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
+        Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -263,6 +265,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("diagonal_penalty", float()),
             ("min_radius", float()),
             ("max_radius", float()),
+        ]),
+        "smooth_natural_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("segment_length", float()),
+            ("iterations", int()),
+            ("preserve_area", ToolParamSchema::bool()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

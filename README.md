@@ -95,6 +95,9 @@ rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
 | Tool id | What it does |
 |---|---|
 | `reproject_raster` | Reproject (warp) a raster into a target EPSG CRS, with selectable resampling. |
+| `assign_projection_raster` | Assign an EPSG CRS to a raster's metadata without warping its cells (for data whose coordinates are already in that CRS but carry a missing/wrong projection tag). |
+| `assign_projection_vector` | Assign an EPSG CRS to a vector layer without reprojecting its geometries. |
+| `assign_projection_lidar` | Assign an EPSG CRS to a LiDAR point cloud (LAS/LAZ/COPC) without reprojecting its points. |
 | `render_raster_png` | Render a raster band to a PNG through a colormap (viridis/magma/turbo/terrain/grayscale); no-data becomes transparent. |
 | `raster_to_tiles` | Slice a raster into a Web Mercator (EPSG:3857) XYZ PNG tile pyramid for web maps. |
 | `write_pmtiles` | Render a raster into a single PMTiles archive (the Web Mercator PNG pyramid as one file). |

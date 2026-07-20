@@ -7,6 +7,7 @@
 //! Add a new tool by creating a module with a `Tool` impl and pushing it in
 //! [`geolibre_tools`].
 
+mod assign_projection;
 mod common;
 mod delineate_depressions;
 mod delineate_mounts;
@@ -17,6 +18,7 @@ mod geoparquet_io;
 mod h3_polyfill;
 mod h3_to_vector;
 mod hilbert;
+mod lidar_common;
 mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
@@ -53,6 +55,9 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(assign_projection::AssignProjectionRasterTool),
+        Box::new(assign_projection::AssignProjectionVectorTool),
+        Box::new(assign_projection::AssignProjectionLidarTool),
         Box::new(raster_normalize::RasterNormalizeTool),
         Box::new(dem_filter::DemFilterTool),
         Box::new(extract_sinks::ExtractSinksTool),
@@ -99,6 +104,8 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     let vector_out = ToolParamSchema::output_vector_any;
     let file_out = || ToolParamSchema::output(ToolDatasetSchema::File);
     let table_out = || ToolParamSchema::output(ToolDatasetSchema::Table);
+    let lidar_in = ToolParamSchema::input_lidar;
+    let lidar_out = || ToolParamSchema::output(ToolDatasetSchema::Lidar);
     let int = ToolParamSchema::scalar_integer;
     let float = ToolParamSchema::scalar_float;
     let colormaps = || {
@@ -106,6 +113,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "assign_projection_raster" => schemas(&[
+            ("input", raster_in()),
+            ("epsg", int()),
+            ("output", raster_out()),
+        ]),
+        "assign_projection_vector" => schemas(&[
+            ("input", vector_in()),
+            ("epsg", int()),
+            ("output", vector_out()),
+        ]),
+        "assign_projection_lidar" => schemas(&[
+            ("input", lidar_in()),
+            ("epsg", int()),
+            ("output", lidar_out()),
+        ]),
         "raster_normalize" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),

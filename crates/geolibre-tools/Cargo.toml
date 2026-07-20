@@ -1,6 +1,6 @@
 [package]
 name = "geolibre-tools"
-version = "0.9.0"
+version = "0.10.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -15,6 +15,8 @@ wbcore = { git = "https://github.com/opengeos/whitebox-wasm" }
 wbraster = { git = "https://github.com/opengeos/whitebox-wasm" }
 # GeoParquet read/write lives behind wbvector's `geoparquet` feature.
 wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geoparquet"] }
+# LAS/LAZ/COPC point-cloud I/O for the LiDAR assign-projection tool.
+wblidar = { git = "https://github.com/opengeos/whitebox-wasm" }
 # Pulled in transitively by wbvector's geoparquet feature; named directly so the
 # GeoParquet tools can choose the compression codec (ZSTD by default).
 parquet = "58.3"

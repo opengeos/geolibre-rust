@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-cli"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "geolibre-tools",
  "serde_json",
@@ -945,14 +945,14 @@ dependencies = [
 
 [[package]]
 name = "geolibre-pmtiles"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "flate2",
 ]
 
 [[package]]
 name = "geolibre-tools"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "flate2",
  "freestiler-core",
@@ -963,13 +963,14 @@ dependencies = [
  "png 0.17.16",
  "serde_json",
  "wbcore",
+ "wblidar",
  "wbraster",
  "wbvector",
 ]
 
 [[package]]
 name = "geolibre-wasm"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "console_error_panic_hook",
  "geolibre-pmtiles",

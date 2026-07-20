@@ -117,15 +117,29 @@
 
       // Default filename for an output param. Don't assume .tif: prefer the
       // worked example value, then the "e.g. <path>" in the description (which
-      // carries the right extension, e.g. .parquet/.png, or a dir like tiles),
-      // then any ".ext" mentioned, and only then fall back to .tif.
+      // carries the right exact format, e.g. .parquet/.png, or a dir like
+      // tiles), then any ".ext" mentioned, then the manifest's dataset kind
+      // (a vector output defaults to .geojson, LiDAR to .laz, a table to
+      // .csv), and only then fall back to .tif.
       function outputDefault(tool, param, hint) {
         if (hint != null && String(hint).includes(".")) return basename(String(hint));
         const desc = param.description || "";
         const eg = desc.match(/e\.g\.?\s+([^\s,)]+)/i);
         if (eg) return basename(eg[1]);
         const ext = desc.match(/\.([a-z0-9]{2,8})\b/i);
-        return `${tool.id}.${ext ? ext[1] : "tif"}`;
+        if (ext) return `${tool.id}.${ext[1]}`;
+        if (/html/i.test(param.name)) return `${tool.id}.html`;
+        const KIND_EXT = {
+          vector: "geojson",
+          raster: "tif",
+          lidar: "laz",
+          table: "csv",
+          json: "json",
+          text: "txt",
+        };
+        const kind =
+          param.data_kind ?? (param.schema && param.schema.dataset && param.schema.dataset.kind);
+        return `${tool.id}.${KIND_EXT[kind] ?? "tif"}`;
       }
 
       // Best-known value for a param: prefer the worked example, fall back to the default.

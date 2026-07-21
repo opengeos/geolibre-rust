@@ -112,6 +112,8 @@ mod warp_raster;
 
 mod weighted_voronoi;
 
+mod pycnophylactic_interpolation;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -218,6 +220,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(generate_trend_raster::GenerateTrendRasterTool),
         Box::new(warp_raster::WarpRasterTool),
         Box::new(weighted_voronoi::WeightedVoronoiTool),
+        Box::new(pycnophylactic_interpolation::PycnophylacticInterpolationTool),
     ]
 }
 
@@ -804,6 +807,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cell_size", float()),
             ("margin", float()),
             ("epsg", int()),
+        ]),
+        "pycnophylactic_interpolation" => schemas(&[
+            ("input", vector_in()),
+            ("count_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("cell_size", float()),
+            ("iterations", int()),
+            ("tolerance", float()),
+            ("non_negative", ToolParamSchema::bool()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

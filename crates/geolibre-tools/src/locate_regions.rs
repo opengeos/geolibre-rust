@@ -444,7 +444,7 @@ mod tests {
             }
         }
         assert!(
-            total >= 20 && total <= 30,
+            (20..=30).contains(&total),
             "area near target 25, got {total}"
         );
         assert!(

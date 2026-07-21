@@ -12,6 +12,7 @@ mod apportion_polygon;
 mod assign_projection;
 mod build_balanced_zones;
 mod cartogram;
+mod central_feature;
 mod collapse_dual_lines_to_centerline;
 mod common;
 mod corridor;
@@ -115,6 +116,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(split_by_attributes::SplitByAttributesTool),
         Box::new(incremental_spatial_autocorrelation::IncrementalSpatialAutocorrelationTool),
         Box::new(apportion_polygon::ApportionPolygonTool),
+        Box::new(central_feature::CentralFeatureTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -450,6 +452,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["area", "weight"])),
             ("weight_field", ToolParamSchema::string()),
             ("suffix", ToolParamSchema::string()),
+        ]),
+        "central_feature" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("statistic", ToolParamSchema::enum_values(&["central_feature", "linear_directional_mean"])),
+            ("weight_field", ToolParamSchema::string()),
+            ("case_field", ToolParamSchema::string()),
+            ("distance", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
+            ("orientation_only", ToolParamSchema::bool()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

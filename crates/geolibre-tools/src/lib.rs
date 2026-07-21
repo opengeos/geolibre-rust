@@ -43,6 +43,7 @@ mod reproject_raster;
 mod ripleys_k;
 mod simplify_shared_edges;
 mod smooth_natural_features;
+mod smooth_shared_edges;
 mod spectral_index;
 mod tabulate_intersection;
 mod thin_road_network;
@@ -89,6 +90,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
+        Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -313,6 +315,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("tolerance", float()),
             ("simplify_boundary", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
+        ]),
+        "smooth_shared_edges" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("algorithm", ToolParamSchema::enum_values(&["paek", "bezier"])),
+            ("tolerance", float()),
+            ("smooth_boundary", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
         ]),
         "delineate_built_up_areas" => schemas(&[

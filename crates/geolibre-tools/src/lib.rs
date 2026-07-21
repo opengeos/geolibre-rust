@@ -39,6 +39,7 @@ mod reproject_raster;
 mod simplify_shared_edges;
 mod smooth_natural_features;
 mod spectral_index;
+mod tabulate_intersection;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -86,6 +87,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
         Box::new(directional_distribution::DirectionalDistributionTool),
+        Box::new(tabulate_intersection::TabulateIntersectionTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -338,6 +340,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("weight_field", ToolParamSchema::string()),
             ("case_field", ToolParamSchema::string()),
             ("n_std", int()),
+        ]),
+        "tabulate_intersection" => schemas(&[
+            ("input", vector_in()),
+            ("class_features", vector_in()),
+            ("output", vector_out()),
+            ("class_field", ToolParamSchema::string()),
+            ("sum_fields", ToolParamSchema::string()),
+            ("zone_field", ToolParamSchema::string()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

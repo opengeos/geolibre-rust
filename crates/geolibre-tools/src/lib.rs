@@ -108,6 +108,8 @@ mod bivariate_spatial_association;
 
 mod generate_trend_raster;
 
+mod warp_raster;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -212,6 +214,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spatial_outlier_detection::SpatialOutlierDetectionTool),
         Box::new(bivariate_spatial_association::BivariateSpatialAssociationTool),
         Box::new(generate_trend_raster::GenerateTrendRasterTool),
+        Box::new(warp_raster::WarpRasterTool),
     ]
 }
 
@@ -778,6 +781,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("intercept_output", raster_out()),
             ("significance_output", raster_out()),
             ("min_valid", int()),
+            ("band", int()),
+        ]),
+        "warp_raster" => schemas(&[
+            ("input", raster_in()),
+            ("gcps", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("transform", ToolParamSchema::enum_values(&["poly1", "poly2", "poly3"])),
+            ("resampling", ToolParamSchema::enum_values(&["nearest", "bilinear"])),
+            ("cell_size", float()),
+            ("epsg", int()),
             ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[

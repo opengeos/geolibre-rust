@@ -67,6 +67,7 @@ mod render;
 mod render_png;
 mod render_vector_png;
 mod reproject_raster;
+mod resolve_building_conflicts;
 mod ripleys_k;
 mod rubbersheet_features;
 mod similarity_search;
@@ -163,6 +164,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(time_series_clustering::TimeSeriesClusteringTool),
         Box::new(trace_proximity_events::TraceProximityEventsTool),
         Box::new(detect_image_anomalies::DetectImageAnomaliesTool),
+        Box::new(resolve_building_conflicts::ResolveBuildingConflictsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -515,6 +517,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "resolve_building_conflicts" => schemas(&[
+            ("buildings", vector_in()),
+            ("barriers", vector_in()),
+            ("output", vector_out()),
+            ("barrier_width", float()),
+            ("gap", float()),
+            ("min_size", float()),
+            ("hide", ToolParamSchema::bool()),
         ]),
         "detect_image_anomalies" => schemas(&[
             ("input", raster_in()),

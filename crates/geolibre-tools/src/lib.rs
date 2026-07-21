@@ -13,6 +13,7 @@ mod apportion_polygon;
 mod assign_projection;
 mod boundary_clean;
 mod build_balanced_zones;
+mod calculate_motion_statistics;
 mod cartogram;
 mod central_feature;
 mod collapse_dual_lines_to_centerline;
@@ -186,6 +187,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(vector_to_pmtiles::VectorToPmTilesTool),
         Box::new(pmtiles_extract::PmtilesExtractTool),
         Box::new(boundary_clean::BoundaryCleanTool),
+        Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
     ]
 }
 
@@ -681,6 +683,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max", float()),
             ("gamma", float()),
             ("band", int()),
+        ]),
+        "calculate_motion_statistics" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("window", int()),
+            ("idle_distance", float()),
+            ("idle_duration", float()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

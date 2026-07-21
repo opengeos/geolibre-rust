@@ -11,6 +11,7 @@ mod aggregate_polygons;
 mod assign_projection;
 mod build_balanced_zones;
 mod cartogram;
+mod collapse_dual_lines_to_centerline;
 mod common;
 mod corridor;
 mod cut_fill;
@@ -99,6 +100,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(line_of_sight::LineOfSightTool),
         Box::new(corridor::CorridorTool),
         Box::new(interpolate_shape::InterpolateShapeTool),
+        Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -372,6 +374,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
             ("attributes", ToolParamSchema::string()),
             ("band", int()),
+        ]),
+        "collapse_dual_lines_to_centerline" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_width", float()),
+            ("max_width", float()),
+            ("attribute", ToolParamSchema::string()),
+            ("sample_distance", float()),
+            ("min_overlap", float()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

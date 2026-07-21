@@ -102,6 +102,8 @@ mod color_polygons;
 
 mod dice;
 
+mod spatial_outlier_detection;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -203,6 +205,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(calculate_rates::CalculateRatesTool),
         Box::new(color_polygons::ColorPolygonsTool),
         Box::new(dice::DiceTool),
+        Box::new(spatial_outlier_detection::SpatialOutlierDetectionTool),
     ]
 }
 
@@ -744,6 +747,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("vertex_limit", int()),
+        ]),
+        "spatial_outlier_detection" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("neighbors", int()),
+            ("percent_outlier", float()),
+            ("threshold", float()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

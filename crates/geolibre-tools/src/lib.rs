@@ -45,6 +45,7 @@ mod simplify_shared_edges;
 mod smooth_natural_features;
 mod spectral_index;
 mod tabulate_intersection;
+mod thin_road_network;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -98,6 +99,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
         Box::new(build_balanced_zones::BuildBalancedZonesTool),
         Box::new(cartogram::CartogramTool),
+        Box::new(thin_road_network::ThinRoadNetworkTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -402,6 +404,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("value_field", ToolParamSchema::string()),
             ("method", ToolParamSchema::enum_values(&["non_contiguous", "dorling"])),
             ("iterations", int()),
+        ]),
+        "thin_road_network" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_length", float()),
+            ("hierarchy_field", ToolParamSchema::string()),
+            ("visibility_field", ToolParamSchema::string()),
+            ("keep_only", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

@@ -58,6 +58,7 @@ mod render_png;
 mod render_vector_png;
 mod reproject_raster;
 mod ripleys_k;
+mod rubbersheet_features;
 mod similarity_search;
 mod simplify_shared_edges;
 mod smooth_natural_features;
@@ -133,6 +134,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(similarity_search::SimilaritySearchTool),
         Box::new(detect_feature_changes::DetectFeatureChangesTool),
         Box::new(integrate::IntegrateTool),
+        Box::new(rubbersheet_features::RubbersheetFeaturesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -536,6 +538,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("tolerance", float()),
             ("snap_to_edges", ToolParamSchema::bool()),
+        ]),
+        "rubbersheet_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("links", vector_in()),
+            ("target", vector_in()),
+            ("search_distance", float()),
+            ("method", ToolParamSchema::enum_values(&["linear", "idw"])),
+            ("power", float()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

@@ -26,6 +26,7 @@ mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
 mod detect_feature_changes;
+mod detect_image_anomalies;
 mod directional_distribution;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
@@ -161,6 +162,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(path_distance::PathDistanceTool),
         Box::new(time_series_clustering::TimeSeriesClusteringTool),
         Box::new(trace_proximity_events::TraceProximityEventsTool),
+        Box::new(detect_image_anomalies::DetectImageAnomaliesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -513,6 +515,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "detect_image_anomalies" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("mode", ToolParamSchema::enum_values(&["global", "local"])),
+            ("window", int()),
+            ("threshold", float()),
+            ("mask_output", raster_out()),
         ]),
         "trace_proximity_events" => schemas(&[
             ("input", vector_in()),

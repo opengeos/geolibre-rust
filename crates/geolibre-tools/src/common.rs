@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use wbcore::{ToolArgs, ToolError};
-use wbraster::{memory_store, DataType, Raster, RasterFormat};
+use wbraster::{memory_store, DataType, Raster, RasterConfig, RasterFormat};
 
 /// Parses an optional string `output` parameter (absent / null / empty -> None).
 pub fn parse_optional_output<'a>(
@@ -102,15 +102,30 @@ pub fn band_to_vec(raster: &Raster, band: isize) -> Vec<f64> {
 
 /// Builds a new single-band raster that copies `template`'s geometry and CRS but
 /// uses the supplied data buffer, no-data value, and data type.
+///
+/// The backing store is allocated with `data_type` up front (a single band), so
+/// float scores survive even when the template raster is integer-typed or
+/// multi-band — `Raster::new_like` would otherwise inherit the template's type
+/// and band count and quantize the values on write.
 pub fn raster_like_with_data(
     template: &Raster,
     data: Vec<f64>,
     nodata: f64,
     data_type: DataType,
 ) -> Result<Raster, ToolError> {
-    let mut out = Raster::new_like(template);
-    out.nodata = nodata;
-    out.data_type = data_type;
+    let mut out = Raster::new(RasterConfig {
+        cols: template.cols,
+        rows: template.rows,
+        bands: 1,
+        x_min: template.x_min,
+        y_min: template.y_min,
+        cell_size: template.cell_size_x,
+        cell_size_y: Some(template.cell_size_y),
+        nodata,
+        data_type,
+        crs: template.crs.clone(),
+        metadata: template.metadata.clone(),
+    });
     let rows = out.rows;
     let cols = out.cols;
     if data.len() != rows * cols {

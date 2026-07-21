@@ -122,6 +122,8 @@ mod edgematch_features;
 
 mod landtrendr;
 
+mod local_outlier_analysis;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -233,6 +235,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(locate_regions::LocateRegionsTool),
         Box::new(edgematch_features::EdgematchFeaturesTool),
         Box::new(landtrendr::LandtrendrTool),
+        Box::new(local_outlier_analysis::LocalOutlierAnalysisTool),
     ]
 }
 
@@ -865,6 +868,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("spike_threshold", float()),
             ("min_valid", int()),
             ("band", int()),
+        ]),
+        "local_outlier_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("value_field", ToolParamSchema::string()),
+            ("time_step", float()),
+            ("resolution", int()),
+            ("kring", int()),
+            ("time_window", int()),
+            ("permutations", int()),
+            ("seed", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

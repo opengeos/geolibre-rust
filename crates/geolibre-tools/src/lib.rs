@@ -31,6 +31,7 @@ mod expand_shrink;
 mod extract_sinks;
 mod fill;
 mod fuzzy_overlay;
+mod generate_od_links;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
 mod geoparquet_io;
@@ -141,6 +142,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(snap_tracks::SnapTracksTool),
         Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
+        Box::new(generate_od_links::GenerateOdLinksTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -493,6 +495,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "generate_od_links" => schemas(&[
+            ("origins", vector_in()),
+            ("destinations", vector_in()),
+            ("output", vector_out()),
+            ("num_nearest", int()),
+            ("search_distance", float()),
+            ("id_field", ToolParamSchema::string()),
+            ("origin_id_field", ToolParamSchema::string()),
+            ("dest_id_field", ToolParamSchema::string()),
         ]),
         "fuzzy_overlay" => schemas(&[
             ("input", raster_in()),

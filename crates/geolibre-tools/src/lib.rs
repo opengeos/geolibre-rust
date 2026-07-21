@@ -106,6 +106,8 @@ mod spatial_outlier_detection;
 
 mod bivariate_spatial_association;
 
+mod generate_trend_raster;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -209,6 +211,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(dice::DiceTool),
         Box::new(spatial_outlier_detection::SpatialOutlierDetectionTool),
         Box::new(bivariate_spatial_association::BivariateSpatialAssociationTool),
+        Box::new(generate_trend_raster::GenerateTrendRasterTool),
     ]
 }
 
@@ -766,6 +769,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("neighbors", int()),
             ("permutations", int()),
             ("seed", int()),
+        ]),
+        "generate_trend_raster" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("times", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["linear", "mann_kendall"])),
+            ("intercept_output", raster_out()),
+            ("significance_output", raster_out()),
+            ("min_valid", int()),
+            ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

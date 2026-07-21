@@ -116,6 +116,8 @@ mod pycnophylactic_interpolation;
 
 mod cost_connectivity;
 
+mod locate_regions;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -224,6 +226,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(weighted_voronoi::WeightedVoronoiTool),
         Box::new(pycnophylactic_interpolation::PycnophylacticInterpolationTool),
         Box::new(cost_connectivity::CostConnectivityTool),
+        Box::new(locate_regions::LocateRegionsTool),
     ]
 }
 
@@ -826,6 +829,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("connections", ToolParamSchema::enum_values(&["mst", "all_neighbors"])),
             ("id_field", ToolParamSchema::string()),
+            ("band", int()),
+        ]),
+        "locate_regions" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("total_area", float()),
+            ("num_regions", int()),
+            ("shape", float()),
+            ("min_distance", float()),
             ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[

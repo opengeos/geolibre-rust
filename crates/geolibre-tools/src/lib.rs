@@ -12,6 +12,7 @@ mod assign_projection;
 mod build_balanced_zones;
 mod cartogram;
 mod common;
+mod corridor;
 mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
@@ -95,6 +96,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
         Box::new(line_of_sight::LineOfSightTool),
+        Box::new(corridor::CorridorTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -347,6 +349,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("observer_offset", float()),
             ("target_offset", float()),
             ("pair_field", ToolParamSchema::string()),
+            ("band", int()),
+        ]),
+        "corridor" => schemas(&[
+            ("cost1", raster_in()),
+            ("cost2", raster_in()),
+            ("cost", raster_in()),
+            ("source1", raster_in()),
+            ("source2", raster_in()),
+            ("output", raster_out()),
+            ("threshold", float()),
+            ("percent", float()),
             ("band", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[

@@ -72,6 +72,7 @@ mod snap_tracks;
 mod solar_radiation;
 mod spectral_index;
 mod split_by_attributes;
+mod storage_capacity;
 mod subdivide_polygon;
 mod tabulate_intersection;
 mod thin_road_network;
@@ -147,6 +148,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
         Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
+        Box::new(storage_capacity::StorageCapacityTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -498,6 +500,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("classes", ToolParamSchema::string()),
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
+            ("band", int()),
+        ]),
+        "storage_capacity" => schemas(&[
+            ("dem", raster_in()),
+            ("output", file_out()),
+            ("zones", vector_in()),
+            ("zone_id_field", ToolParamSchema::string()),
+            ("num_levels", int()),
+            ("increment", float()),
+            ("min_elevation", float()),
+            ("max_elevation", float()),
             ("band", int()),
         ]),
         "neighborhood_summary_statistics" => schemas(&[

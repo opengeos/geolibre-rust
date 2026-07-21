@@ -40,6 +40,7 @@ mod line_of_sight;
 mod h3_to_vector;
 mod hilbert;
 mod incremental_spatial_autocorrelation;
+mod integrate;
 mod lidar_common;
 mod multiple_ring_buffer;
 mod polygonize;
@@ -131,6 +132,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(colocation_analysis::ColocationAnalysisTool),
         Box::new(similarity_search::SimilaritySearchTool),
         Box::new(detect_feature_changes::DetectFeatureChangesTool),
+        Box::new(integrate::IntegrateTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -528,6 +530,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("search_distance", float()),
             ("spatial_tolerance", float()),
             ("compare_fields", ToolParamSchema::string()),
+        ]),
+        "integrate" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("snap_to_edges", ToolParamSchema::bool()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

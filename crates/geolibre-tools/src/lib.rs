@@ -32,6 +32,7 @@ mod generate_transects_along_lines;
 mod geographically_weighted_regression;
 mod geoparquet_io;
 mod h3_polyfill;
+mod hdbscan;
 mod interpolate_shape;
 mod line_of_sight;
 mod h3_to_vector;
@@ -123,6 +124,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(expand_shrink::ExpandShrinkTool),
         Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(solar_radiation::SolarRadiationTool),
+        Box::new(hdbscan::HdbscanTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -486,6 +488,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("dwells", vector_out()),
             ("dwell_distance", float()),
             ("dwell_min_duration", float()),
+        ]),
+        "hdbscan" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_cluster_size", int()),
+            ("min_samples", int()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

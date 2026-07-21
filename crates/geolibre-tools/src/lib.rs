@@ -51,6 +51,7 @@ mod simplify_shared_edges;
 mod smooth_natural_features;
 mod smooth_shared_edges;
 mod spectral_index;
+mod subdivide_polygon;
 mod tabulate_intersection;
 mod thin_road_network;
 mod vector_common;
@@ -103,6 +104,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
+        Box::new(subdivide_polygon::SubdividePolygonTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -392,6 +394,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_count", int()),
             ("id_field", ToolParamSchema::string()),
             ("report_ids", table_out()),
+        ]),
+        "subdivide_polygon" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["equal_parts", "equal_areas"])),
+            ("num_parts", int()),
+            ("target_area", float()),
+            ("angle", float()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

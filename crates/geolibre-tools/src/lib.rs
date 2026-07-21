@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_polygons;
+mod apportion_polygon;
 mod assign_projection;
 mod build_balanced_zones;
 mod cartogram;
@@ -113,6 +114,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(polygon_neighbors::PolygonNeighborsTool),
         Box::new(split_by_attributes::SplitByAttributesTool),
         Box::new(incremental_spatial_autocorrelation::IncrementalSpatialAutocorrelationTool),
+        Box::new(apportion_polygon::ApportionPolygonTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -439,6 +441,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("begin_distance", float()),
             ("increment", float()),
             ("num_bands", int()),
+        ]),
+        "apportion_polygon" => schemas(&[
+            ("target", vector_in()),
+            ("source", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["area", "weight"])),
+            ("weight_field", ToolParamSchema::string()),
+            ("suffix", ToolParamSchema::string()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

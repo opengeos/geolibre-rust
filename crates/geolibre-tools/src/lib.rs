@@ -10,6 +10,7 @@
 mod aggregate_polygons;
 mod assign_projection;
 mod common;
+mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
@@ -88,6 +89,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
         Box::new(directional_distribution::DirectionalDistributionTool),
         Box::new(tabulate_intersection::TabulateIntersectionTool),
+        Box::new(cut_fill::CutFillTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -348,6 +350,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("class_field", ToolParamSchema::string()),
             ("sum_fields", ToolParamSchema::string()),
             ("zone_field", ToolParamSchema::string()),
+        ]),
+        "cut_fill" => schemas(&[
+            ("input", raster_in()),
+            ("after", raster_in()),
+            ("plane", float()),
+            ("output", raster_out()),
+            ("band", int()),
+            ("tolerance", float()),
+            ("region_output", raster_out()),
+            ("csv_output", table_out()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

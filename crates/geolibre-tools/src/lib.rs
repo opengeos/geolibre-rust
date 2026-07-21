@@ -126,6 +126,8 @@ mod local_outlier_analysis;
 
 mod collapse_hydro_polygon;
 
+mod change_point_detection;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -239,6 +241,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(landtrendr::LandtrendrTool),
         Box::new(local_outlier_analysis::LocalOutlierAnalysisTool),
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
+        Box::new(change_point_detection::ChangePointDetectionTool),
     ]
 }
 
@@ -891,6 +894,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("sample_distance", float()),
             ("min_length", float()),
             ("retained", vector_out()),
+        ]),
+        "change_point_detection" => schemas(&[
+            ("input", vector_in()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("value_field", ToolParamSchema::string()),
+            ("change_type", ToolParamSchema::enum_values(&["mean", "slope"])),
+            ("method", ToolParamSchema::enum_values(&["auto", "defined"])),
+            ("num_change_points", int()),
+            ("sensitivity", float()),
+            ("time_step", float()),
+            ("resolution", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

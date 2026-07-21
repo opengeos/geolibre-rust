@@ -7,6 +7,7 @@
 //! Add a new tool by creating a module with a `Tool` impl and pushing it in
 //! [`geolibre_tools`].
 
+mod aggregate_polygons;
 mod assign_projection;
 mod common;
 mod delineate_built_up_areas;
@@ -80,6 +81,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
+        Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -302,6 +304,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_building_count", int()),
             ("min_area", float()),
             ("simplify_tolerance", float()),
+        ]),
+        "aggregate_polygons" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("aggregation_distance", float()),
+            ("min_area", float()),
+            ("min_hole_size", float()),
+            ("barrier", vector_in()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

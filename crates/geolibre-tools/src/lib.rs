@@ -50,6 +50,7 @@ mod integrate;
 mod lidar_common;
 mod multiple_ring_buffer;
 mod neighborhood_summary_statistics;
+mod path_distance;
 mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
@@ -155,6 +156,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
         Box::new(create_spatially_balanced_points::CreateSpatiallyBalancedPointsTool),
         Box::new(find_identical::FindIdenticalTool),
+        Box::new(path_distance::PathDistanceTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -506,6 +508,26 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("classes", ToolParamSchema::string()),
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
+            ("band", int()),
+        ]),
+        "path_distance" => schemas(&[
+            ("source", raster_in()),
+            ("output", raster_out()),
+            ("cost", raster_in()),
+            ("surface", raster_in()),
+            (
+                "vertical_factor",
+                ToolParamSchema::enum_values(&[
+                    "tobler",
+                    "linear",
+                    "sym_linear",
+                    "inverse_linear",
+                    "binary",
+                ]),
+            ),
+            ("slope_factor", float()),
+            ("zero_factor", float()),
+            ("max_slope", float()),
             ("band", int()),
         ]),
         "find_identical" => schemas(&[

@@ -56,6 +56,7 @@ mod render_png;
 mod render_vector_png;
 mod reproject_raster;
 mod ripleys_k;
+mod similarity_search;
 mod simplify_shared_edges;
 mod smooth_natural_features;
 mod smooth_shared_edges;
@@ -127,6 +128,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(solar_radiation::SolarRadiationTool),
         Box::new(hdbscan::HdbscanTool),
         Box::new(colocation_analysis::ColocationAnalysisTool),
+        Box::new(similarity_search::SimilaritySearchTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -507,6 +509,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("weight", ToolParamSchema::enum_values(&["gaussian", "uniform"])),
             ("permutations", int()),
             ("seed", int()),
+        ]),
+        "similarity_search" => schemas(&[
+            ("reference", vector_in()),
+            ("candidates", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("match_method", ToolParamSchema::enum_values(&["euclidean", "cosine"])),
+            ("most_or_least", ToolParamSchema::enum_values(&["most", "least", "both"])),
+            ("num_results", int()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

@@ -25,6 +25,7 @@ mod fill;
 mod geographically_weighted_regression;
 mod geoparquet_io;
 mod h3_polyfill;
+mod line_of_sight;
 mod h3_to_vector;
 mod hilbert;
 mod lidar_common;
@@ -93,6 +94,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
+        Box::new(line_of_sight::LineOfSightTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -336,6 +338,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("resolution", int()),
             ("neighborhood", int()),
             ("time_window", int()),
+        ]),
+        "line_of_sight" => schemas(&[
+            ("dem", raster_in()),
+            ("observers", vector_in()),
+            ("targets", vector_in()),
+            ("output", vector_out()),
+            ("observer_offset", float()),
+            ("target_offset", float()),
+            ("pair_field", ToolParamSchema::string()),
+            ("band", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

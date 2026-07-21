@@ -169,6 +169,19 @@ impl Tool for EliminatePolygonsTool {
             );
         }
 
+        // Extract boundary segments once and cache them: a sliver's are
+        // immutable, and a host's change only when it grows. This keeps the
+        // neighbor search off the repeated-extraction path — the dominant cost
+        // on dense coverages — without adding a spatial index.
+        let sliver_segs: BTreeMap<usize, Segments> = sliver_geom
+            .iter()
+            .map(|(&idx, mp)| (idx, Segments::of(mp)))
+            .collect();
+        let mut host_segs: BTreeMap<usize, Segments> = host_acc
+            .iter()
+            .map(|(&idx, mp)| (idx, Segments::of(mp)))
+            .collect();
+
         // Absorb slivers iteratively. Each pass, a sliver that shares a border
         // with some host is unioned into the best host (which then grows, so a
         // neighboring sliver can attach on a later pass). Stop when a pass
@@ -178,24 +191,20 @@ impl Tool for EliminatePolygonsTool {
         loop {
             let mut still: Vec<usize> = Vec::new();
             for &s in &remaining {
-                let sliver = &sliver_geom[&s];
-                let sliver_segs = Segments::of(sliver);
+                let s_segs = &sliver_segs[&s];
                 let mut best: Option<Choice> = None;
-                for (&h, hgeom) in &host_acc {
-                    if !sliver_segs
-                        .bbox
-                        .intersects(&Segments::bbox_of(hgeom), prm.tolerance)
-                    {
+                for (&h, h_segs) in &host_segs {
+                    if !s_segs.bbox.intersects(&h_segs.bbox, prm.tolerance) {
                         continue;
                     }
-                    let shared = sliver_segs.shared_border_len(hgeom, prm.tolerance);
+                    let shared = s_segs.shared_border_len(h_segs, prm.tolerance);
                     if shared <= prm.tolerance {
                         continue;
                     }
                     let cand = Choice {
                         host: h,
                         shared,
-                        area: hgeom.unsigned_area(),
+                        area: host_acc[&h].unsigned_area(),
                     };
                     if best.as_ref().is_none_or(|b| cand.beats(b, prm.strategy)) {
                         best = Some(cand);
@@ -203,7 +212,9 @@ impl Tool for EliminatePolygonsTool {
                 }
                 match best {
                     Some(choice) => {
-                        let grown = host_acc[&choice.host].union(sliver);
+                        let grown = host_acc[&choice.host].union(&sliver_geom[&s]);
+                        // Refresh the grown host's cached segments/bbox.
+                        host_segs.insert(choice.host, Segments::of(&grown));
                         host_acc.insert(choice.host, grown);
                         merged_hosts.insert(choice.host);
                     }
@@ -565,31 +576,12 @@ impl Segments {
         Self { segs, bbox }
     }
 
-    fn bbox_of(mp: &MultiPolygon) -> BBox {
-        let mut bbox = BBox::empty();
-        for poly in mp {
-            for ring in std::iter::once(poly.exterior()).chain(poly.interiors()) {
-                for c in &ring.0 {
-                    bbox.expand(c.x, c.y);
-                }
-            }
-        }
-        bbox
-    }
-
     /// Total length over which these segments are collinear (within `tol`) and
-    /// overlapping with the boundary of `other`.
-    fn shared_border_len(&self, other: &MultiPolygon, tol: f64) -> f64 {
-        let mut other_segs = Vec::new();
-        let mut other_bbox = BBox::empty();
-        for poly in other {
-            for ring in std::iter::once(poly.exterior()).chain(poly.interiors()) {
-                push_ring_segments(ring, &mut other_segs, &mut other_bbox);
-            }
-        }
+    /// overlapping with `other`'s segments.
+    fn shared_border_len(&self, other: &Segments, tol: f64) -> f64 {
         let mut total = 0.0;
         for &(p1, p2) in &self.segs {
-            for &(q1, q2) in &other_segs {
+            for &(q1, q2) in &other.segs {
                 total += collinear_overlap(p1, p2, q1, q2, tol);
             }
         }

@@ -23,6 +23,7 @@ mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
+mod detect_feature_changes;
 mod directional_distribution;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
@@ -129,6 +130,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(hdbscan::HdbscanTool),
         Box::new(colocation_analysis::ColocationAnalysisTool),
         Box::new(similarity_search::SimilaritySearchTool),
+        Box::new(detect_feature_changes::DetectFeatureChangesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -518,6 +520,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("match_method", ToolParamSchema::enum_values(&["euclidean", "cosine"])),
             ("most_or_least", ToolParamSchema::enum_values(&["most", "least", "both"])),
             ("num_results", int()),
+        ]),
+        "detect_feature_changes" => schemas(&[
+            ("update", vector_in()),
+            ("base", vector_in()),
+            ("output", vector_out()),
+            ("search_distance", float()),
+            ("spatial_tolerance", float()),
+            ("compare_fields", ToolParamSchema::string()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

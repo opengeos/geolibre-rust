@@ -1,14 +1,24 @@
 name: Deploy demo to Pages
 
+# Production deploy of the browser demo. It publishes to the root of the
+# `gh-pages` branch (served at https://opengeos.github.io/geolibre-rust/).
+#
+# Per-PR previews (see pages-preview.yml) publish to `pr-preview/pr-<N>/` on the
+# SAME branch, so production and every preview share one repo, one branch and
+# one Pages site. `keep_files: true` below is what makes that coexistence work:
+# a production deploy overwrites the demo files at the root but leaves the
+# `pr-preview/` subtree untouched, so open previews survive a push to main.
+#
+# One-time setup (repo admin): Settings -> Pages -> Build and deployment ->
+# Source = "Deploy from a branch" -> Branch = gh-pages / (root).
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -55,17 +65,15 @@ jobs:
           # an old cached loader with a freshly built module
           sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html
 
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - name: Publish to gh-pages (root)
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          # Overwrite the demo files but preserve the pr-preview/ subtree so open
+          # PR previews are not wiped by a production deploy.
+          keep_files: true
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "deploy: ${{ github.sha }}"

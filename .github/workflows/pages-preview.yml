@@ -1,0 +1,87 @@
+name: PR preview (GitHub Pages)
+
+# Builds the browser demo for every pull request and publishes it to the
+# `gh-pages` branch under `pr-preview/pr-<N>/`, then posts (and keeps updated) a
+# sticky comment with the URL. The preview is removed automatically when the PR
+# is closed or merged.
+#
+# Production (pages.yml) lives at the root of the same `gh-pages` branch and uses
+# `keep_files: true`, so production and every preview coexist on one Pages site:
+#   production:  https://opengeos.github.io/geolibre-rust/
+#   preview #N:  https://opengeos.github.io/geolibre-rust/pr-preview/pr-<N>/
+#
+# No external secrets are needed — this uses the built-in GITHUB_TOKEN.
+#
+# NOTE on fork PRs: forks do not get a write-scoped token, so the deploy to
+# gh-pages would fail. The job guard below skips fork PRs; previews run only for
+# branches pushed to this repo (maintainers and collaborators).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pages-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Build and deploy preview
+    runs-on: ubuntu-latest
+    # Skip fork PRs: they can't push to gh-pages, so the deploy would fail.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event.action != 'closed'
+        with:
+          targets: wasm32-wasip1, wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        if: github.event.action != 'closed'
+
+      - name: Install wasm-pack
+        if: github.event.action != 'closed'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install binaryen (wasm-opt)
+        if: github.event.action != 'closed'
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Install wasi-sdk (C toolchain so zstd-sys builds for wasm32-wasip1)
+        if: github.event.action != 'closed'
+        run: |
+          ver=33.0
+          curl -sL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-${ver}-x86_64-linux.tar.gz" | sudo tar xz -C /opt
+          sdk=/opt/wasi-sdk-${ver}-x86_64-linux
+          echo "CC_wasm32_wasip1=$sdk/bin/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_wasip1=$sdk/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "CFLAGS_wasm32_wasip1=--sysroot=$sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+
+      - name: Build both WASM artifacts and assemble the site
+        if: github.event.action != 'closed'
+        run: |
+          ./build.sh
+          mkdir -p site
+          cp demo/index.html           site/index.html
+          cp npm/tools.mjs             site/tools.mjs
+          cp npm/geolibre-cli.wasm     site/geolibre-cli.wasm
+          cp npm/geolibre_wasm.js      site/geolibre_wasm.js
+          cp npm/geolibre_wasm_bg.wasm site/geolibre_wasm_bg.wasm
+          cp examples/sample.tif       site/sample.tif
+          # cache-bust the glue + wasm together (unique per commit)
+          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html
+
+      - name: Deploy preview to gh-pages (pr-preview/pr-<N>/)
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./site
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview

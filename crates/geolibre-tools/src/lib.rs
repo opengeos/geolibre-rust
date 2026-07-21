@@ -37,6 +37,7 @@ mod render;
 mod render_png;
 mod render_vector_png;
 mod reproject_raster;
+mod ripleys_k;
 mod simplify_shared_edges;
 mod smooth_natural_features;
 mod spectral_index;
@@ -90,6 +91,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(directional_distribution::DirectionalDistributionTool),
         Box::new(tabulate_intersection::TabulateIntersectionTool),
         Box::new(cut_fill::CutFillTool),
+        Box::new(ripleys_k::RipleysKTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -360,6 +362,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tolerance", float()),
             ("region_output", raster_out()),
             ("csv_output", table_out()),
+        ]),
+        "ripleys_k" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("distance_bands", int()),
+            ("max_distance", float()),
+            ("permutations", int()),
+            ("weight_field", ToolParamSchema::string()),
+            ("seed", int()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

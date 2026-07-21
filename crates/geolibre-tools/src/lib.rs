@@ -22,6 +22,7 @@ mod h3_polyfill;
 mod h3_to_vector;
 mod hilbert;
 mod lidar_common;
+mod multiple_ring_buffer;
 mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
@@ -82,6 +83,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
+        Box::new(multiple_ring_buffer::MultipleRingBufferTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -312,6 +314,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_area", float()),
             ("min_hole_size", float()),
             ("barrier", vector_in()),
+        ]),
+        "multiple_ring_buffer" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("distances", ToolParamSchema::string()),
+            ("ring_type", ToolParamSchema::enum_values(&["rings", "disks"])),
+            ("dissolve", ToolParamSchema::enum_values(&["none", "per_ring"])),
+            ("distance_field", ToolParamSchema::string()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

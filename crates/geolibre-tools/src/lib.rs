@@ -30,6 +30,7 @@ mod emerging_hot_spot_analysis;
 mod expand_shrink;
 mod extract_sinks;
 mod fill;
+mod fuzzy_overlay;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
 mod geoparquet_io;
@@ -139,6 +140,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(rubbersheet_features::RubbersheetFeaturesTool),
         Box::new(snap_tracks::SnapTracksTool),
         Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
+        Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -490,6 +492,27 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("classes", ToolParamSchema::string()),
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
+            ("band", int()),
+        ]),
+        "fuzzy_overlay" => schemas(&[
+            ("input", raster_in()),
+            ("inputs", ToolParamSchema::string()),
+            ("output", raster_out()),
+            (
+                "function",
+                ToolParamSchema::enum_values(&[
+                    "linear", "gaussian", "small", "large", "ms_small", "ms_large",
+                ]),
+            ),
+            (
+                "overlay",
+                ToolParamSchema::enum_values(&["and", "or", "product", "sum", "gamma"]),
+            ),
+            ("midpoint", float()),
+            ("spread", float()),
+            ("min", float()),
+            ("max", float()),
+            ("gamma", float()),
             ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[

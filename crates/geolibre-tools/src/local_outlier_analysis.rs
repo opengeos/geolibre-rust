@@ -225,6 +225,7 @@ impl Tool for LocalOutlierAnalysisTool {
         out.add_field(FieldDef::new("mean_i", FieldType::Float));
 
         let mut total_outliers = 0i64;
+        #[allow(clippy::needless_range_loop)]
         for ci in 0..n_cells {
             let mut counts = [0i64; 4]; // HH, LL, HL, LH
             let mut mean_i = 0.0;

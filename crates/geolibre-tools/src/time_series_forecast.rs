@@ -259,6 +259,7 @@ fn holt(series: &[f64], h: usize) -> Vec<f64> {
     (1..=h).map(|k| level + k as f64 * trend).collect()
 }
 
+#[allow(clippy::needless_range_loop)]
 fn holt_fit(series: &[f64]) -> Vec<f64> {
     let (alpha, beta) = best_holt_params(series);
     let n = series.len();
@@ -274,6 +275,7 @@ fn holt_fit(series: &[f64]) -> Vec<f64> {
     fit
 }
 
+#[allow(clippy::needless_range_loop)]
 fn holt_state(series: &[f64], alpha: f64, beta: f64) -> (f64, f64) {
     let n = series.len();
     let mut level = series[0];
@@ -302,6 +304,7 @@ fn best_holt_params(series: &[f64]) -> (f64, f64) {
     best
 }
 
+#[allow(clippy::needless_range_loop)]
 fn holt_insample_sse(series: &[f64], alpha: f64, beta: f64) -> f64 {
     let n = series.len();
     let mut level = series[0];
@@ -369,6 +372,7 @@ fn eval_poly(coeffs: &[f64], x: f64) -> f64 {
         .sum()
 }
 
+#[allow(clippy::needless_range_loop)]
 fn solve(a: &mut [Vec<f64>], b: &mut [f64]) -> Option<Vec<f64>> {
     let n = b.len();
     for col in 0..n {

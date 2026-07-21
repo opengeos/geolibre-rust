@@ -96,6 +96,8 @@ mod sort_features;
 
 mod calculate_composite_index;
 
+mod calculate_rates;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -194,6 +196,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
         Box::new(sort_features::SortFeaturesTool),
         Box::new(calculate_composite_index::CalculateCompositeIndexTool),
+        Box::new(calculate_rates::CalculateRatesTool),
     ]
 }
 
@@ -714,6 +717,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("weights", ToolParamSchema::string()),
             ("combine", ToolParamSchema::enum_values(&["mean", "sum", "geometric_mean"])),
             ("output_range", ToolParamSchema::enum_values(&["minmax", "zero_to_100", "zscore", "none"])),
+        ]),
+        "calculate_rates" => schemas(&[
+            ("input", vector_in()),
+            ("count_field", ToolParamSchema::string()),
+            ("population_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["crude", "eb_global", "eb_spatial"])),
+            ("per", float()),
+            ("neighbors", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

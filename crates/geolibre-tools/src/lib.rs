@@ -32,6 +32,7 @@ mod render;
 mod render_png;
 mod render_vector_png;
 mod reproject_raster;
+mod simplify_shared_edges;
 mod smooth_natural_features;
 mod spectral_index;
 mod vector_common;
@@ -76,6 +77,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
+        Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -283,6 +285,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("exclude", ToolParamSchema::string()),
             ("strategy", ToolParamSchema::enum_values(&["longest_border", "largest_area"])),
             ("tolerance", float()),
+        ]),
+        "simplify_shared_edges" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("simplify_boundary", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

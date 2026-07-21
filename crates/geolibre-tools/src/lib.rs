@@ -124,6 +124,8 @@ mod landtrendr;
 
 mod local_outlier_analysis;
 
+mod collapse_hydro_polygon;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -236,6 +238,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(edgematch_features::EdgematchFeaturesTool),
         Box::new(landtrendr::LandtrendrTool),
         Box::new(local_outlier_analysis::LocalOutlierAnalysisTool),
+        Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
     ]
 }
 
@@ -880,6 +883,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("time_window", int()),
             ("permutations", int()),
             ("seed", int()),
+        ]),
+        "collapse_hydro_polygon" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("collapse_width", float()),
+            ("sample_distance", float()),
+            ("min_length", float()),
+            ("retained", vector_out()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

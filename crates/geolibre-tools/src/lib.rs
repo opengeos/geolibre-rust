@@ -38,6 +38,7 @@ mod multiple_ring_buffer;
 mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
+mod polygon_neighbors;
 mod raster_normalize;
 mod raster_to_h3;
 mod raster_to_tiles;
@@ -107,6 +108,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
         Box::new(subdivide_polygon::SubdividePolygonTool),
         Box::new(generate_transects_along_lines::GenerateTransectsAlongLinesTool),
+        Box::new(polygon_neighbors::PolygonNeighborsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -412,6 +414,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("length", float()),
             ("offset", float()),
             ("include_ends", ToolParamSchema::bool()),
+        ]),
+        "polygon_neighbors" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("id_field", ToolParamSchema::string()),
+            ("both_sides", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

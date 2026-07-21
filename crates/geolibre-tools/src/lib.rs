@@ -7,6 +7,7 @@
 //! Add a new tool by creating a module with a `Tool` impl and pushing it in
 //! [`geolibre_tools`].
 
+mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
 mod assign_projection;
@@ -141,6 +142,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(snap_tracks::SnapTracksTool),
         Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
+        Box::new(aggregate_points::AggregatePointsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -493,6 +495,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "aggregate_points" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("aggregation_distance", float()),
+            ("min_points", int()),
+            ("method", ToolParamSchema::enum_values(&["convex_hull", "buffer"])),
+            ("sum_fields", ToolParamSchema::string()),
         ]),
         "fuzzy_overlay" => schemas(&[
             ("input", raster_in()),

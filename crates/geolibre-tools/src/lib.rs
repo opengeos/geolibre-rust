@@ -104,6 +104,8 @@ mod dice;
 
 mod spatial_outlier_detection;
 
+mod bivariate_spatial_association;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -206,6 +208,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(color_polygons::ColorPolygonsTool),
         Box::new(dice::DiceTool),
         Box::new(spatial_outlier_detection::SpatialOutlierDetectionTool),
+        Box::new(bivariate_spatial_association::BivariateSpatialAssociationTool),
     ]
 }
 
@@ -754,6 +757,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("neighbors", int()),
             ("percent_outlier", float()),
             ("threshold", float()),
+        ]),
+        "bivariate_spatial_association" => schemas(&[
+            ("input", vector_in()),
+            ("x_field", ToolParamSchema::string()),
+            ("y_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("neighbors", int()),
+            ("permutations", int()),
+            ("seed", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

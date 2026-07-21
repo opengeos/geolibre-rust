@@ -80,6 +80,7 @@ mod storage_capacity;
 mod subdivide_polygon;
 mod tabulate_intersection;
 mod thin_road_network;
+mod time_series_clustering;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -157,6 +158,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(create_spatially_balanced_points::CreateSpatiallyBalancedPointsTool),
         Box::new(find_identical::FindIdenticalTool),
         Box::new(path_distance::PathDistanceTool),
+        Box::new(time_series_clustering::TimeSeriesClusteringTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -509,6 +511,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "time_series_clustering" => schemas(&[
+            ("input", vector_in()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("num_clusters", int()),
+            (
+                "characteristic",
+                ToolParamSchema::enum_values(&["value", "profile", "correlation"]),
+            ),
+            ("time_step", ToolParamSchema::string()),
+            ("value_field", ToolParamSchema::string()),
+            ("resolution", int()),
+            ("seed", int()),
         ]),
         "path_distance" => schemas(&[
             ("source", raster_in()),

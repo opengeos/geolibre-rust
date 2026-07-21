@@ -33,6 +33,7 @@ mod interpolate_shape;
 mod line_of_sight;
 mod h3_to_vector;
 mod hilbert;
+mod incremental_spatial_autocorrelation;
 mod lidar_common;
 mod multiple_ring_buffer;
 mod polygonize;
@@ -111,6 +112,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(generate_transects_along_lines::GenerateTransectsAlongLinesTool),
         Box::new(polygon_neighbors::PolygonNeighborsTool),
         Box::new(split_by_attributes::SplitByAttributesTool),
+        Box::new(incremental_spatial_autocorrelation::IncrementalSpatialAutocorrelationTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -429,6 +431,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output_dir", file_out()),
             ("fields", ToolParamSchema::string()),
             ("format", ToolParamSchema::enum_values(&["geojson", "fgb", "parquet", "shp"])),
+        ]),
+        "incremental_spatial_autocorrelation" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("begin_distance", float()),
+            ("increment", float()),
+            ("num_bands", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

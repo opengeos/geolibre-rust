@@ -19,6 +19,7 @@ mod directional_distribution;
 mod eliminate_polygons;
 mod extract_sinks;
 mod fill;
+mod geographically_weighted_regression;
 mod geoparquet_io;
 mod h3_polyfill;
 mod h3_to_vector;
@@ -92,6 +93,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(tabulate_intersection::TabulateIntersectionTool),
         Box::new(cut_fill::CutFillTool),
         Box::new(ripleys_k::RipleysKTool),
+        Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -371,6 +373,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("permutations", int()),
             ("weight_field", ToolParamSchema::string()),
             ("seed", int()),
+        ]),
+        "geographically_weighted_regression" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("y_field", ToolParamSchema::string()),
+            ("x_fields", ToolParamSchema::string()),
+            ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
+            ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
+            ("bandwidth", float()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

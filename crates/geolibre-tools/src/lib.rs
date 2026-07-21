@@ -46,6 +46,7 @@ mod incremental_spatial_autocorrelation;
 mod integrate;
 mod lidar_common;
 mod multiple_ring_buffer;
+mod neighborhood_summary_statistics;
 mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
@@ -145,6 +146,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
+        Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -497,6 +499,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "neighborhood_summary_statistics" => schemas(&[
+            ("input", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("output", vector_out()),
+            (
+                "neighborhood",
+                ToolParamSchema::enum_values(&["knn", "distance_band", "contiguity"]),
+            ),
+            ("neighbors", int()),
+            ("distance", float()),
+            ("weights", ToolParamSchema::enum_values(&["uniform", "inverse_distance"])),
         ]),
         "generate_od_links" => schemas(&[
             ("origins", vector_in()),

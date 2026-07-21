@@ -100,6 +100,8 @@ mod calculate_rates;
 
 mod color_polygons;
 
+mod dice;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -200,6 +202,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(calculate_composite_index::CalculateCompositeIndexTool),
         Box::new(calculate_rates::CalculateRatesTool),
         Box::new(color_polygons::ColorPolygonsTool),
+        Box::new(dice::DiceTool),
     ]
 }
 
@@ -736,6 +739,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("field", ToolParamSchema::string()),
             ("adjacency", ToolParamSchema::enum_values(&["edge", "edge_or_corner"])),
             ("snap_tolerance", float()),
+        ]),
+        "dice" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("vertex_limit", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

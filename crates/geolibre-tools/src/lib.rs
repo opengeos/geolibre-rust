@@ -57,6 +57,7 @@ mod ripleys_k;
 mod simplify_shared_edges;
 mod smooth_natural_features;
 mod smooth_shared_edges;
+mod solar_radiation;
 mod spectral_index;
 mod split_by_attributes;
 mod subdivide_polygon;
@@ -121,6 +122,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(central_feature::CentralFeatureTool),
         Box::new(expand_shrink::ExpandShrinkTool),
         Box::new(reconstruct_tracks::ReconstructTracksTool),
+        Box::new(solar_radiation::SolarRadiationTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -484,6 +486,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("dwells", vector_out()),
             ("dwell_distance", float()),
             ("dwell_min_duration", float()),
+        ]),
+        "solar_radiation" => schemas(&[
+            ("dem", raster_in()),
+            ("output", raster_out()),
+            ("direct_output", raster_out()),
+            ("diffuse_output", raster_out()),
+            ("start_day", ToolParamSchema::string()),
+            ("end_day", ToolParamSchema::string()),
+            ("day_interval", int()),
+            ("time_step", float()),
+            ("latitude", float()),
+            ("transmittivity", float()),
+            ("diffuse_proportion", float()),
+            ("horizon_distance", int()),
+            ("band", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

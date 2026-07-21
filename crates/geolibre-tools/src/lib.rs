@@ -14,6 +14,7 @@ mod build_balanced_zones;
 mod cartogram;
 mod central_feature;
 mod collapse_dual_lines_to_centerline;
+mod colocation_analysis;
 mod common;
 mod corridor;
 mod count_overlapping_features;
@@ -125,6 +126,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(solar_radiation::SolarRadiationTool),
         Box::new(hdbscan::HdbscanTool),
+        Box::new(colocation_analysis::ColocationAnalysisTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -494,6 +496,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("min_cluster_size", int()),
             ("min_samples", int()),
+        ]),
+        "colocation_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("category_field", ToolParamSchema::string()),
+            ("category_a", ToolParamSchema::string()),
+            ("category_b", ToolParamSchema::string()),
+            ("neighbors", int()),
+            ("weight", ToolParamSchema::enum_values(&["gaussian", "uniform"])),
+            ("permutations", int()),
+            ("seed", int()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

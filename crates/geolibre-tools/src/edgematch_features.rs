@@ -282,7 +282,7 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             ))
         }
     };
-    if !(tolerance > 0.0) {
+    if tolerance <= 0.0 || tolerance.is_nan() {
         return Err(ToolError::Validation("'tolerance' must be positive".into()));
     }
     let method = match args.get("method").and_then(Value::as_str).map(str::trim) {

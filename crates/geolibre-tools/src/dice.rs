@@ -23,7 +23,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbvector::{Coord, Feature, Geometry, GeometryType, Layer, Ring};
+use wbvector::{Coord, Feature, Geometry, Layer, Ring};
 
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
 
@@ -450,7 +450,7 @@ fn parse_vertex_limit(args: &ToolArgs) -> Result<usize, ToolError> {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbvector::{memory_store, FieldDef, FieldType};
+    use wbvector::{memory_store, FieldDef, FieldType, GeometryType};
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

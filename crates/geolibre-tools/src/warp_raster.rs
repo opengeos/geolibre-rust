@@ -334,6 +334,7 @@ fn eval(coeffs: &[f64], x: f64, y: f64, order: Order) -> f64 {
 }
 
 /// Gaussian elimination with partial pivoting; solves `a x = b` in place.
+#[allow(clippy::needless_range_loop)]
 fn solve(a: &mut [Vec<f64>], b: &mut [f64]) -> Option<Vec<f64>> {
     let n = b.len();
     for col in 0..n {

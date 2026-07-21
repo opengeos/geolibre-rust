@@ -321,7 +321,7 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             ))
         }
     };
-    if !(collapse_width > 0.0) {
+    if collapse_width <= 0.0 || collapse_width.is_nan() {
         return Err(ToolError::Validation(
             "'collapse_width' must be positive".into(),
         ));

@@ -92,6 +92,8 @@ mod vector_to_h3;
 mod vector_to_pmtiles;
 mod write_pmtiles;
 
+mod sort_features;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -188,6 +190,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(pmtiles_extract::PmtilesExtractTool),
         Box::new(boundary_clean::BoundaryCleanTool),
         Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
+        Box::new(sort_features::SortFeaturesTool),
     ]
 }
 
@@ -692,6 +695,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("window", int()),
             ("idle_distance", float()),
             ("idle_duration", float()),
+        ]),
+        "sort_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["hilbert", "attribute"])),
+            ("fields", ToolParamSchema::string()),
+            ("index_field", ToolParamSchema::string()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

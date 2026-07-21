@@ -54,6 +54,7 @@ mod raster_to_tiles;
 mod reconstruct_tracks;
 mod regions;
 mod regularize_building_footprints;
+mod remove_overlap_multiple;
 mod render;
 mod render_png;
 mod render_vector_png;
@@ -138,6 +139,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(integrate::IntegrateTool),
         Box::new(rubbersheet_features::RubbersheetFeaturesTool),
         Box::new(snap_tracks::SnapTracksTool),
+        Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
@@ -572,6 +574,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("search_distance", float()),
             ("method", ToolParamSchema::enum_values(&["linear", "idw"])),
             ("power", float()),
+        ]),
+        "remove_overlap_multiple" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["center_line", "thiessen"])),
+            ("grid_resolution", int()),
         ]),
         "snap_tracks" => schemas(&[
             ("input", vector_in()),

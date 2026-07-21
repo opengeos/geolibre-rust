@@ -31,6 +31,7 @@ mod emerging_hot_spot_analysis;
 mod expand_shrink;
 mod extract_sinks;
 mod fill;
+mod find_space_time_matches;
 mod fuzzy_overlay;
 mod generate_od_links;
 mod generate_transects_along_lines;
@@ -149,6 +150,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(generate_od_links::GenerateOdLinksTool),
         Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
         Box::new(storage_capacity::StorageCapacityTool),
+        Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -501,6 +503,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "find_space_time_matches" => schemas(&[
+            ("primary", vector_in()),
+            ("secondary", vector_in()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("search_distance", float()),
+            ("time_window", ToolParamSchema::string()),
+            (
+                "temporal_relationship",
+                ToolParamSchema::enum_values(&["either", "before", "after"]),
+            ),
+            ("primary_id_field", ToolParamSchema::string()),
+            ("secondary_id_field", ToolParamSchema::string()),
         ]),
         "storage_capacity" => schemas(&[
             ("dem", raster_in()),

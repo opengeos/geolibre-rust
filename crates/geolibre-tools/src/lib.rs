@@ -114,6 +114,8 @@ mod weighted_voronoi;
 
 mod pycnophylactic_interpolation;
 
+mod cost_connectivity;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -221,6 +223,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(warp_raster::WarpRasterTool),
         Box::new(weighted_voronoi::WeightedVoronoiTool),
         Box::new(pycnophylactic_interpolation::PycnophylacticInterpolationTool),
+        Box::new(cost_connectivity::CostConnectivityTool),
     ]
 }
 
@@ -816,6 +819,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("iterations", int()),
             ("tolerance", float()),
             ("non_negative", ToolParamSchema::bool()),
+        ]),
+        "cost_connectivity" => schemas(&[
+            ("sources", vector_in()),
+            ("cost", raster_in()),
+            ("output", vector_out()),
+            ("connections", ToolParamSchema::enum_values(&["mst", "all_neighbors"])),
+            ("id_field", ToolParamSchema::string()),
+            ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

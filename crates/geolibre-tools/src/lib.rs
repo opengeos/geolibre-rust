@@ -14,6 +14,7 @@ mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
+mod directional_distribution;
 mod eliminate_polygons;
 mod extract_sinks;
 mod fill;
@@ -84,6 +85,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
+        Box::new(directional_distribution::DirectionalDistributionTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -322,6 +324,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("ring_type", ToolParamSchema::enum_values(&["rings", "disks"])),
             ("dissolve", ToolParamSchema::enum_values(&["none", "per_ring"])),
             ("distance_field", ToolParamSchema::string()),
+        ]),
+        "directional_distribution" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("statistic", ToolParamSchema::enum_values(&[
+                "mean_center",
+                "median_center",
+                "central_feature",
+                "standard_distance",
+                "standard_deviational_ellipse",
+            ])),
+            ("weight_field", ToolParamSchema::string()),
+            ("case_field", ToolParamSchema::string()),
+            ("n_std", int()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

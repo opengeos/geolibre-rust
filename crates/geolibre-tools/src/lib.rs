@@ -63,6 +63,7 @@ mod similarity_search;
 mod simplify_shared_edges;
 mod smooth_natural_features;
 mod smooth_shared_edges;
+mod snap_tracks;
 mod solar_radiation;
 mod spectral_index;
 mod split_by_attributes;
@@ -135,6 +136,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_feature_changes::DetectFeatureChangesTool),
         Box::new(integrate::IntegrateTool),
         Box::new(rubbersheet_features::RubbersheetFeaturesTool),
+        Box::new(snap_tracks::SnapTracksTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -547,6 +549,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("search_distance", float()),
             ("method", ToolParamSchema::enum_values(&["linear", "idw"])),
             ("power", float()),
+        ]),
+        "snap_tracks" => schemas(&[
+            ("input", vector_in()),
+            ("network", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("search_distance", float()),
+            ("max_candidates", int()),
         ]),
         "solar_radiation" => schemas(&[
             ("dem", raster_in()),

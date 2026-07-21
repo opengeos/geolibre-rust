@@ -128,6 +128,8 @@ mod collapse_hydro_polygon;
 
 mod change_point_detection;
 
+mod time_series_forecast;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -242,6 +244,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(local_outlier_analysis::LocalOutlierAnalysisTool),
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
+        Box::new(time_series_forecast::TimeSeriesForecastTool),
     ]
 }
 
@@ -904,6 +907,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["auto", "defined"])),
             ("num_change_points", int()),
             ("sensitivity", float()),
+            ("time_step", float()),
+            ("resolution", int()),
+        ]),
+        "time_series_forecast" => schemas(&[
+            ("input", vector_in()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("value_field", ToolParamSchema::string()),
+            ("steps", int()),
+            ("model", ToolParamSchema::enum_values(&["auto", "exp_smoothing", "linear", "parabolic"])),
+            ("holdout", int()),
             ("time_step", float()),
             ("resolution", int()),
         ]),

@@ -19,6 +19,7 @@ mod colocation_analysis;
 mod common;
 mod corridor;
 mod count_overlapping_features;
+mod create_spatially_balanced_points;
 mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
@@ -151,6 +152,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
         Box::new(storage_capacity::StorageCapacityTool),
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
+        Box::new(create_spatially_balanced_points::CreateSpatiallyBalancedPointsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -503,6 +505,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "create_spatially_balanced_points" => schemas(&[
+            ("constraint", vector_in()),
+            ("output", vector_out()),
+            ("num_points", int()),
+            ("probability", raster_in()),
+            ("seed", int()),
         ]),
         "find_space_time_matches" => schemas(&[
             ("primary", vector_in()),

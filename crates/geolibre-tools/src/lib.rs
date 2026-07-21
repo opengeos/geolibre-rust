@@ -32,6 +32,7 @@ mod emerging_hot_spot_analysis;
 mod expand_shrink;
 mod extract_sinks;
 mod fill;
+mod find_identical;
 mod find_space_time_matches;
 mod fuzzy_overlay;
 mod generate_od_links;
@@ -153,6 +154,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(storage_capacity::StorageCapacityTool),
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
         Box::new(create_spatially_balanced_points::CreateSpatiallyBalancedPointsTool),
+        Box::new(find_identical::FindIdenticalTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -505,6 +507,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "find_identical" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("fields", ToolParamSchema::string()),
+            ("compare_geometry", ToolParamSchema::bool()),
+            ("xy_tolerance", float()),
+            ("mode", ToolParamSchema::enum_values(&["report", "delete"])),
         ]),
         "create_spatially_balanced_points" => schemas(&[
             ("constraint", vector_in()),

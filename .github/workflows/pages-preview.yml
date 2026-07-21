@@ -6,9 +6,11 @@ name: PR preview (GitHub Pages)
 # is closed or merged.
 #
 # Production (pages.yml) lives at the root of the same `gh-pages` branch and uses
-# `keep_files: true`, so production and every preview coexist on one Pages site:
-#   production:  https://opengeos.github.io/geolibre-rust/
-#   preview #N:  https://opengeos.github.io/geolibre-rust/pr-preview/pr-<N>/
+# `keep_files: true`, so production and every preview coexist on one Pages site.
+# The site is served from the org custom domain (opengeos.github.io inherits
+# opengeos.org), so:
+#   production:  https://opengeos.org/geolibre-rust/
+#   preview #N:  https://opengeos.org/geolibre-rust/pr-preview/pr-<N>/
 #
 # No external secrets are needed — this uses the built-in GITHUB_TOKEN.
 #
@@ -85,3 +87,8 @@ jobs:
           source-dir: ./site
           preview-branch: gh-pages
           umbrella-dir: pr-preview
+          # Serve from the org custom domain so the comment links to
+          # https://opengeos.org/geolibre-rust/pr-preview/pr-<N>/ rather than the
+          # default *.github.io URL. The action posts (and updates) a sticky PR
+          # comment with this URL on every run, and removes it when the PR closes.
+          pages-base-url: opengeos.org/geolibre-rust

@@ -1,7 +1,8 @@
 name: Deploy demo to Pages
 
 # Production deploy of the browser demo. It publishes to the root of the
-# `gh-pages` branch (served at https://opengeos.github.io/geolibre-rust/).
+# `gh-pages` branch, served from the org custom domain (opengeos.github.io
+# inherits opengeos.org) at https://opengeos.org/geolibre-rust/.
 #
 # Per-PR previews (see pages-preview.yml) publish to `pr-preview/pr-<N>/` on the
 # SAME branch, so production and every preview share one repo, one branch and

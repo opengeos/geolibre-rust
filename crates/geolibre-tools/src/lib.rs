@@ -25,6 +25,7 @@ mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod extract_sinks;
 mod fill;
+mod generate_transects_along_lines;
 mod geographically_weighted_regression;
 mod geoparquet_io;
 mod h3_polyfill;
@@ -105,6 +106,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
         Box::new(subdivide_polygon::SubdividePolygonTool),
+        Box::new(generate_transects_along_lines::GenerateTransectsAlongLinesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -402,6 +404,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("num_parts", int()),
             ("target_area", float()),
             ("angle", float()),
+        ]),
+        "generate_transects_along_lines" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("interval", float()),
+            ("length", float()),
+            ("offset", float()),
+            ("include_ends", ToolParamSchema::bool()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

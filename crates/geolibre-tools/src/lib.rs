@@ -9,6 +9,7 @@
 
 mod assign_projection;
 mod common;
+mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
@@ -78,6 +79,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
+        Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -292,6 +294,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tolerance", float()),
             ("simplify_boundary", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
+        ]),
+        "delineate_built_up_areas" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("grouping_distance", float()),
+            ("min_building_count", int()),
+            ("min_area", float()),
+            ("simplify_tolerance", float()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

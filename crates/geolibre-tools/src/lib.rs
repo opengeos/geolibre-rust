@@ -11,6 +11,7 @@ mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
 mod assign_projection;
+mod boundary_clean;
 mod build_balanced_zones;
 mod cartogram;
 mod central_feature;
@@ -184,6 +185,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(write_pmtiles::WritePmTilesTool),
         Box::new(vector_to_pmtiles::VectorToPmTilesTool),
         Box::new(pmtiles_extract::PmtilesExtractTool),
+        Box::new(boundary_clean::BoundaryCleanTool),
     ]
 }
 
@@ -509,6 +511,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("case_field", ToolParamSchema::string()),
             ("distance", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
             ("orientation_only", ToolParamSchema::bool()),
+        ]),
+        "boundary_clean" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("method", ToolParamSchema::enum_values(&["majority", "expand_shrink"])),
+            ("neighbors", int()),
+            ("threshold", ToolParamSchema::enum_values(&["majority", "half"])),
+            ("iterations", int()),
+            ("sort", ToolParamSchema::enum_values(&["descending", "ascending", "none"])),
+            ("band", int()),
         ]),
         "expand_shrink" => schemas(&[
             ("input", raster_in()),

@@ -25,6 +25,7 @@ mod dem_filter;
 mod directional_distribution;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
+mod expand_shrink;
 mod extract_sinks;
 mod fill;
 mod generate_transects_along_lines;
@@ -117,6 +118,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(incremental_spatial_autocorrelation::IncrementalSpatialAutocorrelationTool),
         Box::new(apportion_polygon::ApportionPolygonTool),
         Box::new(central_feature::CentralFeatureTool),
+        Box::new(expand_shrink::ExpandShrinkTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -461,6 +463,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("case_field", ToolParamSchema::string()),
             ("distance", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
             ("orientation_only", ToolParamSchema::bool()),
+        ]),
+        "expand_shrink" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("classes", ToolParamSchema::string()),
+            ("cells", int()),
+            ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
+            ("band", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

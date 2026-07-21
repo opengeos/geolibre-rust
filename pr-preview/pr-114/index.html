@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>geolibre-rust demo</title>
+    <!-- tools.mjs imports the WASI shim by bare specifier; resolve it from a CDN
+         so this static page needs no bundler. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@bjorn3/browser_wasi_shim": "https://esm.sh/@bjorn3/browser_wasi_shim@0.4.2"
+        }
+      }
+    </script>
+    <style>
+      :root { color-scheme: light dark; --line: rgba(127,127,127,0.3); --soft: rgba(127,127,127,0.12); }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; max-width: 1080px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+      h1 { margin-bottom: 0.25rem; }
+      h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+      .muted { opacity: 0.7; }
+      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+      input, select { font: inherit; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+      /* Let the native control + its option popup follow the OS theme so text
+         keeps proper contrast in dark mode (transparent/inherit breaks it). */
+      select, select option { color-scheme: light dark; background-color: Field; color: FieldText; }
+      input[type="search"] { width: 100%; }
+      pre { background: var(--soft); padding: 0.75rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+      code { font-family: ui-monospace, monospace; }
+      .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0; }
+      .grid { display: grid; grid-template-columns: 320px 1fr; gap: 1.25rem; align-items: start; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      .list { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+      .list .item { padding: 0.5rem 0.6rem; cursor: pointer; border-bottom: 1px solid var(--line); }
+      .list .item:last-child { border-bottom: none; }
+      .list .item:hover { background: var(--soft); }
+      .list .item.active { background: #2563eb22; box-shadow: inset 3px 0 0 #2563eb; }
+      .list .item .name { font-weight: 600; font-size: 0.9rem; }
+      .list .item .sum { font-size: 0.78rem; opacity: 0.7; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .panel { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; }
+      .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--soft); margin-left: 0.4rem; vertical-align: middle; }
+      .field { margin: 0.7rem 0; }
+      .field label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.2rem; }
+      .field label .req { color: #dc2626; }
+      .field .desc { font-size: 0.78rem; opacity: 0.7; margin-bottom: 0.3rem; }
+      .field input[type="text"], .field input[type="number"], .field select { width: 100%; }
+      .placeholder { opacity: 0.6; padding: 2rem 1rem; text-align: center; }
+      .src { display: inline-block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.03em; padding: 0.05rem 0.35rem; border-radius: 4px; vertical-align: middle; }
+      .src.geolibre { background: #2563eb; color: #fff; }
+      .src.whitebox { background: rgba(127,127,127,0.22); color: inherit; }
+      .list .item .name { display: flex; align-items: center; gap: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    <h1>geolibre-rust</h1>
+    <p class="muted">
+      The <code>whitebox_next_gen</code> tool suite plus GeoLibre's own tools,
+      compiled to WebAssembly (WASI) and running entirely in your browser.
+      Pick any tool, fill in its parameters, and run it on a sample DEM (or your own GeoTIFF).
+    </p>
+
+    <div class="row"><strong id="status">Loading WASM runtime...</strong></div>
+
+    <div class="grid">
+      <div>
+        <input type="search" id="filter" placeholder="Filter tools by name, summary, or tag..." disabled />
+        <select id="category" disabled style="width:100%;margin-top:0.5rem;">
+          <option value="">All categories</option>
+        </select>
+        <select id="source" disabled style="width:100%;margin-top:0.5rem;">
+          <option value="">All sources</option>
+          <option value="geolibre">GeoLibre tools</option>
+          <option value="whitebox">Whitebox tools</option>
+        </select>
+        <p class="muted" style="margin:0.3rem 0;font-size:0.8rem;">
+          <span id="count">0</span> tools
+        </p>
+        <div class="list" id="tools"></div>
+      </div>
+
+      <div class="panel" id="panel">
+        <div class="placeholder" id="placeholder">Select a tool on the left to configure and run it.</div>
+        <div id="detail" hidden></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initTools, listManifests, runTool } from "./tools.mjs?v=e0277a4ec5b7cacb69b59c9decbe25bbdd13573b";
+
+      const $ = (id) => document.getElementById(id);
+      const FILE_RE = /\.(tif|tiff|geojson|json|shp|las|laz|csv|dep|txt|html|asc|pmtiles)$/i;
+      const MIME = {
+        tif: "image/tiff", tiff: "image/tiff", png: "image/png",
+        geojson: "application/geo+json", json: "application/json",
+        pmtiles: "application/vnd.pmtiles", csv: "text/csv",
+        txt: "text/plain", html: "text/html",
+      };
+      const mimeFor = (name) =>
+        MIME[String(name).split(".").pop().toLowerCase()] ?? "application/octet-stream";
+
+      let manifests = [];
+      let sampleBytes = null; // lazily-fetched bundled sample.tif
+      let selected = null;
+
+      const basename = (p) => String(p).split(/[\\/]/).pop();
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+      // Provenance badge: GeoLibre-authored vs whitebox tool. Defaults to
+      // whitebox if the manifest predates the "source" field.
+      function sourceBadge(t) {
+        const geo = t.source === "geolibre";
+        return `<span class="src ${geo ? "geolibre" : "whitebox"}" title="${geo ? "GeoLibre-authored tool" : "whitebox_next_gen tool"}">${geo ? "GeoLibre" : "Whitebox"}</span>`;
+      }
+
+      // Default filename for an output param. Don't assume .tif: prefer the
+      // worked example value, then the "e.g. <path>" in the description (which
+      // carries the right exact format, e.g. .parquet/.png, or a dir like
+      // tiles), then any ".ext" mentioned, then the manifest's dataset kind
+      // (a vector output defaults to .geojson, LiDAR to .laz, a table to
+      // .csv), and only then fall back to .tif.
+      function outputDefault(tool, param, hint) {
+        if (hint != null && String(hint).includes(".")) return basename(String(hint));
+        const desc = param.description || "";
+        const eg = desc.match(/e\.g\.?\s+([^\s,)]+)/i);
+        if (eg) return basename(eg[1]);
+        const ext = desc.match(/\.([a-z0-9]{2,8})\b/i);
+        if (ext) return `${tool.id}.${ext[1]}`;
+        if (/html/i.test(param.name)) return `${tool.id}.html`;
+        const KIND_EXT = {
+          vector: "geojson",
+          raster: "tif",
+          lidar: "laz",
+          table: "csv",
+          json: "json",
+          text: "txt",
+        };
+        const kind =
+          param.data_kind ?? (param.schema && param.schema.dataset && param.schema.dataset.kind);
+        return `${tool.id}.${KIND_EXT[kind] ?? "tif"}`;
+      }
+
+      // Best-known value for a param: prefer the worked example, fall back to the default.
+      function hintValue(tool, name) {
+        const ex = tool.examples && tool.examples[0] && tool.examples[0].args;
+        if (ex && name in ex) return ex[name];
+        if (tool.defaults && name in tool.defaults) return tool.defaults[name];
+        return undefined;
+      }
+
+      // Pull a small set of allowed string values out of a param description
+      // when the manifest carries no explicit enum schema. Whitebox tools often
+      // only spell their choices out in prose, e.g.
+      //   "Filter type: 'mean', 'median', or 'gaussian' (default 'mean')."
+      //   "Spatial predicate: intersects, within, contains, touches, crosses."
+      // Returns the option list (>= 2 values) or null when nothing enumerable is
+      // found. Conservative on purpose: a bad guess turns a free-form field into
+      // a too-narrow dropdown, so we require quotes or a clear comma list.
+      function enumOptionsFromDescription(desc) {
+        if (!desc) return null;
+        // Prefer single-quoted simple identifiers: 'mean', 'median', ...
+        const quoted = [...desc.matchAll(/'([a-z][a-z0-9_]*)'/gi)].map((m) => m[1].toLowerCase());
+        const uniqQuoted = [...new Set(quoted)];
+        if (uniqQuoted.length >= 2) return uniqQuoted;
+        // Else a colon-introduced comma list of >= 3 bare identifiers, so we
+        // don't mistake an "x, y" coordinate hint for an enumeration.
+        const after = desc.match(/:\s*([a-z][a-z0-9_]*(?:\s*,\s*(?:or\s+|and\s+)?[a-z][a-z0-9_]*){2,})/i);
+        if (after) {
+          const items = after[1]
+            .split(/\s*,\s*/)
+            .map((s) => s.replace(/^(?:or|and)\s+/i, "").trim().toLowerCase())
+            .filter((s) => /^[a-z][a-z0-9_]*$/.test(s));
+          const uniq = [...new Set(items)];
+          if (uniq.length >= 3) return uniq;
+        }
+        return null;
+      }
+
+      // Classify a param so we can render the right control and route file I/O.
+      // Prefer the manifest's per-param `schema` (kind: input/output/enum/scalar/
+      // bool/string) when present; fall back to the older name/example heuristics
+      // for manifests that predate the self-describing schema.
+      function classify(tool, p) {
+        const v = hintValue(tool, p.name);
+        const sk = p.schema && p.schema.kind;
+        const looksFile = FILE_RE.test(String(v ?? ""));
+        let kind = "text";
+        let options = null;
+        let scalar = null;
+        if (sk === "output" || (!sk && (p.name === "output" || p.name.startsWith("output")))) {
+          kind = "output";
+        } else if (sk === "input") {
+          kind = "file";
+        } else if (sk === "enum") {
+          kind = "enum";
+          options = (p.schema.options || []).map((o) => o.value);
+        } else if (sk === "scalar") {
+          kind = "number";
+          scalar = p.schema.scalar;
+        } else if (sk === "bool" || (!sk && typeof v === "boolean")) {
+          kind = "bool";
+        } else if (!sk && (p.name === "input" || p.name.startsWith("input") || (looksFile && p.required))) {
+          kind = "file";
+        } else if (!sk && typeof v === "number") {
+          kind = "number";
+          scalar = Number.isInteger(v) ? "integer" : "float";
+        } else {
+          // String-typed (or schema-less) param: the description may still
+          // enumerate the allowed values in prose.
+          const opts = enumOptionsFromDescription(p.description);
+          if (opts) {
+            kind = "enum";
+            options = opts;
+          }
+        }
+        return { kind, hint: v, options, scalar, primary: p.name === "input", sampleDefault: p.schema?.sample_default !== false };
+      }
+
+      // Some params only make sense for one choice of a sibling enum — e.g.
+      // spatial_join's `distance` applies only "for within_distance predicate".
+      // Detect that dependency from the param's own description and return
+      // { controller, value } so the field can be hidden until the controlling
+      // enum selects that value. Conservative: only fires when the description
+      // names a value that an actual sibling enum param offers.
+      function conditionFor(tool, p, params) {
+        const m = (p.description || "").match(
+          /\bfor\s+(?:the\s+)?'?([a-z][a-z0-9_]*)'?\s+(?:predicate|mode|method|strategy|option|type)\b/i,
+        );
+        if (!m) return null;
+        const value = m[1].toLowerCase();
+        const controller = params.find((q) => {
+          if (q.name === p.name) return false;
+          const c = classify(tool, q);
+          return c.kind === "enum" && (c.options || []).some((o) => String(o).toLowerCase() === value);
+        });
+        return controller ? { controller: controller.name, value } : null;
+      }
+
+      // Hide any field whose `data-show-when` controller doesn't currently hold
+      // its `data-show-value`. Hidden fields are skipped when building the
+      // command/invocation and the permalink, so an irrelevant flag never rides
+      // along.
+      function applyConditions() {
+        const form = $("form");
+        if (!form) return;
+        form.querySelectorAll(".field[data-show-when]").forEach((field) => {
+          const ctl = form.querySelector(`[data-name="${field.dataset.showWhen}"]`);
+          const on = !!ctl && String(ctl.value) === field.dataset.showValue;
+          field.hidden = !on;
+        });
+      }
+
+      // A control counts only when its enclosing field is visible.
+      const fieldVisible = (el) => !el.closest(".field")?.hidden;
+
+      function renderList() {
+        const f = $("filter").value.trim().toLowerCase();
+        const cat = $("category").value;
+        const src = $("source").value;
+        const shown = manifests.filter((t) => {
+          if (src && (t.source || "whitebox") !== src) return false;
+          if (cat && t.category !== cat) return false;
+          if (!f) return true;
+          return (t.id + " " + t.display_name + " " + t.summary + " " + (t.tags || []).join(" "))
+            .toLowerCase()
+            .includes(f);
+        });
+        $("count").textContent = shown.length;
+        $("tools").innerHTML = shown
+          .slice(0, 400)
+          .map(
+            (t) =>
+              `<div class="item${selected && selected.id === t.id ? " active" : ""}" data-id="${t.id}">` +
+              `<div class="name">${esc(t.display_name)}${sourceBadge(t)}</div>` +
+              `<div class="sum">${esc(t.summary)}</div></div>`,
+          )
+          .join("");
+        if (shown.length > 400)
+          $("tools").insertAdjacentHTML(
+            "beforeend",
+            `<div class="item muted" style="cursor:default">...and ${shown.length - 400} more. Refine the filter.</div>`,
+          );
+      }
+
+      function selectTool(id, preset) {
+        selected = manifests.find((t) => t.id === id);
+        renderList();
+        renderDetail();
+        if (preset) applyPreset(preset);
+        writePermalink();
+      }
+
+      // --- Permalinks -------------------------------------------------------
+      // Encode the selected tool and any non-default field values into the URL
+      // query string (?tool=<id>&<param>=<value>...), so a configured tool can
+      // be bookmarked or shared. File inputs can't live in a URL and are
+      // skipped; the free-form extra flags ride along as `args`.
+      function writePermalink() {
+        try {
+          if (!selected) return;
+          const params = new URLSearchParams();
+          params.set("tool", selected.id);
+          const form = $("form");
+          if (form) {
+            form.querySelectorAll("[data-name]").forEach((el) => {
+              if (el.dataset.kind === "file" || !fieldVisible(el)) return;
+              const def = el.dataset.default ?? "";
+              const val = el.dataset.kind === "bool" ? (el.checked ? "true" : "false") : String(el.value);
+              if (val !== def) params.set(el.dataset.name, val);
+            });
+            const extra = form.querySelector("[data-extra]");
+            if (extra && extra.value.trim()) params.set("args", extra.value.trim());
+          }
+          history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+        } catch {
+          /* replaceState can throw on some origins (e.g. file://); ignore. */
+        }
+      }
+
+      // Apply URL query params onto the freshly rendered form for `selected`.
+      function applyPreset(params) {
+        const form = $("form");
+        if (!form) return;
+        form.querySelectorAll("[data-name]").forEach((el) => {
+          if (el.dataset.kind === "file" || !params.has(el.dataset.name)) return;
+          const v = params.get(el.dataset.name);
+          if (el.dataset.kind === "bool") {
+            el.checked = v === "true";
+          } else {
+            // A shared enum value may be outside the built-in option list.
+            if (el.tagName === "SELECT" && v && ![...el.options].some((o) => o.value === v))
+              el.add(new Option(v, v));
+            el.value = v;
+          }
+        });
+        if (params.has("args")) {
+          const extra = form.querySelector("[data-extra]");
+          if (extra) extra.value = params.get("args");
+        }
+        applyConditions();
+        updateCmd();
+      }
+
+      // Some tools (~140) ship an empty `params` array in their manifest, but
+      // they still follow the standard raster-in / raster-out convention and
+      // accept --input/--output. Fall back to an inferred schema so they remain
+      // runnable; the free-form "Additional arguments" field below covers the
+      // rest (extra flags, alternate param names).
+      const INFERRED_PARAMS = [
+        { name: "input", description: "Input raster (inferred — this tool ships no parameter schema).", required: true },
+        { name: "output", description: "Output raster path.", required: false },
+      ];
+
+      function renderDetail() {
+        const t = selected;
+        $("placeholder").hidden = true;
+        const d = $("detail");
+        d.hidden = false;
+
+        const inferred = !(t.params && t.params.length);
+        const params = inferred ? INFERRED_PARAMS : t.params;
+        const fields = params
+          .map((p) => {
+            const c = classify(t, p);
+            const req = p.required ? ' <span class="req">*</span>' : "";
+            const desc = p.description ? `<div class="desc">${esc(p.description)}</div>` : "";
+            const id = `f_${p.name}`;
+            let control;
+            if (c.kind === "file") {
+              const note = c.primary && c.sampleDefault ? " (defaults to bundled sample.tif)" : "";
+              control = `<input type="file" id="${id}" data-name="${p.name}" data-kind="file" data-sample-default="${c.sampleDefault ? "true" : "false"}" />` +
+                `<div class="desc">Leave empty to use ${c.primary && c.sampleDefault ? "the sample DEM" : "no file"}${note}.</div>`;
+            } else if (c.kind === "output") {
+              const val = outputDefault(t, p, c.hint);
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="output" data-default="${esc(val)}" value="${esc(val)}" />`;
+            } else if (c.kind === "bool") {
+              const checked = c.hint ? " checked" : "";
+              control = `<input type="checkbox" id="${id}" data-name="${p.name}" data-kind="bool" data-default="${c.hint ? "true" : "false"}"${checked} />`;
+            } else if (c.kind === "enum") {
+              // Known choices -> a real dropdown instead of a free-form box.
+              const cur = c.hint != null ? String(c.hint) : "";
+              const opts = c.options.slice();
+              if (cur && !opts.includes(cur)) opts.unshift(cur); // keep example value selectable
+              // Optional params get a blank "(default)" entry so the tool's own
+              // default applies; required ones default to the first option.
+              const def = p.required ? cur || opts[0] || "" : cur;
+              const blank = p.required ? "" : `<option value=""${cur ? "" : " selected"}>(default)</option>`;
+              const optionsHtml = opts
+                .map((o) => `<option value="${esc(o)}"${o === cur ? " selected" : ""}>${esc(o)}</option>`)
+                .join("");
+              control = `<select id="${id}" data-name="${p.name}" data-kind="enum" data-default="${esc(def)}">${blank}${optionsHtml}</select>`;
+            } else if (c.kind === "number") {
+              // Integers step by 1 (and reject decimals); floats step freely.
+              const step = c.scalar === "integer" ? "1" : "any";
+              control = `<input type="number" step="${step}" id="${id}" data-name="${p.name}" data-kind="number" data-default="${esc(c.hint ?? "")}" value="${esc(c.hint ?? "")}" />`;
+            } else {
+              control = `<input type="text" id="${id}" data-name="${p.name}" data-kind="text" data-default="${esc(c.hint ?? "")}" value="${esc(c.hint ?? "")}" />`;
+            }
+            const cond = conditionFor(t, p, params);
+            const condAttr = cond
+              ? ` data-show-when="${esc(cond.controller)}" data-show-value="${esc(cond.value)}"`
+              : "";
+            return `<div class="field"${condAttr}><label for="${id}">${esc(p.name)}${req}</label>${desc}${control}</div>`;
+          })
+          .join("");
+
+        const inferredNote = inferred
+          ? `<p class="muted" style="font-size:0.8rem">This tool ships no parameter schema; the fields below are inferred from the standard raster-in/raster-out convention. Use "Additional arguments" for anything else.</p>`
+          : "";
+        const extraField =
+          `<div class="field"><label for="f_extra">Additional arguments</label>` +
+          `<div class="desc">Optional raw flags appended verbatim, e.g. <code>--units=degrees --zfactor=2</code>.</div>` +
+          `<input type="text" id="f_extra" data-extra="1" placeholder="--flag=value ..." /></div>`;
+
+        d.innerHTML =
+          `<h2>${esc(t.display_name)} ${sourceBadge(t)}<span class="badge">${esc(t.category)}</span><span class="badge">${esc(t.id)}</span></h2>` +
+          `<p class="muted" style="margin-top:0">${esc(t.summary)}</p>` +
+          inferredNote +
+          `<form id="form" onsubmit="return false">${fields}${extraField}</form>` +
+          `<div class="field"><label>Command</label><pre id="cmd" style="margin:0"></pre></div>` +
+          `<div class="row">` +
+          `<button class="primary" id="run">Run ${esc(t.id)}</button>` +
+          `<a id="download" hidden download>Download output</a>` +
+          `</div>` +
+          `<pre id="output" hidden></pre>`;
+
+        d.querySelectorAll("input, select").forEach((el) => {
+          el.addEventListener("input", onFormChange);
+          el.addEventListener("change", onFormChange);
+        });
+        $("run").addEventListener("click", run);
+        applyConditions();
+        updateCmd();
+      }
+
+      // Reflect form edits into both the command preview and the shareable URL.
+      function onFormChange() {
+        applyConditions();
+        updateCmd();
+        writePermalink();
+      }
+
+      // Build {argv, inputs, outputs} from the current form state.
+      async function buildInvocation() {
+        const args = [];
+        const inputs = {};
+        const outputs = [];
+        const controls = $("form").querySelectorAll("[data-name]");
+        for (const el of controls) {
+          if (!fieldVisible(el)) continue; // a hidden, condition-gated field
+          const name = el.dataset.name;
+          const kind = el.dataset.kind;
+          if (kind === "file") {
+            let bytes = null;
+            let fname = null;
+            if (el.files && el.files[0]) {
+              fname = el.files[0].name;
+              bytes = new Uint8Array(await el.files[0].arrayBuffer());
+            } else if (el.dataset.sampleDefault !== "false" && (el.dataset.name === "input" || $("form").querySelector('[data-kind="file"]') === el)) {
+              // primary input: fall back to the bundled sample
+              if (!sampleBytes) sampleBytes = new Uint8Array(await (await fetch("./sample.tif")).arrayBuffer());
+              if (sampleBytes) { fname = "sample.tif"; bytes = sampleBytes; }
+            }
+            if (bytes && fname) {
+              inputs[fname] = bytes;
+              args.push(`--${name}=/work/${fname}`);
+            }
+          } else if (kind === "output") {
+            const fname = basename(el.value.trim() || `${selected.id}.tif`);
+            outputs.push(fname);
+            args.push(`--${name}=/work/${fname}`);
+          } else if (kind === "bool") {
+            args.push(`--${name}=${el.checked ? "true" : "false"}`);
+          } else {
+            const v = el.value.trim();
+            if (v !== "") args.push(`--${name}=${v}`);
+          }
+        }
+        // Append any free-form extra flags verbatim (split on whitespace).
+        const extra = $("form").querySelector("[data-extra]");
+        if (extra && extra.value.trim()) args.push(...extra.value.trim().split(/\s+/));
+        return { args, inputs, outputs };
+      }
+
+      async function updateCmd() {
+        try {
+          const { args } = await buildInvocation();
+          $("cmd").textContent = `geolibre ${selected.id} ${args.join(" ")}`;
+        } catch {
+          $("cmd").textContent = `geolibre ${selected.id} ...`;
+        }
+      }
+
+      async function run() {
+        const t = selected;
+        $("run").disabled = true;
+        $("output").hidden = false;
+        $("output").textContent = `Running ${t.id}...`;
+        const dl = $("download");
+        dl.hidden = true;
+        try {
+          const { args, inputs, outputs } = await buildInvocation();
+          const t0 = performance.now();
+          const { exitCode, stdout, files } = await runTool(t.id, { args, input: inputs });
+          const ms = Math.round(performance.now() - t0);
+
+          const produced = Object.entries(files);
+          let report =
+            `exit code: ${exitCode}  (${ms} ms)\n\n` +
+            `stdout:\n${stdout.length ? stdout.join("\n") : "(no output)"}\n\n` +
+            `files written: ${produced.length ? produced.map(([n, b]) => `${n} (${b.length} bytes)`).join(", ") : "(none)"}`;
+          $("output").textContent = report;
+
+          // Offer the declared output (or, failing that, the first new file) for download.
+          const pick =
+            produced.find(([n]) => outputs.includes(n)) || produced[0];
+          if (pick) {
+            const [name, bytes] = pick;
+            const url = URL.createObjectURL(new Blob([bytes], { type: mimeFor(name) }));
+            dl.href = url;
+            dl.download = name;
+            dl.textContent = `Download ${name}`;
+            dl.hidden = false;
+          }
+        } catch (e) {
+          $("output").textContent = "Error: " + (e && e.stack ? e.stack : e);
+        } finally {
+          $("run").disabled = false;
+        }
+      }
+
+      async function main() {
+        try {
+          await initTools();
+          manifests = await listManifests();
+          manifests.sort((a, b) => a.display_name.localeCompare(b.display_name));
+          $("status").textContent = `Ready — ${manifests.length} tools loaded.`;
+
+          // Populate the category dropdown from the manifests (sorted, with counts).
+          const counts = {};
+          for (const t of manifests) counts[t.category] = (counts[t.category] || 0) + 1;
+          const cat = $("category");
+          for (const name of Object.keys(counts).sort())
+            cat.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)} (${counts[name]})</option>`);
+          cat.disabled = false;
+          cat.addEventListener("change", renderList);
+
+          // Provenance filter: count GeoLibre vs whitebox tools and wire it up.
+          const srcCounts = { geolibre: 0, whitebox: 0 };
+          for (const t of manifests) srcCounts[t.source === "geolibre" ? "geolibre" : "whitebox"]++;
+          const src = $("source");
+          src.options[1].textContent = `GeoLibre tools (${srcCounts.geolibre})`;
+          src.options[2].textContent = `Whitebox tools (${srcCounts.whitebox})`;
+          src.disabled = false;
+          src.addEventListener("change", renderList);
+
+          renderList();
+          const filter = $("filter");
+          filter.disabled = false;
+          filter.addEventListener("input", renderList);
+          $("tools").addEventListener("click", (e) => {
+            const item = e.target.closest(".item[data-id]");
+            if (item) selectTool(item.dataset.id);
+          });
+
+          // Deeplink: ?tool=<id>&<param>=<value>... selects the tool and
+          // prefills the form so a shared link lands on a configured run.
+          const url = new URLSearchParams(location.search);
+          const want = url.get("tool");
+          if (want && manifests.some((t) => t.id === want)) selectTool(want, url);
+        } catch (e) {
+          $("status").textContent = "Failed to load: " + e;
+        }
+      }
+
+      main();
+    </script>
+  </body>
+</html>

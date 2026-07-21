@@ -9,6 +9,7 @@
 
 mod aggregate_polygons;
 mod assign_projection;
+mod build_balanced_zones;
 mod common;
 mod cut_fill;
 mod delineate_built_up_areas;
@@ -94,6 +95,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(cut_fill::CutFillTool),
         Box::new(ripleys_k::RipleysKTool),
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
+        Box::new(build_balanced_zones::BuildBalancedZonesTool),
         Box::new(vector_to_h3::VectorToH3Tool),
         Box::new(h3_to_vector::H3ToVectorTool),
         Box::new(h3_polyfill::H3PolyfillTool),
@@ -382,6 +384,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
             ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
             ("bandwidth", float()),
+        ]),
+        "build_balanced_zones" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("zones", int()),
+            ("criterion", ToolParamSchema::enum_values(&["homogeneity", "equal_count", "equal_sum"])),
+            ("fields", ToolParamSchema::string()),
+            ("contiguity", ToolParamSchema::enum_values(&["rook", "queen"])),
+            ("tolerance", float()),
         ]),
         "vector_to_h3" => schemas(&[
             ("input", vector_in()),

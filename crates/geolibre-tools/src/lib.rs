@@ -26,6 +26,7 @@ mod fill;
 mod geographically_weighted_regression;
 mod geoparquet_io;
 mod h3_polyfill;
+mod interpolate_shape;
 mod line_of_sight;
 mod h3_to_vector;
 mod hilbert;
@@ -97,6 +98,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
         Box::new(line_of_sight::LineOfSightTool),
         Box::new(corridor::CorridorTool),
+        Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -360,6 +362,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", raster_out()),
             ("threshold", float()),
             ("percent", float()),
+            ("band", int()),
+        ]),
+        "interpolate_shape" => schemas(&[
+            ("input", vector_in()),
+            ("surface", raster_in()),
+            ("output", vector_out()),
+            ("sample_distance", float()),
+            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+            ("attributes", ToolParamSchema::string()),
             ("band", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[

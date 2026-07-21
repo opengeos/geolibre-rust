@@ -110,6 +110,8 @@ mod generate_trend_raster;
 
 mod warp_raster;
 
+mod weighted_voronoi;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -215,6 +217,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(bivariate_spatial_association::BivariateSpatialAssociationTool),
         Box::new(generate_trend_raster::GenerateTrendRasterTool),
         Box::new(warp_raster::WarpRasterTool),
+        Box::new(weighted_voronoi::WeightedVoronoiTool),
     ]
 }
 
@@ -792,6 +795,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cell_size", float()),
             ("epsg", int()),
             ("band", int()),
+        ]),
+        "weighted_voronoi" => schemas(&[
+            ("input", vector_in()),
+            ("output", raster_out()),
+            ("weight_field", ToolParamSchema::string()),
+            ("weight_type", ToolParamSchema::enum_values(&["multiplicative", "additive", "power"])),
+            ("cell_size", float()),
+            ("margin", float()),
+            ("epsg", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

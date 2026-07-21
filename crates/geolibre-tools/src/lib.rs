@@ -46,6 +46,7 @@ mod polygon_neighbors;
 mod raster_normalize;
 mod raster_to_h3;
 mod raster_to_tiles;
+mod reconstruct_tracks;
 mod regions;
 mod regularize_building_footprints;
 mod render;
@@ -119,6 +120,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(apportion_polygon::ApportionPolygonTool),
         Box::new(central_feature::CentralFeatureTool),
         Box::new(expand_shrink::ExpandShrinkTool),
+        Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -471,6 +473,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cells", int()),
             ("mode", ToolParamSchema::enum_values(&["expand", "shrink"])),
             ("band", int()),
+        ]),
+        "reconstruct_tracks" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("time_gap", float()),
+            ("distance_gap", float()),
+            ("dwells", vector_out()),
+            ("dwell_distance", float()),
+            ("dwell_min_duration", float()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

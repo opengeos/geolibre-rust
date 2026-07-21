@@ -118,6 +118,8 @@ mod cost_connectivity;
 
 mod locate_regions;
 
+mod edgematch_features;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -227,6 +229,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(pycnophylactic_interpolation::PycnophylacticInterpolationTool),
         Box::new(cost_connectivity::CostConnectivityTool),
         Box::new(locate_regions::LocateRegionsTool),
+        Box::new(edgematch_features::EdgematchFeaturesTool),
     ]
 }
 
@@ -839,6 +842,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("shape", float()),
             ("min_distance", float()),
             ("band", int()),
+        ]),
+        "edgematch_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("method", ToolParamSchema::enum_values(&["midpoint", "move_endpoint"])),
+            ("match_fields", ToolParamSchema::string()),
+            ("links", vector_out()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

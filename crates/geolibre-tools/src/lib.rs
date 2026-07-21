@@ -14,6 +14,7 @@ mod cartogram;
 mod collapse_dual_lines_to_centerline;
 mod common;
 mod corridor;
+mod count_overlapping_features;
 mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
@@ -101,6 +102,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(corridor::CorridorTool),
         Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
+        Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -383,6 +385,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("attribute", ToolParamSchema::string()),
             ("sample_distance", float()),
             ("min_overlap", float()),
+        ]),
+        "count_overlapping_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_count", int()),
+            ("id_field", ToolParamSchema::string()),
+            ("report_ids", table_out()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

@@ -120,6 +120,8 @@ mod locate_regions;
 
 mod edgematch_features;
 
+mod landtrendr;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -230,6 +232,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(cost_connectivity::CostConnectivityTool),
         Box::new(locate_regions::LocateRegionsTool),
         Box::new(edgematch_features::EdgematchFeaturesTool),
+        Box::new(landtrendr::LandtrendrTool),
     ]
 }
 
@@ -850,6 +853,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["midpoint", "move_endpoint"])),
             ("match_fields", ToolParamSchema::string()),
             ("links", vector_out()),
+        ]),
+        "landtrendr" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("years", ToolParamSchema::string()),
+            ("magnitude_output", raster_out()),
+            ("duration_output", raster_out()),
+            ("direction", ToolParamSchema::enum_values(&["loss", "gain"])),
+            ("max_segments", int()),
+            ("spike_threshold", float()),
+            ("min_valid", int()),
+            ("band", int()),
         ]),
         "reconstruct_tracks" => schemas(&[
             ("input", vector_in()),

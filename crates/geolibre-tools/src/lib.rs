@@ -19,6 +19,7 @@ mod delineate_mounts;
 mod dem_filter;
 mod directional_distribution;
 mod eliminate_polygons;
+mod emerging_hot_spot_analysis;
 mod extract_sinks;
 mod fill;
 mod geographically_weighted_regression;
@@ -91,6 +92,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
+        Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
         Box::new(aggregate_polygons::AggregatePolygonsTool),
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
@@ -324,6 +326,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tolerance", float()),
             ("smooth_boundary", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
+        ]),
+        "emerging_hot_spot_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("time_field", ToolParamSchema::string()),
+            ("time_step", ToolParamSchema::string()),
+            ("value_field", ToolParamSchema::string()),
+            ("resolution", int()),
+            ("neighborhood", int()),
+            ("time_window", int()),
         ]),
         "delineate_built_up_areas" => schemas(&[
             ("input", vector_in()),

@@ -50,3 +50,7 @@ h3o = { version = "0.10.0", features = ["geo"] }
 # minor `geo` uses internally so the `geo::Polygon` types unify (no duplicate
 # geo crate in the graph). Pure Rust, compiles to the wasm targets.
 geo = { version = "0.33", default-features = false }
+# Pure-Rust EXIF/TIFF-IFD metadata parser (no C deps, no image decoding),
+# used by geotagged_photos_to_points to read GPS + datetime + camera tags from
+# photo headers. WASM-clean. Crate name `kamadak-exif`, imported as `exif`.
+exif = { package = "kamadak-exif", version = "0.6.1" }

@@ -960,6 +960,7 @@ dependencies = [
  "geolibre-pmtiles",
  "h3o",
  "kamadak-exif",
+ "kdtree",
  "parquet",
  "png 0.17.16",
  "serde_json",

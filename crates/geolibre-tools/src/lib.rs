@@ -15,6 +15,7 @@ mod boundary_clean;
 mod build_balanced_zones;
 mod calculate_motion_statistics;
 mod cartogram;
+mod causal_inference_analysis;
 mod central_feature;
 mod collapse_dual_lines_to_centerline;
 mod colocation_analysis;
@@ -298,6 +299,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(causal_inference_analysis::CausalInferenceAnalysisTool),
         Box::new(align_features::AlignFeaturesTool),
         Box::new(multivariate_clustering::MultivariateClusteringTool),
         Box::new(table_to_geometry::TableToGeometryTool),
@@ -1456,6 +1458,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "causal_inference_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("outcome_field", ToolParamSchema::string()),
+            ("treatment_field", ToolParamSchema::string()),
+            ("confounding_fields", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["ps_matching", "ipw", "regression_adjustment"])),
+            ("add_spatial_confounders", ToolParamSchema::bool()),
+            ("balance_threshold", float()),
+            ("output", vector_out()),
+            ("seed", int()),
         ]),
         "multivariate_clustering" => schemas(&[
             ("input", vector_in()),

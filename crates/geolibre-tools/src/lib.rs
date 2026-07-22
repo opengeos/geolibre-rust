@@ -151,6 +151,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
@@ -292,6 +293,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(disperse_markers::DisperseMarkersTool),
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
@@ -1437,6 +1439,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
         ]),
+        "disperse_markers" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_spacing", float()),
+            (
+                "pattern",
+                ToolParamSchema::enum_values(&["expanded", "ring", "cross", "square"]),
+            ),
+            ("seed", int()),
         "zonal_histogram" => schemas(&[
             ("zones", raster_in()),
             ("value", raster_in()),

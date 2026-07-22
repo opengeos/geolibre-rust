@@ -86,6 +86,7 @@ mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
 mod trace_proximity_events;
+mod transform_fields;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -294,6 +295,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(transform_fields::TransformFieldsTool),
         Box::new(detect_graphic_conflict::DetectGraphicConflictTool),
         Box::new(disperse_markers::DisperseMarkersTool),
         Box::new(geodetic_densify::GeodeticDensifyTool),
@@ -1440,6 +1442,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "transform_fields" => schemas(&[
+            ("input", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("transform", ToolParamSchema::enum_values(&[
+                "zscore", "minmax", "robust", "log", "log1p", "sqrt", "boxcox", "inverse", "bin", "onehot",
+            ])),
+            ("output", vector_out()),
+            ("bins", int()),
+            ("bin_method", ToolParamSchema::enum_values(&["equal_interval", "quantile", "std_dev"])),
+            ("boxcox_lambda", float()),
+            ("suffix", ToolParamSchema::string()),
+            ("drop_input", ToolParamSchema::bool()),
         ]),
         "detect_graphic_conflict" => schemas(&[
             ("input", vector_in()),

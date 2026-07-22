@@ -151,6 +151,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod disperse_markers;
 
 use std::collections::BTreeMap;
 
@@ -289,6 +290,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(disperse_markers::DisperseMarkersTool),
     ]
 }
 
@@ -1414,6 +1416,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "disperse_markers" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_spacing", float()),
+            (
+                "pattern",
+                ToolParamSchema::enum_values(&["expanded", "ring", "cross", "square"]),
+            ),
+            ("seed", int()),
         ]),
         _ => return None,
     };

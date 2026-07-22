@@ -280,15 +280,39 @@ fn manifests_with_metadata_params(registry: &ToolRegistry) -> Vec<ToolManifest> 
         .collect()
 }
 
+/// Ids whose manifest declares no params, so [`manifests_with_metadata_params`]
+/// has to reconstruct them.
+fn backfilled_tool_ids(registry: &ToolRegistry) -> HashSet<String> {
+    registry
+        .manifests()
+        .into_iter()
+        .filter(|manifest| manifest.params.is_empty())
+        .map(|manifest| manifest.id)
+        .collect()
+}
+
 /// Serializes a manifest with per-param I/O schema. GeoLibre-authored tools use
-/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]) and
-/// whitebox tools their own schema table
-/// ([`wbtools_oss::tools::tool_param_schemas`]); anything with neither falls
-/// back to wbcore's name/description-based inference.
-fn enriched_manifest(manifest: &wbcore::ToolManifest) -> Value {
-    match geolibre_tools::geolibre_param_schemas(&manifest.id)
-        .or_else(|| wbtools_oss::tools::tool_param_schemas(&manifest.id))
-    {
+/// their explicit schemas ([`geolibre_tools::geolibre_param_schemas`]); a
+/// whitebox tool whose params were backfilled uses its own schema table
+/// ([`wbtools_oss::tools::tool_param_schemas`]), since that table is where those
+/// params came from and it types them exactly; everything else keeps wbcore's
+/// name/description-based inference.
+///
+/// The table is deliberately *not* applied to a tool that shipped its own
+/// params. It types 291 of them differently from the inference, and while most
+/// of those differences are corrections (`bilateral_filter`'s `sigma_int` is a
+/// number, not the raster input the inference guessed), a few are losses:
+/// `global_morans_i`'s `output_html`/`output_csv`/`output_json` are real output
+/// paths that the table calls plain strings, and a host would stop naming and
+/// collecting those files. Re-typing tools that already work is a separate
+/// change from making 138 broken ones work, and it needs its own verification.
+fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<String>) -> Value {
+    match geolibre_tools::geolibre_param_schemas(&manifest.id).or_else(|| {
+        backfilled
+            .contains(&manifest.id)
+            .then(|| wbtools_oss::tools::tool_param_schemas(&manifest.id))
+            .flatten()
+    }) {
         Some(schemas) => wbcore::manifest_with_param_schema_json(manifest, &schemas),
         None => wbcore::manifest_with_io_schema_json(manifest),
     }
@@ -312,6 +336,7 @@ fn main() -> ExitCode {
         "manifests" => {
             let registry = build_registry();
             let geolibre_ids = geolibre_tool_ids();
+            let backfilled = backfilled_tool_ids(&registry);
             // Emit the I/O-enriched manifest (each param's `schema`, `io_role`,
             // and `data_kind`) rather than the bare manifest, so host UIs can
             // route raster/vector/lidar inputs and render widgets without a
@@ -319,7 +344,7 @@ fn main() -> ExitCode {
             let arr: Vec<Value> = manifests_with_metadata_params(&registry)
                 .iter()
                 .map(|m| {
-                    let mut value = enriched_manifest(m);
+                    let mut value = enriched_manifest(m, &backfilled);
                     tag_source(&mut value, &geolibre_ids);
                     value
                 })
@@ -333,12 +358,13 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             };
             let registry = build_registry();
+            let backfilled = backfilled_tool_ids(&registry);
             match manifests_with_metadata_params(&registry)
                 .into_iter()
                 .find(|m| &m.id == id)
             {
                 Some(manifest) => {
-                    let mut value = enriched_manifest(&manifest);
+                    let mut value = enriched_manifest(&manifest, &backfilled);
                     tag_source(&mut value, &geolibre_tool_ids());
                     println!("{value}");
                     ExitCode::SUCCESS
@@ -619,7 +645,7 @@ mod tests {
         pointer: &std::path::Path,
     ) -> String {
         let scratch = std::env::temp_dir().join("geolibre-cli-manifest-params");
-        let json = enriched_manifest(manifest);
+        let json = enriched_manifest(manifest, &backfilled_tool_ids(registry));
         let mut args = ToolArgs::new();
         for param in json["params"].as_array().into_iter().flatten() {
             let name = param["name"].as_str().unwrap_or_default().to_string();
@@ -781,7 +807,7 @@ mod tests {
             "the DEM input stays required"
         );
 
-        let json = enriched_manifest(&manifest);
+        let json = enriched_manifest(&manifest, &backfilled_tool_ids(&registry));
         assert_eq!(param(&json, "dem")["schema"]["kind"], "input");
         assert_eq!(param(&json, "dem")["data_kind"], "raster");
         assert_eq!(param(&json, "output")["schema"]["kind"], "output");
@@ -809,7 +835,7 @@ mod tests {
             .into_iter()
             .find(|m| m.id == "spatial_join")
             .expect("spatial_join present");
-        let json = enriched_manifest(&manifest);
+        let json = enriched_manifest(&manifest, &backfilled_tool_ids(&registry));
 
         for layer in ["target", "join"] {
             assert_eq!(param(&json, layer)["schema"]["kind"], "input");

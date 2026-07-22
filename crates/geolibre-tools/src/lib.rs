@@ -167,6 +167,8 @@ mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
 mod spatial_association_between_zones;
+mod merge_lines_by_pseudo_node;
+mod identify_narrow_polygons;
 
 use std::collections::BTreeMap;
 
@@ -321,6 +323,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
         Box::new(spatial_association_between_zones::SpatialAssociationBetweenZonesTool),
+        Box::new(merge_lines_by_pseudo_node::MergeLinesByPseudoNodeTool),
+        Box::new(identify_narrow_polygons::IdentifyNarrowPolygonsTool),
     ]
 }
 
@@ -1624,6 +1628,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("band1", int()),
             ("band2", int()),
         ]),
+        "merge_lines_by_pseudo_node" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("dissolve_fields", ToolParamSchema::string()),
+            ("snap_tolerance", float()),
+        ]),
+        "identify_narrow_polygons" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("width_tolerance", float()),
+            ("min_narrow_area", float()),
+            ("narrow_only", ToolParamSchema::bool()),
+        ]),
+        // note: `narrow_area`, `min_width`, `is_narrow` are output attributes, not params
         _ => return None,
     };
     Some(map)

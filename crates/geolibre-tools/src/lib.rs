@@ -38,6 +38,8 @@ mod expand_shrink;
 mod exploratory_regression;
 mod extract_sinks;
 mod fill;
+mod fill_spill_merge;
+mod fill_spill_merge_core;
 mod find_identical;
 mod find_space_time_matches;
 mod fuzzy_overlay;
@@ -200,6 +202,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(raster_normalize::RasterNormalizeTool),
         Box::new(dem_filter::DemFilterTool),
         Box::new(extract_sinks::ExtractSinksTool),
+        Box::new(fill_spill_merge::FillSpillMergeTool),
         Box::new(delineate_depressions::DelineateDepressionsTool),
         Box::new(delineate_mounts::DelineateMountsTool),
         Box::new(reproject_raster::ReprojectRasterTool),
@@ -410,6 +413,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("csv_output", table_out()),
             ("vector_output", vector_out()),
             ("flat_increment", float()),
+        ]),
+        "fill_spill_merge" => schemas(&[
+            ("dem", raster_in()),
+            ("water_level", float()),
+            ("surface_water", raster_in()),
+            ("ocean_level", float()),
+            ("edge_outlet", ToolParamSchema::bool()),
+            ("output", raster_out()),
+            ("water_surface", raster_out()),
+            ("flood_extent", raster_out()),
         ]),
         "delineate_depressions" => schemas(&[
             ("input", raster_in()),

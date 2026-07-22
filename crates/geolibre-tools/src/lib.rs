@@ -157,6 +157,7 @@ mod grid_index_features;
 mod local_bivariate_relationships;
 mod dimension_reduction;
 mod feature_outline_masks;
+mod intersecting_layers_masks;
 mod line_density;
 mod pairwise_comparison_weights;
 mod kernel_density_ratio;
@@ -316,6 +317,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(local_bivariate_relationships::LocalBivariateRelationshipsTool),
         Box::new(dimension_reduction::DimensionReductionTool),
         Box::new(feature_outline_masks::FeatureOutlineMasksTool),
+        Box::new(intersecting_layers_masks::IntersectingLayersMasksTool),
         Box::new(line_density::LineDensityTool),
         Box::new(pairwise_comparison_weights::PairwiseComparisonWeightsTool),
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
@@ -1341,6 +1343,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("margin", float()),
             ("mask_kind", ToolParamSchema::enum_values(&["exact", "convex_hull", "box"])),
             ("masked_layer", vector_in()),
+            ("id_field", ToolParamSchema::string()),
+        ]),
+        "intersecting_layers_masks" => schemas(&[
+            ("masked_layer", vector_in()),
+            ("masking_layer", vector_in()),
+            ("output", vector_out()),
+            ("margin", float()),
+            ("mask_kind", ToolParamSchema::enum_values(&["exact", "convex_hull", "box"])),
             ("id_field", ToolParamSchema::string()),
         ]),
         "dimension_reduction" => schemas(&[

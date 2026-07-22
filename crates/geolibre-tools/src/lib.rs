@@ -151,6 +151,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod detect_graphic_conflict;
 mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
@@ -293,6 +294,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(detect_graphic_conflict::DetectGraphicConflictTool),
         Box::new(disperse_markers::DisperseMarkersTool),
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
@@ -1438,6 +1440,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "detect_graphic_conflict" => schemas(&[
+            ("input", vector_in()),
+            ("conflict", vector_in()),
+            ("symbol_width", float()),
+            ("conflict_symbol_width", float()),
+            ("conflict_distance", float()),
+            ("line_connection_allowance", float()),
+            ("output", vector_out()),
         ]),
         "disperse_markers" => schemas(&[
             ("input", vector_in()),

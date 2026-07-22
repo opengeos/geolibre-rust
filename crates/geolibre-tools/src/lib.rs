@@ -33,6 +33,7 @@ mod detect_image_anomalies;
 mod directional_distribution;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
+mod empirical_bayesian_kriging;
 mod expand_shrink;
 mod exploratory_regression;
 mod extract_sinks;
@@ -302,6 +303,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(empirical_bayesian_kriging::EmpiricalBayesianKrigingTool),
         Box::new(exploratory_regression::ExploratoryRegressionTool),
         Box::new(causal_inference_analysis::CausalInferenceAnalysisTool),
         Box::new(align_features::AlignFeaturesTool),
@@ -1480,6 +1482,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "empirical_bayesian_kriging" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("cell_size", float()),
+            ("subset_size", int()),
+            ("overlap", float()),
+            ("simulations", int()),
+            ("semivariogram", ToolParamSchema::enum_values(&["power", "linear", "exponential"])),
+            ("transform", ToolParamSchema::enum_values(&["none", "log_empirical"])),
+            ("error_output", raster_out()),
+            ("seed", int()),
         ]),
         "exploratory_regression" => schemas(&[
             ("input", vector_in()),

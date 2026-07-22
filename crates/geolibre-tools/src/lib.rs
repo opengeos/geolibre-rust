@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod space_time_kernel_density;
 mod geotagged_photos_to_points;
 mod darcy_flow;
 mod time_series_cross_correlation;
@@ -261,6 +262,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(space_time_kernel_density::SpaceTimeKernelDensityTool),
         Box::new(geotagged_photos_to_points::GeotaggedPhotosToPointsTool),
         Box::new(darcy_flow::DarcyFlowTool),
         Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
@@ -1331,6 +1333,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("recursive", ToolParamSchema::bool()),
             ("only_geotagged", ToolParamSchema::bool()),
+        ]),
+        "space_time_kernel_density" => schemas(&[
+            ("input", vector_in()),
+            ("output", raster_out()),
+            ("time_field", ToolParamSchema::string()),
+            ("time_step", ToolParamSchema::string()),
+            ("temporal_bandwidth", ToolParamSchema::string()),
+            ("spatial_bandwidth", float()),
+            ("cell_size", float()),
+            ("weight_field", ToolParamSchema::string()),
+            ("spatial_kernel", ToolParamSchema::enum_values(&["epanechnikov", "quartic"])),
+            ("temporal_kernel", ToolParamSchema::enum_values(&["triangular", "epanechnikov"])),
+            ("epsg", int()),
         ]),
         _ => return None,
     };

@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod transform_route_events;
 mod eighty_twenty_analysis;
 mod extract_locations_from_text;
 mod create_cartographic_partitions;
@@ -227,6 +228,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(transform_route_events::TransformRouteEventsTool),
         Box::new(eighty_twenty_analysis::EightyTwentyAnalysisTool),
         Box::new(extract_locations_from_text::ExtractLocationsFromTextTool),
         Box::new(create_cartographic_partitions::CreateCartographicPartitionsTool),
@@ -437,6 +439,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "transform_route_events" => schemas(&[
+            ("source_events", vector_in()),
+            ("source_routes", vector_in()),
+            ("target_routes", vector_in()),
+            ("output", vector_out()),
+            ("route_id_field", ToolParamSchema::string()),
+            ("measure_field", ToolParamSchema::string()),
+            ("target_id_field", ToolParamSchema::string()),
+            ("cluster_tolerance", float()),
+        ]),
         "eighty_twenty_analysis" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),

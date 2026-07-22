@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod contour_with_barriers;
 
 use std::collections::BTreeMap;
 
@@ -319,6 +320,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(contour_with_barriers::ContourWithBarriersTool),
     ]
 }
 
@@ -1614,6 +1616,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zone_band", int()),
             ("value_band", int()),
             ("long_output", table_out()),
+        ]),
+        "contour_with_barriers" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("barriers", vector_in()),
+            ("interval", float()),
+            ("base", float()),
+            ("levels", ToolParamSchema::string()),
+            ("band", int()),
         ]),
         _ => return None,
     };

@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod create_routes;
 mod exploratory_interpolation;
 mod getis_ord_general_g;
 mod matched_filter_target_detection;
@@ -209,6 +210,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(create_routes::CreateRoutesTool),
         Box::new(exploratory_interpolation::ExploratoryInterpolationTool),
         Box::new(getis_ord_general_g::GetisOrdGeneralGTool),
         Box::new(matched_filter_target_detection::MatchedFilterTargetDetectionTool),
@@ -401,6 +403,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "create_routes" => schemas(&[
+            ("input", vector_in()),
+            ("route_id_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("measure_source", ToolParamSchema::enum_values(&["LENGTH", "ONE_FIELD", "TWO_FIELDS"])),
+            ("from_measure_field", ToolParamSchema::string()),
+            ("to_measure_field", ToolParamSchema::string()),
+            ("measure_factor", float()),
+            ("measure_offset", float()),
+            ("ignore_gaps", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
+        ]),
         "exploratory_interpolation" => schemas(&[
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),

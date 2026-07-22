@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod exploratory_interpolation;
 mod getis_ord_general_g;
 mod matched_filter_target_detection;
 mod trim_line;
@@ -208,6 +209,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(exploratory_interpolation::ExploratoryInterpolationTool),
         Box::new(getis_ord_general_g::GetisOrdGeneralGTool),
         Box::new(matched_filter_target_detection::MatchedFilterTargetDetectionTool),
         Box::new(trim_line::TrimLineTool),
@@ -399,6 +401,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "exploratory_interpolation" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("methods", ToolParamSchema::string()),
+            ("criterion", ToolParamSchema::enum_values(&["rmse", "mae", "me"])),
+            ("power", float()),
+            ("output_raster", raster_out()),
+            ("cell_size", float()),
+        ]),
         "getis_ord_general_g" => schemas(&[
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),

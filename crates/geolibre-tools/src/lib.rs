@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod attribute_uncertainty;
 mod split_line_at_point;
 mod directional_trend;
 mod excel_to_table;
@@ -214,6 +215,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(attribute_uncertainty::AttributeUncertaintyTool),
         Box::new(split_line_at_point::SplitLineAtPointTool),
         Box::new(directional_trend::DirectionalTrendTool),
         Box::new(excel_to_table::ExcelToTableTool),
@@ -411,6 +413,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "attribute_uncertainty" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("error_field", ToolParamSchema::string()),
+            ("lower_field", ToolParamSchema::string()),
+            ("upper_field", ToolParamSchema::string()),
+            ("distribution", ToolParamSchema::enum_values(&["NORMAL", "UNIFORM"])),
+            ("iterations", int()),
+            ("seed", int()),
+            ("output", vector_out()),
+        ]),
         "split_line_at_point" => schemas(&[
             ("input_lines", vector_in()),
             ("point_features", vector_in()),

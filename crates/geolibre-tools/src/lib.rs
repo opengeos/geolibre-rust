@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod optimal_interpolation;
 mod calculate_adjacent_fields;
 mod densify_sampling_network;
 mod feature_vertices_to_points;
@@ -221,6 +222,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(optimal_interpolation::OptimalInterpolationTool),
         Box::new(calculate_adjacent_fields::CalculateAdjacentFieldsTool),
         Box::new(densify_sampling_network::DensifySamplingNetworkTool),
         Box::new(feature_vertices_to_points::FeatureVerticesToPointsTool),
@@ -425,6 +427,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "optimal_interpolation" => schemas(&[
+            ("background", raster_in()),
+            ("observations", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("correlation_length", float()),
+            ("background_error_variance", float()),
+            ("obs_error_variance", float()),
+            ("error_field", ToolParamSchema::string()),
+            ("band", int()),
+            ("max_obs", int()),
+            ("analysis_error", raster_out()),
+        ]),
         "calculate_adjacent_fields" => schemas(&[
             ("input", vector_in()),
             ("page_name_field", ToolParamSchema::string()),

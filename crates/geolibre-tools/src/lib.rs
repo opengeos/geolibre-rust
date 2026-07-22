@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod trim_line;
 mod fill_missing_values;
 mod time_series_smoothing;
 mod combine;
@@ -205,6 +206,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(trim_line::TrimLineTool),
         Box::new(fill_missing_values::FillMissingValuesTool),
         Box::new(time_series_smoothing::TimeSeriesSmoothingTool),
         Box::new(combine::CombineTool),
@@ -393,6 +395,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "trim_line" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("dangle_length", float()),
+            ("keep_short", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
+        ]),
         "fill_missing_values" => schemas(&[
             ("input", vector_in()),
             ("fill_field", ToolParamSchema::string()),

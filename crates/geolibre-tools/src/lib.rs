@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod time_series_cross_correlation;
 mod generalized_linear_regression;
 mod interpolate_with_barriers;
 mod convert_coordinate_notation;
@@ -258,6 +259,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
         Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
         Box::new(interpolate_with_barriers::InterpolateWithBarriersTool),
         Box::new(convert_coordinate_notation::ConvertCoordinateNotationTool),
@@ -1292,6 +1294,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("family", ToolParamSchema::enum_values(&["gaussian", "poisson", "logistic"])),
             ("output", vector_out()),
             ("report", table_out()),
+        ]),
+        "time_series_cross_correlation" => schemas(&[
+            ("input", raster_in()),
+            ("secondary", raster_in()),
+            ("output", raster_out()),
+            ("corr_output", raster_out()),
+            ("corr0_output", raster_out()),
+            ("pvalue_output", raster_out()),
+            ("min_lag", int()),
+            ("max_lag", int()),
+            ("detrend", ToolParamSchema::bool()),
+            ("deseasonalize", ToolParamSchema::bool()),
+            ("season_length", int()),
+            ("min_valid", int()),
+            ("band", int()),
         ]),
         _ => return None,
     };

@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod gpx_to_features;
 mod summary_statistics;
 mod median_center;
 mod flip_line;
@@ -233,6 +234,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(gpx_to_features::GpxToFeaturesTool),
         Box::new(summary_statistics::SummaryStatisticsTool),
         Box::new(median_center::MedianCenterTool),
         Box::new(flip_line::FlipLineTool),
@@ -449,6 +451,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "gpx_to_features" => schemas(&[
+            ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
+            ("points_output", vector_out()),
+            ("lines_output", vector_out()),
+        ]),
         "summary_statistics" => schemas(&[
             ("input", vector_in()),
             ("statistics", ToolParamSchema::string()),

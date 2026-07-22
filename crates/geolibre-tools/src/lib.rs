@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod create_cartographic_partitions;
 mod calculate_utm_zone;
 mod locate_lines_along_routes;
 mod optimal_interpolation;
@@ -224,6 +225,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(create_cartographic_partitions::CreateCartographicPartitionsTool),
         Box::new(calculate_utm_zone::CalculateUtmZoneTool),
         Box::new(locate_lines_along_routes::LocateLinesAlongRoutesTool),
         Box::new(optimal_interpolation::OptimalInterpolationTool),
@@ -431,6 +433,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "create_cartographic_partitions" => schemas(&[
+            ("input", vector_in()),
+            ("feature_count", int()),
+            ("output", vector_out()),
+        ]),
         "calculate_utm_zone" => schemas(&[
             ("input", vector_in()),
             ("zone_field", ToolParamSchema::string()),

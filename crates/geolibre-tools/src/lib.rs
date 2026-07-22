@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod geotagged_photos_to_points;
 mod darcy_flow;
 mod time_series_cross_correlation;
 mod generalized_linear_regression;
@@ -260,6 +261,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(geotagged_photos_to_points::GeotaggedPhotosToPointsTool),
         Box::new(darcy_flow::DarcyFlowTool),
         Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
         Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
@@ -1323,6 +1325,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("streamlines", vector_out()),
             ("step", float()),
             ("max_steps", int()),
+        ]),
+        "geotagged_photos_to_points" => schemas(&[
+            ("input", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("recursive", ToolParamSchema::bool()),
+            ("only_geotagged", ToolParamSchema::bool()),
         ]),
         _ => return None,
     };

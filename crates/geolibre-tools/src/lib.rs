@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod getis_ord_general_g;
 mod matched_filter_target_detection;
 mod trim_line;
 mod fill_missing_values;
@@ -207,6 +208,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(getis_ord_general_g::GetisOrdGeneralGTool),
         Box::new(matched_filter_target_detection::MatchedFilterTargetDetectionTool),
         Box::new(trim_line::TrimLineTool),
         Box::new(fill_missing_values::FillMissingValuesTool),
@@ -397,6 +399,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "getis_ord_general_g" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("weights", ToolParamSchema::enum_values(&["distance_band", "k_nearest", "queen", "rook"])),
+            ("distance_band", float()),
+            ("k", int()),
+            ("row_standardize", ToolParamSchema::bool()),
+            ("output", table_out()),
+        ]),
         "matched_filter_target_detection" => schemas(&[
             ("input", raster_in()),
             ("target_spectrum", ToolParamSchema::string()),

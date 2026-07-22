@@ -41,6 +41,7 @@ mod fuzzy_overlay;
 mod generate_od_links;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
+mod mgwr;
 mod geoparquet_io;
 mod h3_polyfill;
 mod hdbscan;
@@ -235,6 +236,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(cut_fill::CutFillTool),
         Box::new(ripleys_k::RipleysKTool),
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
+        Box::new(mgwr::MgwrTool),
         Box::new(build_balanced_zones::BuildBalancedZonesTool),
         Box::new(cartogram::CartogramTool),
         Box::new(thin_road_network::ThinRoadNetworkTool),
@@ -1128,6 +1130,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
             ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
             ("bandwidth", float()),
+        ]),
+        "mgwr" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("dependent_field", ToolParamSchema::string()),
+            ("explanatory_fields", ToolParamSchema::string()),
+            ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
+            ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
+            ("tolerance", float()),
+            ("max_iterations", int()),
         ]),
         "build_balanced_zones" => schemas(&[
             ("input", vector_in()),

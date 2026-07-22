@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod excel_to_table;
 mod add_surface_information;
 mod create_routes;
 mod exploratory_interpolation;
@@ -211,6 +212,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(excel_to_table::ExcelToTableTool),
         Box::new(add_surface_information::AddSurfaceInformationTool),
         Box::new(create_routes::CreateRoutesTool),
         Box::new(exploratory_interpolation::ExploratoryInterpolationTool),
@@ -405,6 +407,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "excel_to_table" => schemas(&[
+            ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
+            ("output", table_out()),
+            ("sheet", ToolParamSchema::string()),
+            ("cell_range", ToolParamSchema::string()),
+            ("field_names_row", int()),
+        ]),
         "add_surface_information" => schemas(&[
             ("input", vector_in()),
             ("surface", raster_in()),

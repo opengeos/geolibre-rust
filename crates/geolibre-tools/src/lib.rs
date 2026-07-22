@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod spatial_association_between_zones;
 
 use std::collections::BTreeMap;
 
@@ -319,6 +320,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(spatial_association_between_zones::SpatialAssociationBetweenZonesTool),
     ]
 }
 
@@ -1614,6 +1616,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zone_band", int()),
             ("value_band", int()),
             ("long_output", table_out()),
+        ]),
+        "spatial_association_between_zones" => schemas(&[
+            ("zones1", raster_in()),
+            ("zones2", raster_in()),
+            ("output", table_out()),
+            ("band1", int()),
+            ("band2", int()),
         ]),
         _ => return None,
     };

@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod points_to_line;
 mod collect_events;
 mod slice_raster;
 mod gpx_to_features;
@@ -236,6 +237,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(points_to_line::PointsToLineTool),
         Box::new(collect_events::CollectEventsTool),
         Box::new(slice_raster::SliceRasterTool),
         Box::new(gpx_to_features::GpxToFeaturesTool),
@@ -455,6 +457,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "points_to_line" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("line_field", ToolParamSchema::string()),
+            ("sort_field", ToolParamSchema::string()),
+            ("close_line", ToolParamSchema::bool()),
+        ]),
         "collect_events" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),

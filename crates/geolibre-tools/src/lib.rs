@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod darcy_flow;
 mod time_series_cross_correlation;
 mod generalized_linear_regression;
 mod interpolate_with_barriers;
@@ -259,6 +260,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(darcy_flow::DarcyFlowTool),
         Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
         Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
         Box::new(interpolate_with_barriers::InterpolateWithBarriersTool),
@@ -1309,6 +1311,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("season_length", int()),
             ("min_valid", int()),
             ("band", int()),
+        ]),
+        "darcy_flow" => schemas(&[
+            ("input", raster_in()),
+            ("transmissivity", raster_in()),
+            ("porosity", raster_in()),
+            ("output", raster_out()),
+            ("direction", raster_out()),
+            ("band", int()),
+            ("seeds", vector_in()),
+            ("streamlines", vector_out()),
+            ("step", float()),
+            ("max_steps", int()),
         ]),
         _ => return None,
     };

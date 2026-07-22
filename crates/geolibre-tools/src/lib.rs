@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod topo_to_raster;
 mod collapse_road_detail;
 mod analyze_changes_ccdc;
 mod space_time_kernel_density;
@@ -264,6 +265,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(topo_to_raster::TopoToRasterTool),
         Box::new(collapse_road_detail::CollapseRoadDetailTool),
         Box::new(analyze_changes_ccdc::AnalyzeChangesCcdcTool),
         Box::new(space_time_kernel_density::SpaceTimeKernelDensityTool),
@@ -1372,6 +1374,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("collapse_distance", float()),
             ("road_class_field", ToolParamSchema::string()),
             ("snap_tolerance", float()),
+        ]),
+        "topo_to_raster" => schemas(&[
+            ("contours", vector_in()),
+            ("points", vector_in()),
+            ("streams", vector_in()),
+            ("output", raster_out()),
+            ("elevation_field", ToolParamSchema::string()),
+            ("cell_size", float()),
+            ("tension", float()),
+            ("iterations", int()),
+            ("tolerance", float()),
+            ("enforce_drainage", ToolParamSchema::bool()),
+            ("stream_burn", float()),
         ]),
         _ => return None,
     };

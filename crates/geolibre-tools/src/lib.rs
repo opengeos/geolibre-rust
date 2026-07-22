@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod create_spatial_sampling_locations;
 
 use std::collections::BTreeMap;
 
@@ -319,6 +320,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(create_spatial_sampling_locations::CreateSpatialSamplingLocationsTool),
     ]
 }
 
@@ -1614,6 +1616,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zone_band", int()),
             ("value_band", int()),
             ("long_output", table_out()),
+        ]),
+        "create_spatial_sampling_locations" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["simple_random", "stratified", "systematic", "cluster"])),
+            ("num_samples", int()),
+            ("strata_field", ToolParamSchema::string()),
+            ("allocation", ToolParamSchema::enum_values(&["proportional", "equal", "population_field"])),
+            ("population_field", ToolParamSchema::string()),
+            ("bin_shape", ToolParamSchema::enum_values(&["square", "hexagon", "triangle"])),
+            ("bin_size", float()),
+            ("num_clusters", int()),
+            ("min_distance", float()),
+            ("seed", int()),
         ]),
         _ => return None,
     };

@@ -436,6 +436,12 @@ fn build_bin_column(
                     .collect()
             }
             BinMethod::StdDev => {
+                // Simplified standard-deviation classification: `k` equal-width
+                // bins of one sample standard deviation each, centered on the
+                // mean (breaks at mean + sd*(i - k/2)). This is not ArcGIS's
+                // exact standard-deviation-interval algorithm (which snaps to
+                // a fixed interval size like 1 or 1/2 sd and can vary the bin
+                // count), but it is deterministic and keeps the mean centered.
                 let (mean, sd) = mean_sd(&vals);
                 if sd > 0.0 {
                     let half = k as f64 / 2.0;

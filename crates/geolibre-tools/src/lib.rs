@@ -152,6 +152,7 @@ mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
 mod strip_map_index_features;
+mod zonal_histogram;
 
 use std::collections::BTreeMap;
 
@@ -291,6 +292,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
+        Box::new(zonal_histogram::ZonalHistogramTool),
     ]
 }
 
@@ -1425,6 +1427,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "zonal_histogram" => schemas(&[
+            ("zones", raster_in()),
+            ("value", raster_in()),
+            ("output", table_out()),
+            ("mode", ToolParamSchema::enum_values(&["classes", "bins"])),
+            ("bins", int()),
+            ("percent", ToolParamSchema::bool()),
+            ("zone_band", int()),
+            ("value_band", int()),
+            ("long_output", table_out()),
         ]),
         _ => return None,
     };

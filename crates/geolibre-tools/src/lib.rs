@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod points_to_path;
 mod extract_scanned_features;
 mod gtfs_to_features;
 mod create_spatial_sampling_locations;
@@ -327,6 +328,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(points_to_path::PointsToPathTool),
         Box::new(extract_scanned_features::ExtractScannedFeaturesTool),
         Box::new(gtfs_to_features::GtfsToFeaturesTool),
         Box::new(create_spatial_sampling_locations::CreateSpatialSamplingLocationsTool),
@@ -1704,6 +1706,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("narrow_only", ToolParamSchema::bool()),
         ]),
         // note: `narrow_area`, `min_width`, `is_narrow` are output attributes, not params
+        "points_to_path" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("order_field", ToolParamSchema::string()),
+            ("group_field", ToolParamSchema::string()),
+            ("natural_sort", ToolParamSchema::bool()),
+            ("close_path", ToolParamSchema::bool()),
+        ]),
         _ => return None,
     };
     Some(map)

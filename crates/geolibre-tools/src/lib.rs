@@ -31,6 +31,7 @@ mod dem_filter;
 mod detect_feature_changes;
 mod detect_image_anomalies;
 mod directional_distribution;
+mod eliminate_polygon_part;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod empirical_bayesian_kriging;
@@ -220,6 +221,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
+        Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
@@ -572,6 +574,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("exclude", ToolParamSchema::string()),
             ("strategy", ToolParamSchema::enum_values(&["longest_border", "largest_area"])),
             ("tolerance", float()),
+        ]),
+        "eliminate_polygon_part" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("condition", ToolParamSchema::enum_values(&["AREA", "PERCENT"])),
+            ("min_area", float()),
+            ("percentage", float()),
+            ("part_option", ToolParamSchema::enum_values(&["CONTAINED_ONLY", "ANY"])),
         ]),
         "simplify_shared_edges" => schemas(&[
             ("input", vector_in()),

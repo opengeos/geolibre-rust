@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod maximum_likelihood_classification;
 mod focal_statistics;
 mod multicriteria_overlay;
 mod surface_volume;
@@ -246,6 +247,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(maximum_likelihood_classification::MaximumLikelihoodClassificationTool),
         Box::new(focal_statistics::FocalStatisticsTool),
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
         Box::new(surface_volume::SurfaceVolumeTool),
@@ -475,6 +477,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "maximum_likelihood_classification" => schemas(&[
+            ("input", raster_in()),
+            ("training", raster_in()),
+            ("output", raster_out()),
+            ("prob_output", raster_out()),
+            ("a_priori", ToolParamSchema::enum_values(&["equal", "sample"])),
+            ("reject_fraction", float()),
+        ]),
         "focal_statistics" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),

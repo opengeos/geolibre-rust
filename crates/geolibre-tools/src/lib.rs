@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod repair_geometry;
 mod grid_index_features;
 mod local_bivariate_relationships;
 mod dimension_reduction;
@@ -254,6 +255,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(repair_geometry::RepairGeometryTool),
         Box::new(grid_index_features::GridIndexFeaturesTool),
         Box::new(local_bivariate_relationships::LocalBivariateRelationshipsTool),
         Box::new(dimension_reduction::DimensionReductionTool),
@@ -1250,6 +1252,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("route", vector_in()),
             ("overlap", float()),
             ("epsg", int()),
+        ]),
+        "repair_geometry" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("check_only", ToolParamSchema::bool()),
         ]),
         _ => return None,
     };

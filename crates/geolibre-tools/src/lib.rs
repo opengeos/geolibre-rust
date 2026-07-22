@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod analyze_changes_ccdc;
 mod space_time_kernel_density;
 mod geotagged_photos_to_points;
 mod darcy_flow;
@@ -262,6 +263,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(analyze_changes_ccdc::AnalyzeChangesCcdcTool),
         Box::new(space_time_kernel_density::SpaceTimeKernelDensityTool),
         Box::new(geotagged_photos_to_points::GeotaggedPhotosToPointsTool),
         Box::new(darcy_flow::DarcyFlowTool),
@@ -1346,6 +1348,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("spatial_kernel", ToolParamSchema::enum_values(&["epanechnikov", "quartic"])),
             ("temporal_kernel", ToolParamSchema::enum_values(&["triangular", "epanechnikov"])),
             ("epsg", int()),
+        ]),
+        "analyze_changes_ccdc" => schemas(&[
+            ("input", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("dates", ToolParamSchema::string()),
+            ("period", float()),
+            ("harmonic_order", int()),
+            ("change_threshold", float()),
+            ("min_consecutive", int()),
+            ("min_observations", int()),
+            ("band", int()),
+            ("break_date_output", raster_out()),
+            ("rmse_output", raster_out()),
+            ("slope_output", raster_out()),
+            ("amplitude_output", raster_out()),
         ]),
         _ => return None,
     };

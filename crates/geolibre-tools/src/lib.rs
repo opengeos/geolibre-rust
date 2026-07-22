@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod time_series_smoothing;
 mod combine;
 mod aggregate_polygons;
 mod apportion_polygon;
@@ -203,6 +204,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(time_series_smoothing::TimeSeriesSmoothingTool),
         Box::new(combine::CombineTool),
         Box::new(assign_projection::AssignProjectionRasterTool),
         Box::new(assign_projection::AssignProjectionVectorTool),
@@ -389,6 +391,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "time_series_smoothing" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("id_field", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["moving_average", "local_linear"])),
+            ("window", int()),
+            ("bandwidth", int()),
+            ("alignment", ToolParamSchema::enum_values(&["backward", "centered", "forward"])),
+            ("output_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+        ]),
         "combine" => schemas(&[
             ("inputs", ToolParamSchema::string()),
             ("output", raster_out()),

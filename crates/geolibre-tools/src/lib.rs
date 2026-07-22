@@ -15,6 +15,7 @@ mod boundary_clean;
 mod build_balanced_zones;
 mod calculate_motion_statistics;
 mod cartogram;
+mod causal_inference_analysis;
 mod central_feature;
 mod collapse_dual_lines_to_centerline;
 mod colocation_analysis;
@@ -86,6 +87,7 @@ mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
 mod trace_proximity_events;
+mod transform_fields;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -152,6 +154,14 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod align_features;
+mod multivariate_clustering;
+mod table_to_geometry;
+mod detect_graphic_conflict;
+mod disperse_markers;
+mod geodetic_densify;
+mod strip_map_index_features;
+mod zonal_histogram;
 
 use std::collections::BTreeMap;
 
@@ -291,6 +301,16 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(causal_inference_analysis::CausalInferenceAnalysisTool),
+        Box::new(align_features::AlignFeaturesTool),
+        Box::new(multivariate_clustering::MultivariateClusteringTool),
+        Box::new(table_to_geometry::TableToGeometryTool),
+        Box::new(transform_fields::TransformFieldsTool),
+        Box::new(detect_graphic_conflict::DetectGraphicConflictTool),
+        Box::new(disperse_markers::DisperseMarkersTool),
+        Box::new(geodetic_densify::GeodeticDensifyTool),
+        Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
+        Box::new(zonal_histogram::ZonalHistogramTool),
     ]
 }
 
@@ -1027,6 +1047,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("method", ToolParamSchema::enum_values(&["linear", "idw"])),
             ("power", float()),
         ]),
+        "align_features" => schemas(&[
+            ("input", vector_in()),
+            ("target", vector_in()),
+            ("output", vector_out()),
+            ("search_distance", float()),
+            ("match_field", ToolParamSchema::string()),
+            ("target_match_field", ToolParamSchema::string()),
+        ]),
         "remove_overlap_multiple" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1259,6 +1287,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("significance", float()),
             ("seed", int()),
         ]),
+        "strip_map_index_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("page_length", float()),
+            ("page_width", float()),
+            ("overlap", float()),
+            ("orientation", ToolParamSchema::enum_values(&["along_line", "horizontal", "vertical"])),
+            ("start_page", int()),
+        ]),
         "grid_index_features" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1292,6 +1329,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output_field", ToolParamSchema::string()),
             ("precision", int()),
             ("update_geometry", ToolParamSchema::bool()),
+            ("output", vector_out()),
+        ]),
+        "geodetic_densify" => schemas(&[
+            ("input", vector_in()),
+            ("geodetic_type", ToolParamSchema::enum_values(&["geodesic", "rhumb"])),
+            ("max_segment_length", float()),
+            ("vertices_per_segment", int()),
             ("output", vector_out()),
         ]),
         "interpolate_with_barriers" => schemas(&[
@@ -1434,6 +1478,87 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "causal_inference_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("outcome_field", ToolParamSchema::string()),
+            ("treatment_field", ToolParamSchema::string()),
+            ("confounding_fields", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["ps_matching", "ipw", "regression_adjustment"])),
+            ("add_spatial_confounders", ToolParamSchema::bool()),
+            ("balance_threshold", float()),
+            ("output", vector_out()),
+            ("seed", int()),
+        ]),
+        "multivariate_clustering" => schemas(&[
+            ("input", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("num_clusters", int()),
+            ("method", ToolParamSchema::enum_values(&["kmeans", "kmedoids"])),
+            ("seed", int()),
+        ]),
+        "table_to_geometry" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("mode", ToolParamSchema::enum_values(&["xy_to_line", "bearing_distance", "ellipse"])),
+            ("line_type", ToolParamSchema::enum_values(&["geodesic", "rhumb", "planar"])),
+            ("vertex_spacing", float()),
+            ("polygon_output", ToolParamSchema::bool()),
+            ("start_x", ToolParamSchema::string()),
+            ("start_y", ToolParamSchema::string()),
+            ("end_x", ToolParamSchema::string()),
+            ("end_y", ToolParamSchema::string()),
+            ("x", ToolParamSchema::string()),
+            ("y", ToolParamSchema::string()),
+            ("bearing", ToolParamSchema::string()),
+            ("distance", ToolParamSchema::string()),
+            ("major", ToolParamSchema::string()),
+            ("minor", ToolParamSchema::string()),
+            ("azimuth", ToolParamSchema::string()),
+        ]),
+        "transform_fields" => schemas(&[
+            ("input", vector_in()),
+            ("fields", ToolParamSchema::string()),
+            ("transform", ToolParamSchema::enum_values(&[
+                "zscore", "minmax", "robust", "log", "log1p", "sqrt", "boxcox", "inverse", "bin", "onehot",
+            ])),
+            ("output", vector_out()),
+            ("bins", int()),
+            ("bin_method", ToolParamSchema::enum_values(&["equal_interval", "quantile", "std_dev"])),
+            ("boxcox_lambda", float()),
+            ("suffix", ToolParamSchema::string()),
+            ("drop_input", ToolParamSchema::bool()),
+        ]),
+        "detect_graphic_conflict" => schemas(&[
+            ("input", vector_in()),
+            ("conflict", vector_in()),
+            ("symbol_width", float()),
+            ("conflict_symbol_width", float()),
+            ("conflict_distance", float()),
+            ("line_connection_allowance", float()),
+            ("output", vector_out()),
+        ]),
+        "disperse_markers" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_spacing", float()),
+            (
+                "pattern",
+                ToolParamSchema::enum_values(&["expanded", "ring", "cross", "square"]),
+            ),
+            ("seed", int()),
+        ]),
+        "zonal_histogram" => schemas(&[
+            ("zones", raster_in()),
+            ("value", raster_in()),
+            ("output", table_out()),
+            ("mode", ToolParamSchema::enum_values(&["classes", "bins"])),
+            ("bins", int()),
+            ("percent", ToolParamSchema::bool()),
+            ("zone_band", int()),
+            ("value_band", int()),
+            ("long_output", table_out()),
         ]),
         _ => return None,
     };

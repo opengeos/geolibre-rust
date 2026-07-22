@@ -1448,6 +1448,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                 ToolParamSchema::enum_values(&["expanded", "ring", "cross", "square"]),
             ),
             ("seed", int()),
+        ]),
         "zonal_histogram" => schemas(&[
             ("zones", raster_in()),
             ("value", raster_in()),

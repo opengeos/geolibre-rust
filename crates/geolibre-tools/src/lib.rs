@@ -151,6 +151,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod strip_map_index_features;
 
 use std::collections::BTreeMap;
 
@@ -289,6 +290,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
     ]
 }
 
@@ -1256,6 +1258,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("permutations", int()),
             ("significance", float()),
             ("seed", int()),
+        ]),
+        "strip_map_index_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("page_length", float()),
+            ("page_width", float()),
+            ("overlap", float()),
+            ("orientation", ToolParamSchema::enum_values(&["along_line", "horizontal", "vertical"])),
+            ("start_page", int()),
         ]),
         "grid_index_features" => schemas(&[
             ("input", vector_in()),

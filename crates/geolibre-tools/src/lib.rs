@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod detect_incidents;
 mod find_argument_statistics;
 
 use std::collections::BTreeMap;
@@ -246,6 +247,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
     ]
 }
@@ -1152,6 +1154,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("comparison", ToolParamSchema::enum_values(&[">", ">=", "<", "<="])),
             ("dates", ToolParamSchema::string()),
             ("min_valid", int()),
+        ]),
+        "detect_incidents" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("start_condition", ToolParamSchema::string()),
+            ("end_condition", ToolParamSchema::string()),
+            ("mode", ToolParamSchema::enum_values(&["points", "segments"])),
+            ("output", vector_out()),
         ]),
         _ => return None,
     };

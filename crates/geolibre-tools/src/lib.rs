@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod grid_index_features;
 mod local_bivariate_relationships;
 mod dimension_reduction;
 mod feature_outline_masks;
@@ -253,6 +254,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(grid_index_features::GridIndexFeaturesTool),
         Box::new(local_bivariate_relationships::LocalBivariateRelationshipsTool),
         Box::new(dimension_reduction::DimensionReductionTool),
         Box::new(feature_outline_masks::FeatureOutlineMasksTool),
@@ -1228,6 +1230,26 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("permutations", int()),
             ("significance", float()),
             ("seed", int()),
+        ]),
+        "grid_index_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("mode", ToolParamSchema::enum_values(&["grid", "strip"])),
+            ("x_min", float()),
+            ("y_min", float()),
+            ("x_max", float()),
+            ("y_max", float()),
+            ("tile_width", float()),
+            ("tile_height", float()),
+            ("page_size", ToolParamSchema::enum_values(&["a0", "a1", "a2", "a3", "a4", "letter", "legal", "tabloid"])),
+            ("map_scale", float()),
+            ("origin_x", float()),
+            ("origin_y", float()),
+            ("naming", ToolParamSchema::enum_values(&["alphanumeric", "sequential"])),
+            ("intersect_only", ToolParamSchema::bool()),
+            ("route", vector_in()),
+            ("overlap", float()),
+            ("epsg", int()),
         ]),
         _ => return None,
     };

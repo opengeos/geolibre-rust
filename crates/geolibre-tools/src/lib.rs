@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod combine;
 mod aggregate_polygons;
 mod apportion_polygon;
 mod assign_projection;
@@ -202,6 +203,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(combine::CombineTool),
         Box::new(assign_projection::AssignProjectionRasterTool),
         Box::new(assign_projection::AssignProjectionVectorTool),
         Box::new(assign_projection::AssignProjectionLidarTool),
@@ -387,6 +389,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "combine" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("csv_output", table_out()),
+            ("band", int()),
+        ]),
         "assign_projection_raster" => schemas(&[
             ("input", raster_in()),
             ("epsg", int()),

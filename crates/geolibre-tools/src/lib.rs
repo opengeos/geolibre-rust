@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod directional_trend;
 mod excel_to_table;
 mod add_surface_information;
 mod create_routes;
@@ -212,6 +213,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(directional_trend::DirectionalTrendTool),
         Box::new(excel_to_table::ExcelToTableTool),
         Box::new(add_surface_information::AddSurfaceInformationTool),
         Box::new(create_routes::CreateRoutesTool),
@@ -407,6 +409,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "directional_trend" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("azimuth", ToolParamSchema::string()),
+            ("order", int()),
+            ("output", vector_out()),
+        ]),
         "excel_to_table" => schemas(&[
             ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
             ("output", table_out()),

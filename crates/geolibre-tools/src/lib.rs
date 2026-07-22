@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod point_statistics;
 mod kml_to_features;
 mod graphic_buffer;
 mod features_to_gpx;
@@ -241,6 +242,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(point_statistics::PointStatisticsTool),
         Box::new(kml_to_features::KmlToFeaturesTool),
         Box::new(graphic_buffer::GraphicBufferTool),
         Box::new(features_to_gpx::FeaturesToGpxTool),
@@ -465,6 +467,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "point_statistics" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("statistic", ToolParamSchema::enum_values(&[
+                "mean", "majority", "maximum", "median", "minimum", "minority", "range", "std",
+                "sum", "variety",
+            ])),
+            ("neighborhood", ToolParamSchema::enum_values(&["circle", "rectangle"])),
+            ("radius", float()),
+            ("cell_size", float()),
+            ("epsg", int()),
+        ]),
         "kml_to_features" => schemas(&[
             ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
             ("points_output", vector_out()),

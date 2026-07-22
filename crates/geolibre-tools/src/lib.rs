@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod flip_line;
 mod cell_records_to_sectors;
 mod estimate_time_to_event;
 mod transform_route_events;
@@ -230,6 +231,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(flip_line::FlipLineTool),
         Box::new(cell_records_to_sectors::CellRecordsToSectorsTool),
         Box::new(estimate_time_to_event::EstimateTimeToEventTool),
         Box::new(transform_route_events::TransformRouteEventsTool),
@@ -443,6 +445,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "flip_line" => schemas(&[("input", vector_in()), ("output", vector_out())]),
         "cell_records_to_sectors" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),

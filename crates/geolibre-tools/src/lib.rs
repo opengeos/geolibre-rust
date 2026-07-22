@@ -151,6 +151,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod geodetic_densify;
 
 use std::collections::BTreeMap;
 
@@ -289,6 +290,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(geodetic_densify::GeodeticDensifyTool),
     ]
 }
 
@@ -1290,6 +1292,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output_field", ToolParamSchema::string()),
             ("precision", int()),
             ("update_geometry", ToolParamSchema::bool()),
+            ("output", vector_out()),
+        ]),
+        "geodetic_densify" => schemas(&[
+            ("input", vector_in()),
+            ("geodetic_type", ToolParamSchema::enum_values(&["geodesic", "rhumb"])),
+            ("max_segment_length", float()),
+            ("vertices_per_segment", int()),
             ("output", vector_out()),
         ]),
         "interpolate_with_barriers" => schemas(&[

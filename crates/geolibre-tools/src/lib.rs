@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod convert_coordinate_notation;
 mod repair_geometry;
 mod grid_index_features;
 mod local_bivariate_relationships;
@@ -255,6 +256,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(convert_coordinate_notation::ConvertCoordinateNotationTool),
         Box::new(repair_geometry::RepairGeometryTool),
         Box::new(grid_index_features::GridIndexFeaturesTool),
         Box::new(local_bivariate_relationships::LocalBivariateRelationshipsTool),
@@ -1257,6 +1259,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("check_only", ToolParamSchema::bool()),
+        ]),
+        "convert_coordinate_notation" => schemas(&[
+            ("input", vector_in()),
+            ("input_notation", ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"])),
+            ("output_notation", ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"])),
+            ("coord_field", ToolParamSchema::string()),
+            ("output_field", ToolParamSchema::string()),
+            ("precision", int()),
+            ("update_geometry", ToolParamSchema::bool()),
+            ("output", vector_out()),
         ]),
         _ => return None,
     };

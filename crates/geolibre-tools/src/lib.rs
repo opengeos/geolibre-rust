@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod percentile_contours;
 mod spatial_association_between_zones;
 mod merge_lines_by_pseudo_node;
 mod identify_narrow_polygons;
@@ -322,6 +323,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(percentile_contours::PercentileContoursTool),
         Box::new(spatial_association_between_zones::SpatialAssociationBetweenZonesTool),
         Box::new(merge_lines_by_pseudo_node::MergeLinesByPseudoNodeTool),
         Box::new(identify_narrow_polygons::IdentifyNarrowPolygonsTool),
@@ -1620,6 +1622,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zone_band", int()),
             ("value_band", int()),
             ("long_output", table_out()),
+        ]),
+        "percentile_contours" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("percentiles", ToolParamSchema::string()),
+            ("mode", ToolParamSchema::enum_values(&["value", "volume"])),
+            ("ignore_negative", ToolParamSchema::bool()),
+            ("smooth", ToolParamSchema::bool()),
+            ("band", int()),
         ]),
         "spatial_association_between_zones" => schemas(&[
             ("zones1", raster_in()),

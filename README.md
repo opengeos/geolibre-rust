@@ -182,6 +182,7 @@ rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
 | `read_geoparquet` | Read GeoParquet and convert it to another vector format (or store it in memory). |
 | `vector_convert` | Convert a vector dataset between formats (the output extension picks the driver). |
 | `render_vector_png` | Draw a vector layer (points/lines/polygons) to a PNG map image. |
+| `find_argument_statistics` | Per-pixel *argument* statistics over a raster stack — one multiband raster or a list of co-registered rasters (like ArcGIS's *Find Argument Statistics*): for each pixel find the slice index (or `dates` value, e.g. day-of-year) of the maximum (`argmax`), minimum (`argmin`), or ordered-median (`median_position`), or the count of slices past a `threshold`/`comparison` (`duration`) or the longest consecutive run that pass (`longest_run`). Answers "when does NDVI peak", "how many weeks below X", "longest dry spell" — the argument-position questions the value-aggregating bundled cell-statistics and `image_stack_profile` can't, complementing the per-pixel `generate_trend_raster` and `landtrendr`. |
 
 It also ships pure-Rust ports of the DEM depression/mount algorithms from
 [`opengeos/lidar`](https://github.com/opengeos/lidar) (no GDAL, RichDEM, SciPy,

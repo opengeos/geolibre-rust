@@ -152,6 +152,8 @@ mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
 mod geodetic_densify;
+mod strip_map_index_features;
+mod zonal_histogram;
 
 use std::collections::BTreeMap;
 
@@ -291,6 +293,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
         Box::new(geodetic_densify::GeodeticDensifyTool),
+        Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
+        Box::new(zonal_histogram::ZonalHistogramTool),
     ]
 }
 
@@ -1259,6 +1263,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("significance", float()),
             ("seed", int()),
         ]),
+        "strip_map_index_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("page_length", float()),
+            ("page_width", float()),
+            ("overlap", float()),
+            ("orientation", ToolParamSchema::enum_values(&["along_line", "horizontal", "vertical"])),
+            ("start_page", int()),
+        ]),
         "grid_index_features" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1423,6 +1436,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "zonal_histogram" => schemas(&[
+            ("zones", raster_in()),
+            ("value", raster_in()),
+            ("output", table_out()),
+            ("mode", ToolParamSchema::enum_values(&["classes", "bins"])),
+            ("bins", int()),
+            ("percent", ToolParamSchema::bool()),
+            ("zone_band", int()),
+            ("value_band", int()),
+            ("long_output", table_out()),
         ]),
         _ => return None,
     };

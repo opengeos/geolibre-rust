@@ -33,6 +33,7 @@ mod directional_distribution;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod expand_shrink;
+mod exploratory_regression;
 mod extract_sinks;
 mod fill;
 mod find_identical;
@@ -289,6 +290,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(exploratory_regression::ExploratoryRegressionTool),
     ]
 }
 
@@ -1414,6 +1416,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "exploratory_regression" => schemas(&[
+            ("input", vector_in()),
+            ("dependent_field", ToolParamSchema::string()),
+            ("explanatory_fields", ToolParamSchema::string()),
+            ("min_vars", int()),
+            ("max_vars", int()),
+            ("max_coef_p", float()),
+            ("min_adj_r2", float()),
+            ("max_vif", float()),
+            ("min_jb_p", float()),
+            ("min_moran_p", float()),
+            ("neighbors", int()),
+            ("output", table_out()),
         ]),
         _ => return None,
     };

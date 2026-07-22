@@ -94,6 +94,7 @@ rendering tools that the whitebox suite lacks (all pure-Rust, running in WASM):
 
 | Tool id | What it does |
 |---|---|
+| `combine` | Assign a unique integer zone id to each unique combination of values across two or more co-registered categorical rasters (like ArcGIS's *Combine*): a single cell-wise pass hashes the input-value tuple to a dense 1-based id, emitting a unique-condition-units (HRU) raster plus a value-attribute table (`value, count, one column per input`). Any cell that is no-data in *any* input is no-data out. The multi-raster overlay the bundled `cross_tabulation` (a two-raster contingency table only) can't produce — the standard suitability / hydrologic-response-unit building block. |
 | `reproject_raster` | Reproject (warp) a raster into a target EPSG CRS, with selectable resampling. |
 | `assign_projection_raster` | Assign an EPSG CRS to a raster's metadata without warping its cells (for data whose coordinates are already in that CRS but carry a missing/wrong projection tag). |
 | `assign_projection_vector` | Assign an EPSG CRS to a vector layer without reprojecting its geometries. |

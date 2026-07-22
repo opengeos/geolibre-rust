@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod median_center;
 mod flip_line;
 mod cell_records_to_sectors;
 mod estimate_time_to_event;
@@ -231,6 +232,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(median_center::MedianCenterTool),
         Box::new(flip_line::FlipLineTool),
         Box::new(cell_records_to_sectors::CellRecordsToSectorsTool),
         Box::new(estimate_time_to_event::EstimateTimeToEventTool),
@@ -445,6 +447,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "median_center" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("weight_field", ToolParamSchema::string()),
+            ("case_field", ToolParamSchema::string()),
+            ("attribute_fields", ToolParamSchema::string()),
+        ]),
         "flip_line" => schemas(&[("input", vector_in()), ("output", vector_out())]),
         "cell_records_to_sectors" => schemas(&[
             ("input", vector_in()),

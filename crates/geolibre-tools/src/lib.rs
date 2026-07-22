@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod calculate_adjacent_fields;
 mod densify_sampling_network;
 mod feature_vertices_to_points;
 mod create_overpass;
@@ -220,6 +221,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(calculate_adjacent_fields::CalculateAdjacentFieldsTool),
         Box::new(densify_sampling_network::DensifySamplingNetworkTool),
         Box::new(feature_vertices_to_points::FeatureVerticesToPointsTool),
         Box::new(create_overpass::CreateOverpassTool),
@@ -423,6 +425,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "calculate_adjacent_fields" => schemas(&[
+            ("input", vector_in()),
+            ("page_name_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("include_diagonal", ToolParamSchema::bool()),
+            ("snap_tolerance", float()),
+        ]),
         "densify_sampling_network" => schemas(&[
             ("prediction_error", raster_in()),
             ("output", vector_out()),

@@ -343,7 +343,7 @@ fn erfc(x: f64) -> f64 {
 
 // ── Geometry / parameters ────────────────────────────────────────────────────
 
-fn representative_xy(geom: &Geometry) -> Option<(f64, f64)> {
+pub fn representative_xy(geom: &Geometry) -> Option<(f64, f64)> {
     let mut sx = 0.0;
     let mut sy = 0.0;
     let mut n = 0u64;

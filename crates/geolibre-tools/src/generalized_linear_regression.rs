@@ -605,7 +605,7 @@ fn diagnostics(
 /// i.e. c ∈ 1..p): 1/(1−R²) from an OLS of that column on the remaining
 /// explanatory columns plus an intercept.
 #[allow(clippy::needless_range_loop)]
-fn vif_for(xs: &[Vec<f64>], p: usize, c: usize) -> f64 {
+pub fn vif_for(xs: &[Vec<f64>], p: usize, c: usize) -> f64 {
     if p <= 2 {
         return 1.0; // single explanatory term — nothing to be collinear with
     }
@@ -740,7 +740,7 @@ fn report_csv(diag: &Diagnostics, family: Family, n: usize, p: usize) -> String 
 /// Solves the small dense system `a x = b` by Gaussian elimination with partial
 /// pivoting. Returns `None` if `a` is singular.
 #[allow(clippy::needless_range_loop)]
-fn solve(a_in: &[Vec<f64>], b_in: &[f64]) -> Option<Vec<f64>> {
+pub fn solve(a_in: &[Vec<f64>], b_in: &[f64]) -> Option<Vec<f64>> {
     let n = b_in.len();
     let mut a: Vec<Vec<f64>> = a_in.to_vec();
     let mut b = b_in.to_vec();
@@ -783,7 +783,7 @@ fn solve(a_in: &[Vec<f64>], b_in: &[f64]) -> Option<Vec<f64>> {
 
 /// Inverts a small dense matrix by solving against each identity column.
 #[allow(clippy::needless_range_loop)]
-fn invert(a: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
+pub fn invert(a: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
     let n = a.len();
     let mut inv = vec![vec![0.0; n]; n];
     for c in 0..n {
@@ -800,7 +800,7 @@ fn invert(a: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
 // ── Special functions (dependency-free) ─────────────────────────────────────────
 
 /// Standard normal CDF via the error function.
-fn normal_cdf(x: f64) -> f64 {
+pub fn normal_cdf(x: f64) -> f64 {
     0.5 * (1.0 + erf(x / std::f64::consts::SQRT_2))
 }
 
@@ -819,14 +819,14 @@ fn erf(x: f64) -> f64 {
 
 /// Two-sided p-value for a Student-t statistic with `df` degrees of freedom,
 /// via the regularized incomplete beta function.
-fn two_sided_t(t: f64, df: f64) -> f64 {
+pub fn two_sided_t(t: f64, df: f64) -> f64 {
     let x = df / (df + t * t);
     betai(df / 2.0, 0.5, x)
 }
 
 /// Upper-tail probability of the χ² distribution: P(X > x) for `df` degrees of
 /// freedom, via the regularized upper incomplete gamma function.
-fn chi2_sf(x: f64, df: f64) -> f64 {
+pub fn chi2_sf(x: f64, df: f64) -> f64 {
     if x <= 0.0 {
         return 1.0;
     }

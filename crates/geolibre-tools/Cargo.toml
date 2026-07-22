@@ -54,3 +54,9 @@ geo = { version = "0.33", default-features = false }
 # used by geotagged_photos_to_points to read GPS + datetime + camera tags from
 # photo headers. WASM-clean. Crate name `kamadak-exif`, imported as `exif`.
 exif = { package = "kamadak-exif", version = "0.6.1" }
+# 1-D/2-D nearest-neighbour search (propensity-score caliper matching and
+# spatial-confounder neighbour averaging in causal_inference_analysis).
+# Redirected to the workspace's vendored copy by the root `[patch.crates-io]`
+# (see root Cargo.toml) which fixes kdtree 0.8.0's wasm-breaking `criterion`
+# normal-dependency packaging bug.
+kdtree = "0.8"

@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod generalized_linear_regression;
 mod interpolate_with_barriers;
 mod convert_coordinate_notation;
 mod repair_geometry;
@@ -257,6 +258,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
         Box::new(interpolate_with_barriers::InterpolateWithBarriersTool),
         Box::new(convert_coordinate_notation::ConvertCoordinateNotationTool),
         Box::new(repair_geometry::RepairGeometryTool),
@@ -1282,6 +1284,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("bandwidth", float()),
             ("radius", float()),
             ("cell_size", float()),
+        ]),
+        "generalized_linear_regression" => schemas(&[
+            ("input", vector_in()),
+            ("dependent_field", ToolParamSchema::string()),
+            ("explanatory_fields", ToolParamSchema::string()),
+            ("family", ToolParamSchema::enum_values(&["gaussian", "poisson", "logistic"])),
+            ("output", vector_out()),
+            ("report", table_out()),
         ]),
         _ => return None,
     };

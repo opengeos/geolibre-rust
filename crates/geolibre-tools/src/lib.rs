@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod estimate_time_to_event;
 mod transform_route_events;
 mod eighty_twenty_analysis;
 mod extract_locations_from_text;
@@ -228,6 +229,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(estimate_time_to_event::EstimateTimeToEventTool),
         Box::new(transform_route_events::TransformRouteEventsTool),
         Box::new(eighty_twenty_analysis::EightyTwentyAnalysisTool),
         Box::new(extract_locations_from_text::ExtractLocationsFromTextTool),
@@ -439,6 +441,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "estimate_time_to_event" => schemas(&[
+            ("input", vector_in()),
+            ("age_field", ToolParamSchema::string()),
+            ("event_field", ToolParamSchema::string()),
+            ("stratify_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+        ]),
         "transform_route_events" => schemas(&[
             ("source_events", vector_in()),
             ("source_routes", vector_in()),

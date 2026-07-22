@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
 
@@ -247,6 +248,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
     ]
@@ -1163,6 +1165,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("end_condition", ToolParamSchema::string()),
             ("mode", ToolParamSchema::enum_values(&["points", "segments"])),
             ("output", vector_out()),
+        ]),
+        "kernel_density_ratio" => schemas(&[
+            ("input", vector_in()),
+            ("denominator", vector_in()),
+            ("output", raster_out()),
+            ("weight_field", ToolParamSchema::string()),
+            ("denominator_weight_field", ToolParamSchema::string()),
+            ("bandwidth", float()),
+            ("cell_size", float()),
+            ("log_ratio", ToolParamSchema::bool()),
+            ("denominator_floor", float()),
+            ("epsg", int()),
         ]),
         _ => return None,
     };

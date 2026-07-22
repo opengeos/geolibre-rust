@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod focal_statistics;
 mod multicriteria_overlay;
 mod surface_volume;
 mod generate_spatial_weights_matrix;
@@ -245,6 +246,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(focal_statistics::FocalStatisticsTool),
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
         Box::new(surface_volume::SurfaceVolumeTool),
         Box::new(generate_spatial_weights_matrix::GenerateSpatialWeightsMatrixTool),
@@ -473,6 +475,24 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "focal_statistics" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("statistics", ToolParamSchema::enum_values(&[
+                "mean", "majority", "maximum", "median", "minimum", "minority",
+                "percentile", "range", "std", "sum", "variety",
+            ])),
+            ("neighborhood", ToolParamSchema::enum_values(&["rectangle", "circle", "annulus", "wedge"])),
+            ("width", int()),
+            ("height", int()),
+            ("radius", float()),
+            ("inner_radius", float()),
+            ("start_angle", float()),
+            ("end_angle", float()),
+            ("percentile_value", float()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
         "multicriteria_overlay" => schemas(&[
             (
                 "inputs",

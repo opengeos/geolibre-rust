@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod feature_vertices_to_points;
 mod create_overpass;
 mod features_to_gtfs;
 mod adjust_3d_z;
@@ -218,6 +219,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(feature_vertices_to_points::FeatureVerticesToPointsTool),
         Box::new(create_overpass::CreateOverpassTool),
         Box::new(features_to_gtfs::FeaturesToGtfsTool),
         Box::new(adjust_3d_z::Adjust3dZTool),
@@ -419,6 +421,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "feature_vertices_to_points" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("point_location", ToolParamSchema::enum_values(&[
+                "ALL", "START", "END", "BOTH_ENDS", "MID", "DANGLE",
+            ])),
+        ]),
         "create_overpass" => schemas(&[
             ("above", vector_in()),
             ("below", vector_in()),

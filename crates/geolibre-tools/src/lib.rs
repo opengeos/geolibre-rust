@@ -139,6 +139,7 @@ mod analyze_changes_ccdc;
 mod space_time_kernel_density;
 mod geotagged_photos_to_points;
 mod darcy_flow;
+mod porous_puff;
 mod time_series_cross_correlation;
 mod generalized_linear_regression;
 mod interpolate_with_barriers;
@@ -285,6 +286,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(space_time_kernel_density::SpaceTimeKernelDensityTool),
         Box::new(geotagged_photos_to_points::GeotaggedPhotosToPointsTool),
         Box::new(darcy_flow::DarcyFlowTool),
+        Box::new(porous_puff::PorousPuffTool),
         Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
         Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
         Box::new(interpolate_with_barriers::InterpolateWithBarriersTool),
@@ -1379,6 +1381,24 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("band", int()),
             ("seeds", vector_in()),
             ("streamlines", vector_out()),
+            ("step", float()),
+            ("max_steps", int()),
+        ]),
+        "porous_puff" => schemas(&[
+            ("magnitude", raster_in()),
+            ("direction", raster_in()),
+            ("x", float()),
+            ("y", float()),
+            ("mass", float()),
+            ("porosity", ToolParamSchema::string()),
+            ("thickness", ToolParamSchema::string()),
+            ("dispersivity_long", float()),
+            ("dispersivity_trans", float()),
+            ("retardation", float()),
+            ("decay", float()),
+            ("time", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("band", int()),
             ("step", float()),
             ("max_steps", int()),
         ]),

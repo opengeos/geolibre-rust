@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod adjust_3d_z;
 mod attribute_uncertainty;
 mod split_line_at_point;
 mod directional_trend;
@@ -215,6 +216,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(adjust_3d_z::Adjust3dZTool),
         Box::new(attribute_uncertainty::AttributeUncertaintyTool),
         Box::new(split_line_at_point::SplitLineAtPointTool),
         Box::new(directional_trend::DirectionalTrendTool),
@@ -413,6 +415,40 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "adjust_3d_z" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("factor", float()),
+            ("offset", float()),
+            (
+                "from_unit",
+                ToolParamSchema::enum_values(&[
+                    "meters",
+                    "feet",
+                    "us_feet",
+                    "centimeters",
+                    "millimeters",
+                    "kilometers",
+                    "miles",
+                    "yards",
+                    "inches",
+                ]),
+            ),
+            (
+                "to_unit",
+                ToolParamSchema::enum_values(&[
+                    "meters",
+                    "feet",
+                    "us_feet",
+                    "centimeters",
+                    "millimeters",
+                    "kilometers",
+                    "miles",
+                    "yards",
+                    "inches",
+                ]),
+            ),
+        ]),
         "attribute_uncertainty" => schemas(&[
             ("input", vector_in()),
             ("value_field", ToolParamSchema::string()),

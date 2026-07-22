@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod features_to_gtfs;
 mod adjust_3d_z;
 mod attribute_uncertainty;
 mod split_line_at_point;
@@ -216,6 +217,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(features_to_gtfs::FeaturesToGtfsTool),
         Box::new(adjust_3d_z::Adjust3dZTool),
         Box::new(attribute_uncertainty::AttributeUncertaintyTool),
         Box::new(split_line_at_point::SplitLineAtPointTool),
@@ -415,6 +417,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "features_to_gtfs" => schemas(&[
+            ("stops_input", vector_in()),
+            ("shapes_input", vector_in()),
+            ("output_dir", ToolParamSchema::output(ToolDatasetSchema::File)),
+        ]),
         "adjust_3d_z" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),

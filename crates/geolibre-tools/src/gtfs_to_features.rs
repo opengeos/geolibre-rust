@@ -434,9 +434,15 @@ mod tests {
         }
     }
 
-    /// Writes a tiny GTFS feed to a temp dir and returns its path.
+    /// Writes a tiny GTFS feed to a unique temp dir and returns its path.
+    ///
+    /// The directory is keyed by process id *and* a per-call atomic counter, so
+    /// concurrently-running tests never share (and clobber) the same feed.
     fn write_feed() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("gtfs_test_{}", std::process::id()));
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("gtfs_test_{}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(

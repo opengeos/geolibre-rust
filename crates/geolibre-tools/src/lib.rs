@@ -137,6 +137,7 @@ mod analyze_changes_ccdc;
 mod space_time_kernel_density;
 mod geotagged_photos_to_points;
 mod darcy_flow;
+mod propagate_displacement;
 mod time_series_cross_correlation;
 mod generalized_linear_regression;
 mod interpolate_with_barriers;
@@ -289,6 +290,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(propagate_displacement::PropagateDisplacementTool),
     ]
 }
 
@@ -1414,6 +1416,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_iter", int()),
             ("pin_endpoints", ToolParamSchema::bool()),
             ("links", vector_out()),
+        ]),
+        "propagate_displacement" => schemas(&[
+            ("input", vector_in()),
+            ("links", vector_in()),
+            ("output", vector_out()),
+            (
+                "adjustment_style",
+                ToolParamSchema::enum_values(&["auto", "preserve_orientation", "solid"]),
+            ),
+            ("search_distance", float()),
         ]),
         _ => return None,
     };

@@ -89,6 +89,7 @@ mod spectral_index;
 mod split_by_attributes;
 mod storage_capacity;
 mod subdivide_polygon;
+mod summarize_nearby;
 mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
@@ -264,6 +265,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multiple_ring_buffer::MultipleRingBufferTool),
         Box::new(directional_distribution::DirectionalDistributionTool),
         Box::new(tabulate_intersection::TabulateIntersectionTool),
+        Box::new(summarize_nearby::SummarizeNearbyTool),
         Box::new(cut_fill::CutFillTool),
         Box::new(ripleys_k::RipleysKTool),
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
@@ -1199,6 +1201,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("class_field", ToolParamSchema::string()),
             ("sum_fields", ToolParamSchema::string()),
             ("zone_field", ToolParamSchema::string()),
+        ]),
+        "summarize_nearby" => schemas(&[
+            ("input", vector_in()),
+            ("summary_features", vector_in()),
+            ("output", vector_out()),
+            ("distances", ToolParamSchema::string()),
+            ("sum_fields", ToolParamSchema::string()),
+            ("id_field", ToolParamSchema::string()),
         ]),
         "cut_fill" => schemas(&[
             ("input", raster_in()),

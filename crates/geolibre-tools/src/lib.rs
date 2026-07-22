@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod add_surface_information;
 mod create_routes;
 mod exploratory_interpolation;
 mod getis_ord_general_g;
@@ -210,6 +211,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(add_surface_information::AddSurfaceInformationTool),
         Box::new(create_routes::CreateRoutesTool),
         Box::new(exploratory_interpolation::ExploratoryInterpolationTool),
         Box::new(getis_ord_general_g::GetisOrdGeneralGTool),
@@ -403,6 +405,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "add_surface_information" => schemas(&[
+            ("input", vector_in()),
+            ("surface", raster_in()),
+            ("output", vector_out()),
+            ("properties", ToolParamSchema::string()),
+            ("sample_distance", float()),
+            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+            ("band", int()),
+        ]),
         "create_routes" => schemas(&[
             ("input", vector_in()),
             ("route_id_field", ToolParamSchema::string()),

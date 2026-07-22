@@ -43,6 +43,7 @@ mod fill_spill_merge_core;
 mod find_identical;
 mod find_space_time_matches;
 mod fuzzy_overlay;
+mod generate_near_table;
 mod generate_od_links;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
@@ -245,6 +246,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
+        Box::new(generate_near_table::GenerateNearTableTool),
         Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
         Box::new(storage_capacity::StorageCapacityTool),
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
@@ -831,6 +833,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("id_field", ToolParamSchema::string()),
             ("origin_id_field", ToolParamSchema::string()),
             ("dest_id_field", ToolParamSchema::string()),
+        ]),
+        "generate_near_table" => schemas(&[
+            ("input", vector_in()),
+            ("near_features", vector_in()),
+            ("output", vector_out()),
+            ("search_radius", float()),
+            ("closest_count", int()),
+            ("angle", ToolParamSchema::bool()),
+            ("location", ToolParamSchema::bool()),
         ]),
         "aggregate_points" => schemas(&[
             ("input", vector_in()),

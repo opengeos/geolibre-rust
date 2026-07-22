@@ -129,6 +129,7 @@ mod collapse_hydro_polygon;
 mod change_point_detection;
 
 mod time_series_forecast;
+mod local_bivariate_relationships;
 mod dimension_reduction;
 mod feature_outline_masks;
 mod line_density;
@@ -252,6 +253,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collapse_hydro_polygon::CollapseHydroPolygonTool),
         Box::new(change_point_detection::ChangePointDetectionTool),
         Box::new(time_series_forecast::TimeSeriesForecastTool),
+        Box::new(local_bivariate_relationships::LocalBivariateRelationshipsTool),
         Box::new(dimension_reduction::DimensionReductionTool),
         Box::new(feature_outline_masks::FeatureOutlineMasksTool),
         Box::new(line_density::LineDensityTool),
@@ -1216,6 +1218,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("num_components", int()),
             ("min_variance", float()),
             ("standardize", ToolParamSchema::bool()),
+        ]),
+        "local_bivariate_relationships" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("field1", ToolParamSchema::string()),
+            ("field2", ToolParamSchema::string()),
+            ("neighbors", int()),
+            ("permutations", int()),
+            ("significance", float()),
+            ("seed", int()),
         ]),
         _ => return None,
     };

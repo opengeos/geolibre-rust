@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod split_line_at_point;
 mod directional_trend;
 mod excel_to_table;
 mod add_surface_information;
@@ -213,6 +214,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(split_line_at_point::SplitLineAtPointTool),
         Box::new(directional_trend::DirectionalTrendTool),
         Box::new(excel_to_table::ExcelToTableTool),
         Box::new(add_surface_information::AddSurfaceInformationTool),
@@ -409,6 +411,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "split_line_at_point" => schemas(&[
+            ("input_lines", vector_in()),
+            ("point_features", vector_in()),
+            ("search_radius", float()),
+            ("output", vector_out()),
+        ]),
         "directional_trend" => schemas(&[
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),

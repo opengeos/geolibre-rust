@@ -1042,6 +1042,7 @@ dependencies = [
  "wblidar",
  "wbraster",
  "wbvector",
+ "zip 8.6.0",
 ]
 
 [[package]]

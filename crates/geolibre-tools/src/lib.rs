@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod extract_locations_from_text;
 mod create_cartographic_partitions;
 mod calculate_utm_zone;
 mod locate_lines_along_routes;
@@ -225,6 +226,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(extract_locations_from_text::ExtractLocationsFromTextTool),
         Box::new(create_cartographic_partitions::CreateCartographicPartitionsTool),
         Box::new(calculate_utm_zone::CalculateUtmZoneTool),
         Box::new(locate_lines_along_routes::LocateLinesAlongRoutesTool),
@@ -433,6 +435,11 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "extract_locations_from_text" => schemas(&[
+            ("input_text", ToolParamSchema::string()),
+            ("notations", ToolParamSchema::string()),
+            ("output", vector_out()),
+        ]),
         "create_cartographic_partitions" => schemas(&[
             ("input", vector_in()),
             ("feature_count", int()),

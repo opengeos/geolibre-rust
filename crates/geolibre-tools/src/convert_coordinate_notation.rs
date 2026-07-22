@@ -414,7 +414,7 @@ fn geodetic_to_mgrs(lat: f64, lon: f64, precision: u32) -> String {
 }
 
 /// Inverse: MGRS string -> (lat, lon). None on malformed input.
-fn mgrs_to_geodetic(s: &str) -> Option<(f64, f64)> {
+pub(crate) fn mgrs_to_geodetic(s: &str) -> Option<(f64, f64)> {
     let up: String = s.chars().filter(|c| !c.is_whitespace()).collect();
     let up = up.to_ascii_uppercase();
     let bytes = up.as_bytes();

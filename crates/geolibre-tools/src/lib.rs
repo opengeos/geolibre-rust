@@ -92,6 +92,7 @@ mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
 mod trace_proximity_events;
+mod transform_features;
 mod transform_fields;
 mod vector_common;
 mod vector_convert;
@@ -325,6 +326,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(align_features::AlignFeaturesTool),
         Box::new(multivariate_clustering::MultivariateClusteringTool),
         Box::new(table_to_geometry::TableToGeometryTool),
+        Box::new(transform_features::TransformFeaturesTool),
         Box::new(transform_fields::TransformFieldsTool),
         Box::new(detect_graphic_conflict::DetectGraphicConflictTool),
         Box::new(disperse_markers::DisperseMarkersTool),
@@ -540,6 +542,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("segment_length", float()),
             ("iterations", int()),
             ("preserve_area", ToolParamSchema::bool()),
+        ]),
+        "transform_features" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("dx", float()),
+            ("dy", float()),
+            ("angle", float()),
+            ("scale_x", float()),
+            ("scale_y", float()),
+            ("mirror_axis", ToolParamSchema::enum_values(&["NONE", "X", "Y"])),
+            ("anchor", ToolParamSchema::enum_values(&["CENTROID", "ORIGIN", "XY"])),
+            ("anchor_x", float()),
+            ("anchor_y", float()),
         ]),
         "eliminate_polygons" => schemas(&[
             ("input", vector_in()),

@@ -166,6 +166,7 @@ mod disperse_markers;
 mod geodetic_densify;
 mod strip_map_index_features;
 mod zonal_histogram;
+mod gtfs_to_features;
 
 use std::collections::BTreeMap;
 
@@ -319,6 +320,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geodetic_densify::GeodeticDensifyTool),
         Box::new(strip_map_index_features::StripMapIndexFeaturesTool),
         Box::new(zonal_histogram::ZonalHistogramTool),
+        Box::new(gtfs_to_features::GtfsToFeaturesTool),
     ]
 }
 
@@ -1614,6 +1616,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zone_band", int()),
             ("value_band", int()),
             ("long_output", table_out()),
+        ]),
+        "gtfs_to_features" => schemas(&[
+            ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
+            ("stops_output", vector_out()),
+            ("shapes_output", vector_out()),
+            ("frequency", ToolParamSchema::bool()),
+            ("start_time", ToolParamSchema::string()),
+            ("end_time", ToolParamSchema::string()),
         ]),
         _ => return None,
     };

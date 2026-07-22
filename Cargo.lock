@@ -1035,6 +1035,7 @@ dependencies = [
  "kdtree",
  "parquet",
  "png 0.17.16",
+ "quick-xml",
  "rust_xlsxwriter",
  "serde_json",
  "wbcore",

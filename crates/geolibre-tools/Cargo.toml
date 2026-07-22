@@ -64,6 +64,11 @@ calamine = "0.36"
 # (see root Cargo.toml) which fixes kdtree 0.8.0's wasm-breaking `criterion`
 # normal-dependency packaging bug.
 kdtree = "0.8"
+# Pure-Rust streaming XML pull parser (no C deps; already in the dependency
+# graph transitively via wbvector), used by gpx_to_features to read GPX
+# waypoints/tracks/routes. WASM-clean; reads through std::fs like the other
+# file-reading tools (gtfs_to_features, excel_to_table).
+quick-xml = "0.41"
 
 [dev-dependencies]
 # Pure-Rust .xlsx writer, used only to generate fixtures for the

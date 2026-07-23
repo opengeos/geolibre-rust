@@ -19,6 +19,7 @@ mod focal_statistics;
 mod multicriteria_overlay;
 mod surface_volume;
 mod generate_spatial_weights_matrix;
+mod calculate_distance_band;
 mod point_statistics;
 mod kml_to_features;
 mod graphic_buffer;
@@ -73,6 +74,7 @@ mod colocation_analysis;
 mod common;
 mod corridor;
 mod count_overlapping_features;
+mod non_maximum_suppression;
 mod create_spatially_balanced_points;
 mod cut_fill;
 mod delineate_built_up_areas;
@@ -86,6 +88,7 @@ mod eliminate_polygon_part;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod empirical_bayesian_kriging;
+mod gaussian_geostatistical_simulations;
 mod expand_shrink;
 mod exploratory_regression;
 mod extract_sinks;
@@ -103,6 +106,7 @@ mod mgwr;
 mod geoparquet_io;
 mod h3_polyfill;
 mod hdbscan;
+mod optics_clustering;
 mod interpolate_shape;
 mod line_of_sight;
 mod h3_to_vector;
@@ -123,6 +127,7 @@ mod raster_to_tiles;
 mod reconstruct_tracks;
 mod regions;
 mod regularize_building_footprints;
+mod regularize_adjacent_building_footprint;
 mod remove_overlap_multiple;
 mod render;
 mod render_png;
@@ -146,6 +151,7 @@ mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
 mod trace_proximity_events;
+mod find_meeting_locations;
 mod transform_features;
 mod transform_fields;
 mod vector_common;
@@ -217,6 +223,7 @@ mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
 mod las_height_metrics;
+mod cell_statistics;
 mod multidimensional_anomaly;
 mod align_features;
 mod multivariate_clustering;
@@ -265,6 +272,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
         Box::new(surface_volume::SurfaceVolumeTool),
         Box::new(generate_spatial_weights_matrix::GenerateSpatialWeightsMatrixTool),
+        Box::new(calculate_distance_band::CalculateDistanceBandTool),
         Box::new(point_statistics::PointStatisticsTool),
         Box::new(kml_to_features::KmlToFeaturesTool),
         Box::new(graphic_buffer::GraphicBufferTool),
@@ -322,6 +330,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
         Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
+        Box::new(regularize_adjacent_building_footprint::RegularizeAdjacentBuildingFootprintTool),
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
@@ -333,6 +342,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
+        Box::new(non_maximum_suppression::NonMaximumSuppressionTool),
         Box::new(subdivide_polygon::SubdividePolygonTool),
         Box::new(generate_transects_along_lines::GenerateTransectsAlongLinesTool),
         Box::new(polygon_neighbors::PolygonNeighborsTool),
@@ -344,6 +354,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(solar_radiation::SolarRadiationTool),
         Box::new(hdbscan::HdbscanTool),
+        Box::new(optics_clustering::OpticsClusteringTool),
         Box::new(colocation_analysis::ColocationAnalysisTool),
         Box::new(similarity_search::SimilaritySearchTool),
         Box::new(detect_feature_changes::DetectFeatureChangesTool),
@@ -363,6 +374,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(path_distance::PathDistanceTool),
         Box::new(time_series_clustering::TimeSeriesClusteringTool),
         Box::new(trace_proximity_events::TraceProximityEventsTool),
+        Box::new(find_meeting_locations::FindMeetingLocationsTool),
         Box::new(detect_image_anomalies::DetectImageAnomaliesTool),
         Box::new(resolve_building_conflicts::ResolveBuildingConflictsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
@@ -432,9 +444,11 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
         Box::new(las_height_metrics::LasHeightMetricsTool),
+        Box::new(cell_statistics::CellStatisticsTool),
         Box::new(multidimensional_anomaly::MultidimensionalAnomalyTool),
         Box::new(propagate_displacement::PropagateDisplacementTool),
         Box::new(empirical_bayesian_kriging::EmpiricalBayesianKrigingTool),
+        Box::new(gaussian_geostatistical_simulations::GaussianGeostatisticalSimulationsTool),
         Box::new(exploratory_regression::ExploratoryRegressionTool),
         Box::new(causal_inference_analysis::CausalInferenceAnalysisTool),
         Box::new(align_features::AlignFeaturesTool),
@@ -625,6 +639,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("exponent", float()),
             ("row_standardization", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
+        ]),
+        "calculate_distance_band" => schemas(&[
+            ("input", vector_in()),
+            ("neighbors", int()),
+            ("distance_method", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
+            ("output", file_out()),
         ]),
         "point_statistics" => schemas(&[
             ("input", vector_in()),
@@ -1136,6 +1156,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_radius", float()),
             ("max_radius", float()),
         ]),
+        "regularize_adjacent_building_footprint" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("group", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["right_angles", "right_angles_and_diagonals"])),
+            ("tolerance", float()),
+            ("precision", float()),
+            ("adjacency_distance", float()),
+        ]),
         "smooth_natural_features" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1244,6 +1273,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("id_field", ToolParamSchema::string()),
             ("report_ids", table_out()),
         ]),
+        "non_maximum_suppression" => schemas(&[
+            ("input", vector_in()),
+            ("confidence_score_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("max_overlap_ratio", float()),
+            ("class_value_field", ToolParamSchema::string()),
+        ]),
         "subdivide_polygon" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1343,6 +1379,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_duration", ToolParamSchema::string()),
             ("entities", ToolParamSchema::string()),
             ("depth", int()),
+        ]),
+        "find_meeting_locations" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("search_distance", float()),
+            ("min_meeting_duration", float()),
+            ("max_meeting_duration", float()),
+            ("min_participants", int()),
+            ("time_step", float()),
+            ("output", vector_out()),
+            ("output_area", vector_out()),
         ]),
         "time_series_clustering" => schemas(&[
             ("input", vector_in()),
@@ -1675,6 +1723,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_cluster_size", int()),
             ("min_samples", int()),
         ]),
+        "optics_clustering" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_features_cluster", int()),
+            ("search_distance", float()),
+            ("cluster_sensitivity", float()),
+        ]),
         "colocation_analysis" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1922,6 +1977,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_height", float()),
             ("min_points", int()),
             ("cell_size", float()),
+        "cell_statistics" => schemas(&[
+            ("inputs", ToolParamSchema::input_multiple(ToolDatasetSchema::Raster)),
+            ("output", raster_out()),
+            ("statistic", ToolParamSchema::enum_values(&["mean", "majority", "maximum", "median", "minimum", "minority", "percentile", "range", "std", "sum", "variety"])),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            ("percentile_value", float()),
         ]),
         "multidimensional_anomaly" => schemas(&[
             ("input", ToolParamSchema::string()),
@@ -2214,6 +2275,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("transform", ToolParamSchema::enum_values(&["none", "log_empirical"])),
             ("error_output", raster_out()),
             ("seed", int()),
+        ]),
+        "gaussian_geostatistical_simulations" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("num_realizations", int()),
+            ("cell_size", float()),
+            ("variogram_model", ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"])),
+            ("nugget", float()),
+            ("sill", float()),
+            ("range", float()),
+            ("max_neighbors", int()),
+            ("seed", int()),
+            ("output_mean", raster_out()),
+            ("output_std", raster_out()),
         ]),
         "exploratory_regression" => schemas(&[
             ("input", vector_in()),

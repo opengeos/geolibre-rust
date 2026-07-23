@@ -7,127 +7,120 @@
 //! Add a new tool by creating a module with a `Tool` impl and pushing it in
 //! [`geolibre_tools`].
 
-mod aggregate_points;
-mod classification_accuracy_assessment;
-mod diffusion_interpolation_with_barriers;
-mod compare_spatial_weights;
-mod spatial_eigenvector_filtering;
-mod enforce_river_monotonicity;
-mod calculate_grid_convergence_angle;
-mod maximum_likelihood_classification;
-mod focal_statistics;
-mod multicriteria_overlay;
-mod surface_volume;
-mod generate_spatial_weights_matrix;
-mod calculate_distance_band;
-mod point_statistics;
-mod kml_to_features;
-mod graphic_buffer;
-mod features_to_gpx;
-mod reclassify_field;
-mod points_to_line;
-mod collect_events;
-mod slice_raster;
-mod gpx_to_features;
-mod summary_statistics;
-mod median_center;
-mod flip_line;
-mod cell_records_to_sectors;
-mod estimate_time_to_event;
-mod transform_route_events;
-mod eighty_twenty_analysis;
-mod extract_locations_from_text;
-mod create_cartographic_partitions;
-mod calculate_utm_zone;
-mod locate_lines_along_routes;
-mod optimal_interpolation;
-mod calculate_adjacent_fields;
-mod densify_sampling_network;
-mod feature_vertices_to_points;
-mod create_overpass;
-mod features_to_gtfs;
-mod adjust_3d_z;
-mod attribute_uncertainty;
-mod split_line_at_point;
-mod directional_trend;
-mod excel_to_table;
 mod add_surface_information;
-mod create_routes;
-mod exploratory_interpolation;
-mod getis_ord_general_g;
-mod matched_filter_target_detection;
-mod trim_line;
-mod fill_missing_values;
-mod time_series_smoothing;
-mod combine;
+mod adjust_3d_z;
+mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
 mod assign_projection;
+mod attribute_uncertainty;
 mod boundary_clean;
 mod build_balanced_zones;
+mod calculate_adjacent_fields;
+mod calculate_distance_band;
+mod calculate_grid_convergence_angle;
 mod calculate_motion_statistics;
+mod calculate_utm_zone;
 mod cartogram;
 mod causal_inference_analysis;
+mod cell_records_to_sectors;
 mod central_feature;
+mod classification_accuracy_assessment;
 mod collapse_dual_lines_to_centerline;
+mod collect_events;
 mod colocation_analysis;
+mod combine;
 mod common;
+mod compare_spatial_weights;
 mod corridor;
 mod count_overlapping_features;
-mod non_maximum_suppression;
+mod create_cartographic_partitions;
+mod create_overpass;
+mod create_routes;
 mod create_spatially_balanced_points;
 mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
+mod densify_sampling_network;
 mod detect_feature_changes;
 mod detect_image_anomalies;
+mod diffusion_interpolation_with_barriers;
 mod directional_distribution;
+mod directional_trend;
+mod eighty_twenty_analysis;
 mod eliminate_polygon_part;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod empirical_bayesian_kriging;
-mod gaussian_geostatistical_simulations;
+mod enforce_river_monotonicity;
+mod estimate_time_to_event;
+mod excel_to_table;
 mod expand_shrink;
+mod exploratory_interpolation;
 mod exploratory_regression;
+mod extract_locations_from_text;
 mod extract_sinks;
+mod feature_vertices_to_points;
+mod features_to_gpx;
+mod features_to_gtfs;
 mod fill;
+mod fill_missing_values;
 mod fill_spill_merge;
 mod fill_spill_merge_core;
 mod find_identical;
+mod find_meeting_locations;
 mod find_space_time_matches;
+mod flip_line;
+mod focal_statistics;
 mod fuzzy_overlay;
+mod gaussian_geostatistical_simulations;
 mod generate_near_table;
 mod generate_od_links;
+mod generate_spatial_weights_matrix;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
-mod mgwr;
 mod geoparquet_io;
+mod getis_ord_general_g;
+mod gpx_to_features;
+mod graphic_buffer;
 mod h3_polyfill;
-mod hdbscan;
-mod optics_clustering;
-mod interpolate_shape;
-mod line_of_sight;
 mod h3_to_vector;
+mod hdbscan;
 mod hilbert;
 mod incremental_spatial_autocorrelation;
 mod integrate;
+mod interpolate_shape;
+mod kml_to_features;
 mod lidar_common;
+mod line_of_sight;
+mod locate_lines_along_routes;
+mod matched_filter_target_detection;
+mod maximum_likelihood_classification;
+mod median_center;
+mod mgwr;
+mod multicriteria_overlay;
 mod multiple_ring_buffer;
 mod neighborhood_summary_statistics;
+mod non_maximum_suppression;
+mod optics_clustering;
+mod optimal_interpolation;
 mod path_distance;
-mod polygonize;
 mod pmtiles;
 mod pmtiles_extract;
+mod point_statistics;
+mod points_to_line;
 mod polygon_neighbors;
+mod polygonize;
 mod raster_normalize;
 mod raster_to_h3;
 mod raster_to_tiles;
+mod reclassify_field;
 mod reconstruct_tracks;
 mod regions;
-mod regularize_building_footprints;
 mod regularize_adjacent_building_footprint;
+mod regularize_building_footprints;
 mod remove_overlap_multiple;
 mod render;
 mod render_png;
@@ -138,22 +131,29 @@ mod ripleys_k;
 mod rubbersheet_features;
 mod similarity_search;
 mod simplify_shared_edges;
+mod slice_raster;
 mod smooth_natural_features;
 mod smooth_shared_edges;
 mod snap_tracks;
 mod solar_radiation;
+mod spatial_eigenvector_filtering;
 mod spectral_index;
 mod split_by_attributes;
+mod split_line_at_point;
 mod storage_capacity;
 mod subdivide_polygon;
 mod summarize_nearby;
+mod summary_statistics;
+mod surface_volume;
 mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
+mod time_series_smoothing;
 mod trace_proximity_events;
-mod find_meeting_locations;
 mod transform_features;
 mod transform_fields;
+mod transform_route_events;
+mod trim_line;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -196,52 +196,60 @@ mod collapse_hydro_polygon;
 
 mod change_point_detection;
 
-mod time_series_forecast;
-mod resolve_road_conflicts;
-mod presence_only_prediction;
-mod topo_to_raster;
-mod collapse_road_detail;
-mod analyze_changes_ccdc;
-mod space_time_kernel_density;
-mod geotagged_photos_to_points;
-mod darcy_flow;
-mod propagate_displacement;
-mod porous_puff;
-mod time_series_cross_correlation;
-mod generalized_linear_regression;
-mod interpolate_with_barriers;
-mod convert_coordinate_notation;
-mod repair_geometry;
-mod grid_index_features;
-mod local_bivariate_relationships;
-mod dimension_reduction;
-mod feature_outline_masks;
-mod intersecting_layers_masks;
-mod line_density;
-mod pairwise_comparison_weights;
-mod kernel_density_ratio;
-mod detect_incidents;
-mod find_argument_statistics;
-mod las_height_metrics;
-mod cell_statistics;
-mod multidimensional_anomaly;
 mod align_features;
-mod multivariate_clustering;
-mod table_to_geometry;
-mod detect_graphic_conflict;
-mod disperse_markers;
-mod geodetic_densify;
-mod strip_map_index_features;
-mod zonal_histogram;
-mod points_to_path;
-mod extract_scanned_features;
-mod gtfs_to_features;
-mod create_spatial_sampling_locations;
+mod analyze_changes_ccdc;
+mod band_collection_statistics;
+mod calculate_polygon_main_angle;
+mod cell_statistics;
+mod collapse_road_detail;
 mod contour_with_barriers;
-mod percentile_contours;
-mod spatial_association_between_zones;
-mod merge_lines_by_pseudo_node;
+mod convert_coordinate_notation;
+mod create_spatial_sampling_locations;
+mod darcy_flow;
+mod detect_graphic_conflict;
+mod detect_incidents;
+mod dimension_reduction;
+mod disperse_markers;
+mod extract_scanned_features;
+mod feature_outline_masks;
+mod find_argument_statistics;
+mod generalized_linear_regression;
+mod geodetic_densify;
+mod geotagged_photos_to_points;
+mod grid_index_features;
+mod gtfs_to_features;
+mod hotspot_common;
 mod identify_narrow_polygons;
+mod interpolate_with_barriers;
+mod intersecting_layers_masks;
+mod kernel_density_ratio;
+mod las_height_metrics;
+mod line_density;
+mod line_statistics;
+mod local_bivariate_relationships;
+mod merge_lines_by_pseudo_node;
+mod multidimensional_anomaly;
+mod multivariate_clustering;
+mod optimized_hot_spot_analysis;
+mod optimized_outlier_analysis;
+mod pairwise_comparison_weights;
+mod percentile_contours;
+mod points_to_path;
+mod porous_puff;
+mod presence_only_prediction;
+mod propagate_displacement;
+mod repair_geometry;
+mod resolve_road_conflicts;
+mod space_time_kernel_density;
+mod spatial_association_between_zones;
+mod strip_map_index_features;
+mod table_to_geometry;
+mod time_series_cross_correlation;
+mod time_series_forecast;
+mod topo_to_raster;
+mod zonal_fill;
+mod zonal_geometry;
+mod zonal_histogram;
 
 use std::collections::BTreeMap;
 
@@ -470,6 +478,13 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spatial_association_between_zones::SpatialAssociationBetweenZonesTool),
         Box::new(merge_lines_by_pseudo_node::MergeLinesByPseudoNodeTool),
         Box::new(identify_narrow_polygons::IdentifyNarrowPolygonsTool),
+        Box::new(zonal_geometry::ZonalGeometryTool),
+        Box::new(zonal_fill::ZonalFillTool),
+        Box::new(calculate_polygon_main_angle::CalculatePolygonMainAngleTool),
+        Box::new(band_collection_statistics::BandCollectionStatisticsTool),
+        Box::new(line_statistics::LineStatisticsTool),
+        Box::new(optimized_hot_spot_analysis::OptimizedHotSpotAnalysisTool),
+        Box::new(optimized_outlier_analysis::OptimizedOutlierAnalysisTool),
     ]
 }
 
@@ -500,9 +515,8 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     let lidar_out = || ToolParamSchema::output(ToolDatasetSchema::Lidar);
     let int = ToolParamSchema::scalar_integer;
     let float = ToolParamSchema::scalar_float;
-    let colormaps = || {
-        ToolParamSchema::enum_values(&["viridis", "magma", "turbo", "terrain", "grayscale"])
-    };
+    let colormaps =
+        || ToolParamSchema::enum_values(&["viridis", "magma", "turbo", "terrain", "grayscale"]);
 
     let map = match tool_id {
         "classification_accuracy_assessment" => schemas(&[
@@ -529,10 +543,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", table_out()),
             ("input_fields", ToolParamSchema::string()),
             ("id_field", ToolParamSchema::string()),
-            (
-                "methods",
-                ToolParamSchema::string(),
-            ),
+            ("methods", ToolParamSchema::string()),
             ("number_of_neighbors", int()),
             ("threshold_distance", float()),
         ]),
@@ -562,7 +573,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "calculate_grid_convergence_angle" => schemas(&[
             ("input", vector_in()),
             ("angle_field", ToolParamSchema::string()),
-            ("angle_type", ToolParamSchema::enum_values(&["geographic", "arithmetic"])),
+            (
+                "angle_type",
+                ToolParamSchema::enum_values(&["geographic", "arithmetic"]),
+            ),
             ("central_meridian", float()),
             ("output", vector_out()),
         ]),
@@ -571,17 +585,35 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("training", raster_in()),
             ("output", raster_out()),
             ("prob_output", raster_out()),
-            ("a_priori", ToolParamSchema::enum_values(&["equal", "sample"])),
+            (
+                "a_priori",
+                ToolParamSchema::enum_values(&["equal", "sample"]),
+            ),
             ("reject_fraction", float()),
         ]),
         "focal_statistics" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),
-            ("statistics", ToolParamSchema::enum_values(&[
-                "mean", "majority", "maximum", "median", "minimum", "minority",
-                "percentile", "range", "std", "sum", "variety",
-            ])),
-            ("neighborhood", ToolParamSchema::enum_values(&["rectangle", "circle", "annulus", "wedge"])),
+            (
+                "statistics",
+                ToolParamSchema::enum_values(&[
+                    "mean",
+                    "majority",
+                    "maximum",
+                    "median",
+                    "minimum",
+                    "minority",
+                    "percentile",
+                    "range",
+                    "std",
+                    "sum",
+                    "variety",
+                ]),
+            ),
+            (
+                "neighborhood",
+                ToolParamSchema::enum_values(&["rectangle", "circle", "annulus", "wedge"]),
+            ),
             ("width", int()),
             ("height", int()),
             ("radius", float()),
@@ -615,7 +647,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "surface_volume" => schemas(&[
             ("input", raster_in()),
             ("reference_plane", float()),
-            ("direction", ToolParamSchema::enum_values(&["above", "below", "both"])),
+            (
+                "direction",
+                ToolParamSchema::enum_values(&["above", "below", "both"]),
+            ),
             ("band", int()),
             ("output", table_out()),
         ]),
@@ -643,18 +678,27 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "calculate_distance_band" => schemas(&[
             ("input", vector_in()),
             ("neighbors", int()),
-            ("distance_method", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
+            (
+                "distance_method",
+                ToolParamSchema::enum_values(&["euclidean", "manhattan"]),
+            ),
             ("output", file_out()),
         ]),
         "point_statistics" => schemas(&[
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),
             ("output", raster_out()),
-            ("statistic", ToolParamSchema::enum_values(&[
-                "mean", "majority", "maximum", "median", "minimum", "minority", "range", "std",
-                "sum", "variety",
-            ])),
-            ("neighborhood", ToolParamSchema::enum_values(&["circle", "rectangle"])),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean", "majority", "maximum", "median", "minimum", "minority", "range", "std",
+                    "sum", "variety",
+                ]),
+            ),
+            (
+                "neighborhood",
+                ToolParamSchema::enum_values(&["circle", "rectangle"]),
+            ),
             ("radius", float()),
             ("cell_size", float()),
             ("epsg", int()),
@@ -669,8 +713,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("distance", float()),
-            ("cap", ToolParamSchema::enum_values(&["round", "square", "butt"])),
-            ("join", ToolParamSchema::enum_values(&["round", "miter", "bevel"])),
+            (
+                "cap",
+                ToolParamSchema::enum_values(&["round", "square", "butt"]),
+            ),
+            (
+                "join",
+                ToolParamSchema::enum_values(&["round", "miter", "bevel"]),
+            ),
             ("miter_limit", float()),
             ("dissolve", ToolParamSchema::bool()),
         ]),
@@ -686,9 +736,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&[
-                "equal_interval", "defined_interval", "quantile", "natural_breaks", "std_dev", "geometric_interval",
-            ])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "equal_interval",
+                    "defined_interval",
+                    "quantile",
+                    "natural_breaks",
+                    "std_dev",
+                    "geometric_interval",
+                ]),
+            ),
             ("classes", int()),
             ("interval", float()),
             ("std_dev_interval", float()),
@@ -712,7 +770,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", raster_out()),
             ("band", int()),
             ("number_zones", int()),
-            ("slice_type", ToolParamSchema::enum_values(&["equal_interval", "equal_area", "natural_breaks", "geometric_interval", "std_dev"])),
+            (
+                "slice_type",
+                ToolParamSchema::enum_values(&[
+                    "equal_interval",
+                    "equal_area",
+                    "natural_breaks",
+                    "geometric_interval",
+                    "std_dev",
+                ]),
+            ),
             ("base_output_zone", int()),
             ("class_interval_size", float()),
         ]),
@@ -738,7 +805,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "cell_records_to_sectors" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("output_type", ToolParamSchema::enum_values(&["wedge", "line"])),
+            (
+                "output_type",
+                ToolParamSchema::enum_values(&["wedge", "line"]),
+            ),
             ("azimuth_field", ToolParamSchema::string()),
             ("beamwidth_field", ToolParamSchema::string()),
             ("radius_field", ToolParamSchema::string()),
@@ -826,9 +896,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "feature_vertices_to_points" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("point_location", ToolParamSchema::enum_values(&[
-                "ALL", "START", "END", "BOTH_ENDS", "MID", "DANGLE",
-            ])),
+            (
+                "point_location",
+                ToolParamSchema::enum_values(&[
+                    "ALL",
+                    "START",
+                    "END",
+                    "BOTH_ENDS",
+                    "MID",
+                    "DANGLE",
+                ]),
+            ),
         ]),
         "create_overpass" => schemas(&[
             ("above", vector_in()),
@@ -845,7 +923,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "features_to_gtfs" => schemas(&[
             ("stops_input", vector_in()),
             ("shapes_input", vector_in()),
-            ("output_dir", ToolParamSchema::output(ToolDatasetSchema::File)),
+            (
+                "output_dir",
+                ToolParamSchema::output(ToolDatasetSchema::File),
+            ),
         ]),
         "adjust_3d_z" => schemas(&[
             ("input", vector_in()),
@@ -887,7 +968,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("error_field", ToolParamSchema::string()),
             ("lower_field", ToolParamSchema::string()),
             ("upper_field", ToolParamSchema::string()),
-            ("distribution", ToolParamSchema::enum_values(&["NORMAL", "UNIFORM"])),
+            (
+                "distribution",
+                ToolParamSchema::enum_values(&["NORMAL", "UNIFORM"]),
+            ),
             ("iterations", int()),
             ("seed", int()),
             ("output", vector_out()),
@@ -918,14 +1002,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("properties", ToolParamSchema::string()),
             ("sample_distance", float()),
-            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["bilinear", "nearest"]),
+            ),
             ("band", int()),
         ]),
         "create_routes" => schemas(&[
             ("input", vector_in()),
             ("route_id_field", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("measure_source", ToolParamSchema::enum_values(&["LENGTH", "ONE_FIELD", "TWO_FIELDS"])),
+            (
+                "measure_source",
+                ToolParamSchema::enum_values(&["LENGTH", "ONE_FIELD", "TWO_FIELDS"]),
+            ),
             ("from_measure_field", ToolParamSchema::string()),
             ("to_measure_field", ToolParamSchema::string()),
             ("measure_factor", float()),
@@ -938,7 +1028,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("field", ToolParamSchema::string()),
             ("output", table_out()),
             ("methods", ToolParamSchema::string()),
-            ("criterion", ToolParamSchema::enum_values(&["rmse", "mae", "me"])),
+            (
+                "criterion",
+                ToolParamSchema::enum_values(&["rmse", "mae", "me"]),
+            ),
             ("power", float()),
             ("output_raster", raster_out()),
             ("cell_size", float()),
@@ -946,7 +1039,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "getis_ord_general_g" => schemas(&[
             ("input", vector_in()),
             ("field", ToolParamSchema::string()),
-            ("weights", ToolParamSchema::enum_values(&["distance_band", "k_nearest", "queen", "rook"])),
+            (
+                "weights",
+                ToolParamSchema::enum_values(&["distance_band", "k_nearest", "queen", "rook"]),
+            ),
             ("distance_band", float()),
             ("k", int()),
             ("row_standardize", ToolParamSchema::bool()),
@@ -971,8 +1067,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("fill_field", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("estimator", ToolParamSchema::enum_values(&["mean", "median", "min", "max", "temporal_trend"])),
-            ("neighbourhood", ToolParamSchema::enum_values(&["knn", "distance_band"])),
+            (
+                "estimator",
+                ToolParamSchema::enum_values(&["mean", "median", "min", "max", "temporal_trend"]),
+            ),
+            (
+                "neighbourhood",
+                ToolParamSchema::enum_values(&["knn", "distance_band"]),
+            ),
             ("k", int()),
             ("search_radius", float()),
             ("time_field", ToolParamSchema::string()),
@@ -984,10 +1086,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("value_field", ToolParamSchema::string()),
             ("time_field", ToolParamSchema::string()),
             ("id_field", ToolParamSchema::string()),
-            ("method", ToolParamSchema::enum_values(&["moving_average", "local_linear"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["moving_average", "local_linear"]),
+            ),
             ("window", int()),
             ("bandwidth", int()),
-            ("alignment", ToolParamSchema::enum_values(&["backward", "centered", "forward"])),
+            (
+                "alignment",
+                ToolParamSchema::enum_values(&["backward", "centered", "forward"]),
+            ),
             ("output_field", ToolParamSchema::string()),
             ("output", vector_out()),
         ]),
@@ -1020,7 +1128,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "dem_filter" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),
-            ("filter", ToolParamSchema::enum_values(&["mean", "median", "gaussian"])),
+            (
+                "filter",
+                ToolParamSchema::enum_values(&["mean", "median", "gaussian"]),
+            ),
             ("kernel_size", int()),
             ("sigma", float()),
             ("band", int()),
@@ -1070,7 +1181,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "reproject_raster" => schemas(&[
             ("input", raster_in()),
             ("epsg", int()),
-            ("method", ToolParamSchema::enum_values(&["nearest", "bilinear", "cubic", "lanczos"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["nearest", "bilinear", "cubic", "lanczos"]),
+            ),
             ("output", raster_out()),
         ]),
         "render_raster_png" => schemas(&[
@@ -1088,7 +1202,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_zoom", int()),
             ("band", int()),
             ("colormap", colormaps()),
-            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest", "cubic"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["bilinear", "nearest", "cubic"]),
+            ),
             ("min", float()),
             ("max", float()),
         ]),
@@ -1099,7 +1216,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_zoom", int()),
             ("band", int()),
             ("colormap", colormaps()),
-            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest", "cubic"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["bilinear", "nearest", "cubic"]),
+            ),
             ("min", float()),
             ("max", float()),
         ]),
@@ -1122,7 +1242,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         ]),
         "spectral_index" => schemas(&[
             ("input", raster_in()),
-            ("index", ToolParamSchema::enum_values(&["ndvi", "ndwi", "ndbi", "nbr", "evi", "savi"])),
+            (
+                "index",
+                ToolParamSchema::enum_values(&["ndvi", "ndwi", "ndbi", "nbr", "evi", "savi"]),
+            ),
             ("red", int()),
             ("nir", int()),
             ("green", int()),
@@ -1134,7 +1257,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "write_geoparquet" => schemas(&[
             ("input", vector_in()),
             ("output", file_out()),
-            ("compression", ToolParamSchema::enum_values(&["zstd", "snappy", "gzip", "uncompressed"])),
+            (
+                "compression",
+                ToolParamSchema::enum_values(&["zstd", "snappy", "gzip", "uncompressed"]),
+            ),
             ("hilbert_sort", ToolParamSchema::bool()),
         ]),
         "read_geoparquet" => schemas(&[
@@ -1145,12 +1271,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "regularize_building_footprints" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&[
-                "right_angles",
-                "right_angles_and_diagonals",
-                "any_angle",
-                "circle",
-            ])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "right_angles",
+                    "right_angles_and_diagonals",
+                    "any_angle",
+                    "circle",
+                ]),
+            ),
             ("tolerance", float()),
             ("diagonal_penalty", float()),
             ("min_radius", float()),
@@ -1160,7 +1289,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("group", ToolParamSchema::string()),
-            ("method", ToolParamSchema::enum_values(&["right_angles", "right_angles_and_diagonals"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["right_angles", "right_angles_and_diagonals"]),
+            ),
             ("tolerance", float()),
             ("precision", float()),
             ("adjacency_distance", float()),
@@ -1180,8 +1312,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("angle", float()),
             ("scale_x", float()),
             ("scale_y", float()),
-            ("mirror_axis", ToolParamSchema::enum_values(&["NONE", "X", "Y"])),
-            ("anchor", ToolParamSchema::enum_values(&["CENTROID", "ORIGIN", "XY"])),
+            (
+                "mirror_axis",
+                ToolParamSchema::enum_values(&["NONE", "X", "Y"]),
+            ),
+            (
+                "anchor",
+                ToolParamSchema::enum_values(&["CENTROID", "ORIGIN", "XY"]),
+            ),
             ("anchor_x", float()),
             ("anchor_y", float()),
         ]),
@@ -1191,16 +1329,25 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_area", float()),
             ("where", ToolParamSchema::string()),
             ("exclude", ToolParamSchema::string()),
-            ("strategy", ToolParamSchema::enum_values(&["longest_border", "largest_area"])),
+            (
+                "strategy",
+                ToolParamSchema::enum_values(&["longest_border", "largest_area"]),
+            ),
             ("tolerance", float()),
         ]),
         "eliminate_polygon_part" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("condition", ToolParamSchema::enum_values(&["AREA", "PERCENT"])),
+            (
+                "condition",
+                ToolParamSchema::enum_values(&["AREA", "PERCENT"]),
+            ),
             ("min_area", float()),
             ("percentage", float()),
-            ("part_option", ToolParamSchema::enum_values(&["CONTAINED_ONLY", "ANY"])),
+            (
+                "part_option",
+                ToolParamSchema::enum_values(&["CONTAINED_ONLY", "ANY"]),
+            ),
         ]),
         "simplify_shared_edges" => schemas(&[
             ("input", vector_in()),
@@ -1212,7 +1359,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "smooth_shared_edges" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("algorithm", ToolParamSchema::enum_values(&["paek", "bezier"])),
+            (
+                "algorithm",
+                ToolParamSchema::enum_values(&["paek", "bezier"]),
+            ),
             ("tolerance", float()),
             ("smooth_boundary", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
@@ -1253,7 +1403,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("surface", raster_in()),
             ("output", vector_out()),
             ("sample_distance", float()),
-            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["bilinear", "nearest"]),
+            ),
             ("attributes", ToolParamSchema::string()),
             ("band", int()),
         ]),
@@ -1283,7 +1436,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "subdivide_polygon" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&["equal_parts", "equal_areas"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["equal_parts", "equal_areas"]),
+            ),
             ("num_parts", int()),
             ("target_area", float()),
             ("angle", float()),
@@ -1307,7 +1463,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output_dir", file_out()),
             ("fields", ToolParamSchema::string()),
-            ("format", ToolParamSchema::enum_values(&["geojson", "fgb", "parquet", "shp"])),
+            (
+                "format",
+                ToolParamSchema::enum_values(&["geojson", "fgb", "parquet", "shp"]),
+            ),
         ]),
         "incremental_spatial_autocorrelation" => schemas(&[
             ("input", vector_in()),
@@ -1329,20 +1488,35 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "central_feature" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("statistic", ToolParamSchema::enum_values(&["central_feature", "linear_directional_mean"])),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&["central_feature", "linear_directional_mean"]),
+            ),
             ("weight_field", ToolParamSchema::string()),
             ("case_field", ToolParamSchema::string()),
-            ("distance", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
+            (
+                "distance",
+                ToolParamSchema::enum_values(&["euclidean", "manhattan"]),
+            ),
             ("orientation_only", ToolParamSchema::bool()),
         ]),
         "boundary_clean" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),
-            ("method", ToolParamSchema::enum_values(&["majority", "expand_shrink"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["majority", "expand_shrink"]),
+            ),
             ("neighbors", int()),
-            ("threshold", ToolParamSchema::enum_values(&["majority", "half"])),
+            (
+                "threshold",
+                ToolParamSchema::enum_values(&["majority", "half"]),
+            ),
             ("iterations", int()),
-            ("sort", ToolParamSchema::enum_values(&["descending", "ascending", "none"])),
+            (
+                "sort",
+                ToolParamSchema::enum_values(&["descending", "ascending", "none"]),
+            ),
             ("band", int()),
         ]),
         "expand_shrink" => schemas(&[
@@ -1476,7 +1650,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("neighbors", int()),
             ("distance", float()),
-            ("weights", ToolParamSchema::enum_values(&["uniform", "inverse_distance"])),
+            (
+                "weights",
+                ToolParamSchema::enum_values(&["uniform", "inverse_distance"]),
+            ),
         ]),
         "generate_od_links" => schemas(&[
             ("origins", vector_in()),
@@ -1502,7 +1679,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("aggregation_distance", float()),
             ("min_points", int()),
-            ("method", ToolParamSchema::enum_values(&["convex_hull", "buffer"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["convex_hull", "buffer"]),
+            ),
             ("sum_fields", ToolParamSchema::string()),
         ]),
         "fuzzy_overlay" => schemas(&[
@@ -1538,7 +1718,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "sort_features" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&["hilbert", "attribute"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["hilbert", "attribute"]),
+            ),
             ("fields", ToolParamSchema::string()),
             ("index_field", ToolParamSchema::string()),
         ]),
@@ -1546,17 +1729,29 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("fields", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("scaling", ToolParamSchema::enum_values(&["minmax", "zscore", "percentile", "none"])),
+            (
+                "scaling",
+                ToolParamSchema::enum_values(&["minmax", "zscore", "percentile", "none"]),
+            ),
             ("weights", ToolParamSchema::string()),
-            ("combine", ToolParamSchema::enum_values(&["mean", "sum", "geometric_mean"])),
-            ("output_range", ToolParamSchema::enum_values(&["minmax", "zero_to_100", "zscore", "none"])),
+            (
+                "combine",
+                ToolParamSchema::enum_values(&["mean", "sum", "geometric_mean"]),
+            ),
+            (
+                "output_range",
+                ToolParamSchema::enum_values(&["minmax", "zero_to_100", "zscore", "none"]),
+            ),
         ]),
         "calculate_rates" => schemas(&[
             ("input", vector_in()),
             ("count_field", ToolParamSchema::string()),
             ("population_field", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&["crude", "eb_global", "eb_spatial"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["crude", "eb_global", "eb_spatial"]),
+            ),
             ("per", float()),
             ("neighbors", int()),
         ]),
@@ -1564,7 +1759,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("field", ToolParamSchema::string()),
-            ("adjacency", ToolParamSchema::enum_values(&["edge", "edge_or_corner"])),
+            (
+                "adjacency",
+                ToolParamSchema::enum_values(&["edge", "edge_or_corner"]),
+            ),
             ("snap_tolerance", float()),
         ]),
         "dice" => schemas(&[
@@ -1592,7 +1790,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("inputs", ToolParamSchema::string()),
             ("output", raster_out()),
             ("times", ToolParamSchema::string()),
-            ("method", ToolParamSchema::enum_values(&["linear", "mann_kendall"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["linear", "mann_kendall"]),
+            ),
             ("intercept_output", raster_out()),
             ("significance_output", raster_out()),
             ("min_valid", int()),
@@ -1602,8 +1803,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", raster_in()),
             ("gcps", ToolParamSchema::string()),
             ("output", raster_out()),
-            ("transform", ToolParamSchema::enum_values(&["poly1", "poly2", "poly3"])),
-            ("resampling", ToolParamSchema::enum_values(&["nearest", "bilinear"])),
+            (
+                "transform",
+                ToolParamSchema::enum_values(&["poly1", "poly2", "poly3"]),
+            ),
+            (
+                "resampling",
+                ToolParamSchema::enum_values(&["nearest", "bilinear"]),
+            ),
             ("cell_size", float()),
             ("epsg", int()),
             ("band", int()),
@@ -1612,7 +1819,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", raster_out()),
             ("weight_field", ToolParamSchema::string()),
-            ("weight_type", ToolParamSchema::enum_values(&["multiplicative", "additive", "power"])),
+            (
+                "weight_type",
+                ToolParamSchema::enum_values(&["multiplicative", "additive", "power"]),
+            ),
             ("cell_size", float()),
             ("margin", float()),
             ("epsg", int()),
@@ -1630,7 +1840,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("sources", vector_in()),
             ("cost", raster_in()),
             ("output", vector_out()),
-            ("connections", ToolParamSchema::enum_values(&["mst", "all_neighbors"])),
+            (
+                "connections",
+                ToolParamSchema::enum_values(&["mst", "all_neighbors"]),
+            ),
             ("id_field", ToolParamSchema::string()),
             ("band", int()),
         ]),
@@ -1647,7 +1860,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("tolerance", float()),
-            ("method", ToolParamSchema::enum_values(&["midpoint", "move_endpoint"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["midpoint", "move_endpoint"]),
+            ),
             ("match_fields", ToolParamSchema::string()),
             ("links", vector_out()),
         ]),
@@ -1688,7 +1904,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("time_field", ToolParamSchema::string()),
             ("output", vector_out()),
             ("value_field", ToolParamSchema::string()),
-            ("change_type", ToolParamSchema::enum_values(&["mean", "slope"])),
+            (
+                "change_type",
+                ToolParamSchema::enum_values(&["mean", "slope"]),
+            ),
             ("method", ToolParamSchema::enum_values(&["auto", "defined"])),
             ("num_change_points", int()),
             ("sensitivity", float()),
@@ -1701,7 +1920,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("value_field", ToolParamSchema::string()),
             ("steps", int()),
-            ("model", ToolParamSchema::enum_values(&["auto", "exp_smoothing", "linear", "parabolic"])),
+            (
+                "model",
+                ToolParamSchema::enum_values(&["auto", "exp_smoothing", "linear", "parabolic"]),
+            ),
             ("holdout", int()),
             ("time_step", float()),
             ("resolution", int()),
@@ -1737,7 +1959,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("category_a", ToolParamSchema::string()),
             ("category_b", ToolParamSchema::string()),
             ("neighbors", int()),
-            ("weight", ToolParamSchema::enum_values(&["gaussian", "uniform"])),
+            (
+                "weight",
+                ToolParamSchema::enum_values(&["gaussian", "uniform"]),
+            ),
             ("permutations", int()),
             ("seed", int()),
         ]),
@@ -1746,8 +1971,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("candidates", vector_in()),
             ("fields", ToolParamSchema::string()),
             ("output", vector_out()),
-            ("match_method", ToolParamSchema::enum_values(&["euclidean", "cosine"])),
-            ("most_or_least", ToolParamSchema::enum_values(&["most", "least", "both"])),
+            (
+                "match_method",
+                ToolParamSchema::enum_values(&["euclidean", "cosine"]),
+            ),
+            (
+                "most_or_least",
+                ToolParamSchema::enum_values(&["most", "least", "both"]),
+            ),
             ("num_results", int()),
         ]),
         "detect_feature_changes" => schemas(&[
@@ -1784,7 +2015,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "remove_overlap_multiple" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&["center_line", "thiessen"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["center_line", "thiessen"]),
+            ),
             ("grid_resolution", int()),
         ]),
         "snap_tracks" => schemas(&[
@@ -1831,20 +2065,29 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("distances", ToolParamSchema::string()),
-            ("ring_type", ToolParamSchema::enum_values(&["rings", "disks"])),
-            ("dissolve", ToolParamSchema::enum_values(&["none", "per_ring"])),
+            (
+                "ring_type",
+                ToolParamSchema::enum_values(&["rings", "disks"]),
+            ),
+            (
+                "dissolve",
+                ToolParamSchema::enum_values(&["none", "per_ring"]),
+            ),
             ("distance_field", ToolParamSchema::string()),
         ]),
         "directional_distribution" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("statistic", ToolParamSchema::enum_values(&[
-                "mean_center",
-                "median_center",
-                "central_feature",
-                "standard_distance",
-                "standard_deviational_ellipse",
-            ])),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean_center",
+                    "median_center",
+                    "central_feature",
+                    "standard_distance",
+                    "standard_deviational_ellipse",
+                ]),
+            ),
             ("weight_field", ToolParamSchema::string()),
             ("case_field", ToolParamSchema::string()),
             ("n_std", int()),
@@ -1889,8 +2132,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("y_field", ToolParamSchema::string()),
             ("x_fields", ToolParamSchema::string()),
-            ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
-            ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
+            (
+                "kernel",
+                ToolParamSchema::enum_values(&["gaussian", "bisquare"]),
+            ),
+            (
+                "bandwidth_type",
+                ToolParamSchema::enum_values(&["adaptive", "fixed"]),
+            ),
             ("bandwidth", float()),
         ]),
         "mgwr" => schemas(&[
@@ -1898,8 +2147,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("dependent_field", ToolParamSchema::string()),
             ("explanatory_fields", ToolParamSchema::string()),
-            ("kernel", ToolParamSchema::enum_values(&["gaussian", "bisquare"])),
-            ("bandwidth_type", ToolParamSchema::enum_values(&["adaptive", "fixed"])),
+            (
+                "kernel",
+                ToolParamSchema::enum_values(&["gaussian", "bisquare"]),
+            ),
+            (
+                "bandwidth_type",
+                ToolParamSchema::enum_values(&["adaptive", "fixed"]),
+            ),
             ("tolerance", float()),
             ("max_iterations", int()),
         ]),
@@ -1907,16 +2162,25 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("zones", int()),
-            ("criterion", ToolParamSchema::enum_values(&["homogeneity", "equal_count", "equal_sum"])),
+            (
+                "criterion",
+                ToolParamSchema::enum_values(&["homogeneity", "equal_count", "equal_sum"]),
+            ),
             ("fields", ToolParamSchema::string()),
-            ("contiguity", ToolParamSchema::enum_values(&["rook", "queen"])),
+            (
+                "contiguity",
+                ToolParamSchema::enum_values(&["rook", "queen"]),
+            ),
             ("tolerance", float()),
         ]),
         "cartogram" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
             ("value_field", ToolParamSchema::string()),
-            ("method", ToolParamSchema::enum_values(&["non_contiguous", "dorling"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["non_contiguous", "dorling"]),
+            ),
             ("iterations", int()),
         ]),
         "thin_road_network" => schemas(&[
@@ -1948,7 +2212,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("resolution", int()),
             ("band", int()),
-            ("aggregate", ToolParamSchema::enum_values(&["mean", "sum", "min", "max", "count", "median"])),
+            (
+                "aggregate",
+                ToolParamSchema::enum_values(&["mean", "sum", "min", "max", "count", "median"]),
+            ),
         ]),
         "render_vector_png" => schemas(&[
             ("input", vector_in()),
@@ -1963,9 +2230,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "find_argument_statistics" => schemas(&[
             ("inputs", ToolParamSchema::string()),
             ("output", raster_out()),
-            ("statistic", ToolParamSchema::enum_values(&["argmax", "argmin", "median_position", "duration", "longest_run"])),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "argmax",
+                    "argmin",
+                    "median_position",
+                    "duration",
+                    "longest_run",
+                ]),
+            ),
             ("threshold", float()),
-            ("comparison", ToolParamSchema::enum_values(&[">", ">=", "<", "<="])),
+            (
+                "comparison",
+                ToolParamSchema::enum_values(&[">", ">=", "<", "<="]),
+            ),
             ("dates", ToolParamSchema::string()),
             ("min_valid", int()),
         ]),
@@ -1979,16 +2258,42 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cell_size", float()),
         ]),
         "cell_statistics" => schemas(&[
-            ("inputs", ToolParamSchema::input_multiple(ToolDatasetSchema::Raster)),
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
             ("output", raster_out()),
-            ("statistic", ToolParamSchema::enum_values(&["mean", "majority", "maximum", "median", "minimum", "minority", "percentile", "range", "std", "sum", "variety"])),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean",
+                    "majority",
+                    "maximum",
+                    "median",
+                    "minimum",
+                    "minority",
+                    "percentile",
+                    "range",
+                    "std",
+                    "sum",
+                    "variety",
+                ]),
+            ),
             ("ignore_nodata", ToolParamSchema::bool()),
             ("percentile_value", float()),
         ]),
         "multidimensional_anomaly" => schemas(&[
             ("input", ToolParamSchema::string()),
             ("output", raster_out()),
-            ("method", ToolParamSchema::enum_values(&["difference_from_mean", "percent_of_mean", "z_score", "difference_from_median"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "difference_from_mean",
+                    "percent_of_mean",
+                    "z_score",
+                    "difference_from_median",
+                ]),
+            ),
             ("reference_range", ToolParamSchema::string()),
             ("min_valid", int()),
         ]),
@@ -1998,7 +2303,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("time_field", ToolParamSchema::string()),
             ("start_condition", ToolParamSchema::string()),
             ("end_condition", ToolParamSchema::string()),
-            ("mode", ToolParamSchema::enum_values(&["points", "segments"])),
+            (
+                "mode",
+                ToolParamSchema::enum_values(&["points", "segments"]),
+            ),
             ("output", vector_out()),
         ]),
         "kernel_density_ratio" => schemas(&[
@@ -2031,7 +2339,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("margin", float()),
-            ("mask_kind", ToolParamSchema::enum_values(&["exact", "convex_hull", "box"])),
+            (
+                "mask_kind",
+                ToolParamSchema::enum_values(&["exact", "convex_hull", "box"]),
+            ),
             ("masked_layer", vector_in()),
             ("id_field", ToolParamSchema::string()),
         ]),
@@ -2040,7 +2351,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("masking_layer", vector_in()),
             ("output", vector_out()),
             ("margin", float()),
-            ("mask_kind", ToolParamSchema::enum_values(&["exact", "convex_hull", "box"])),
+            (
+                "mask_kind",
+                ToolParamSchema::enum_values(&["exact", "convex_hull", "box"]),
+            ),
             ("id_field", ToolParamSchema::string()),
         ]),
         "dimension_reduction" => schemas(&[
@@ -2068,7 +2382,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("page_length", float()),
             ("page_width", float()),
             ("overlap", float()),
-            ("orientation", ToolParamSchema::enum_values(&["along_line", "horizontal", "vertical"])),
+            (
+                "orientation",
+                ToolParamSchema::enum_values(&["along_line", "horizontal", "vertical"]),
+            ),
             ("start_page", int()),
         ]),
         "grid_index_features" => schemas(&[
@@ -2081,11 +2398,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("y_max", float()),
             ("tile_width", float()),
             ("tile_height", float()),
-            ("page_size", ToolParamSchema::enum_values(&["a0", "a1", "a2", "a3", "a4", "letter", "legal", "tabloid"])),
+            (
+                "page_size",
+                ToolParamSchema::enum_values(&[
+                    "a0", "a1", "a2", "a3", "a4", "letter", "legal", "tabloid",
+                ]),
+            ),
             ("map_scale", float()),
             ("origin_x", float()),
             ("origin_y", float()),
-            ("naming", ToolParamSchema::enum_values(&["alphanumeric", "sequential"])),
+            (
+                "naming",
+                ToolParamSchema::enum_values(&["alphanumeric", "sequential"]),
+            ),
             ("intersect_only", ToolParamSchema::bool()),
             ("route", vector_in()),
             ("overlap", float()),
@@ -2098,8 +2423,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         ]),
         "convert_coordinate_notation" => schemas(&[
             ("input", vector_in()),
-            ("input_notation", ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"])),
-            ("output_notation", ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"])),
+            (
+                "input_notation",
+                ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"]),
+            ),
+            (
+                "output_notation",
+                ToolParamSchema::enum_values(&["DD", "DMS", "DDM", "UTM", "MGRS"]),
+            ),
             ("coord_field", ToolParamSchema::string()),
             ("output_field", ToolParamSchema::string()),
             ("precision", int()),
@@ -2108,7 +2439,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         ]),
         "geodetic_densify" => schemas(&[
             ("input", vector_in()),
-            ("geodetic_type", ToolParamSchema::enum_values(&["geodesic", "rhumb"])),
+            (
+                "geodetic_type",
+                ToolParamSchema::enum_values(&["geodesic", "rhumb"]),
+            ),
             ("max_segment_length", float()),
             ("vertices_per_segment", int()),
             ("output", vector_out()),
@@ -2118,7 +2452,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("field", ToolParamSchema::string()),
             ("output", raster_out()),
             ("barriers", vector_in()),
-            ("method", ToolParamSchema::enum_values(&["idw", "local_polynomial"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["idw", "local_polynomial"]),
+            ),
             ("power", float()),
             ("bandwidth", float()),
             ("radius", float()),
@@ -2128,7 +2465,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("dependent_field", ToolParamSchema::string()),
             ("explanatory_fields", ToolParamSchema::string()),
-            ("family", ToolParamSchema::enum_values(&["gaussian", "poisson", "logistic"])),
+            (
+                "family",
+                ToolParamSchema::enum_values(&["gaussian", "poisson", "logistic"]),
+            ),
             ("output", vector_out()),
             ("report", table_out()),
         ]),
@@ -2192,8 +2532,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("spatial_bandwidth", float()),
             ("cell_size", float()),
             ("weight_field", ToolParamSchema::string()),
-            ("spatial_kernel", ToolParamSchema::enum_values(&["epanechnikov", "quartic"])),
-            ("temporal_kernel", ToolParamSchema::enum_values(&["triangular", "epanechnikov"])),
+            (
+                "spatial_kernel",
+                ToolParamSchema::enum_values(&["epanechnikov", "quartic"]),
+            ),
+            (
+                "temporal_kernel",
+                ToolParamSchema::enum_values(&["triangular", "epanechnikov"]),
+            ),
             ("epsg", int()),
         ]),
         "analyze_changes_ccdc" => schemas(&[
@@ -2272,8 +2618,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("subset_size", int()),
             ("overlap", float()),
             ("simulations", int()),
-            ("semivariogram", ToolParamSchema::enum_values(&["power", "linear", "exponential"])),
-            ("transform", ToolParamSchema::enum_values(&["none", "log_empirical"])),
+            (
+                "semivariogram",
+                ToolParamSchema::enum_values(&["power", "linear", "exponential"]),
+            ),
+            (
+                "transform",
+                ToolParamSchema::enum_values(&["none", "log_empirical"]),
+            ),
             ("error_output", raster_out()),
             ("seed", int()),
         ]),
@@ -2283,7 +2635,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", raster_out()),
             ("num_realizations", int()),
             ("cell_size", float()),
-            ("variogram_model", ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"])),
+            (
+                "variogram_model",
+                ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"]),
+            ),
             ("nugget", float()),
             ("sill", float()),
             ("range", float()),
@@ -2311,7 +2666,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("outcome_field", ToolParamSchema::string()),
             ("treatment_field", ToolParamSchema::string()),
             ("confounding_fields", ToolParamSchema::string()),
-            ("method", ToolParamSchema::enum_values(&["ps_matching", "ipw", "regression_adjustment"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["ps_matching", "ipw", "regression_adjustment"]),
+            ),
             ("add_spatial_confounders", ToolParamSchema::bool()),
             ("balance_threshold", float()),
             ("output", vector_out()),
@@ -2322,14 +2680,23 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("fields", ToolParamSchema::string()),
             ("output", vector_out()),
             ("num_clusters", int()),
-            ("method", ToolParamSchema::enum_values(&["kmeans", "kmedoids"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["kmeans", "kmedoids"]),
+            ),
             ("seed", int()),
         ]),
         "table_to_geometry" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("mode", ToolParamSchema::enum_values(&["xy_to_line", "bearing_distance", "ellipse"])),
-            ("line_type", ToolParamSchema::enum_values(&["geodesic", "rhumb", "planar"])),
+            (
+                "mode",
+                ToolParamSchema::enum_values(&["xy_to_line", "bearing_distance", "ellipse"]),
+            ),
+            (
+                "line_type",
+                ToolParamSchema::enum_values(&["geodesic", "rhumb", "planar"]),
+            ),
             ("vertex_spacing", float()),
             ("polygon_output", ToolParamSchema::bool()),
             ("start_x", ToolParamSchema::string()),
@@ -2347,12 +2714,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "transform_fields" => schemas(&[
             ("input", vector_in()),
             ("fields", ToolParamSchema::string()),
-            ("transform", ToolParamSchema::enum_values(&[
-                "zscore", "minmax", "robust", "log", "log1p", "sqrt", "boxcox", "inverse", "bin", "onehot",
-            ])),
+            (
+                "transform",
+                ToolParamSchema::enum_values(&[
+                    "zscore", "minmax", "robust", "log", "log1p", "sqrt", "boxcox", "inverse",
+                    "bin", "onehot",
+                ]),
+            ),
             ("output", vector_out()),
             ("bins", int()),
-            ("bin_method", ToolParamSchema::enum_values(&["equal_interval", "quantile", "std_dev"])),
+            (
+                "bin_method",
+                ToolParamSchema::enum_values(&["equal_interval", "quantile", "std_dev"]),
+            ),
             ("boxcox_lambda", float()),
             ("suffix", ToolParamSchema::string()),
             ("drop_input", ToolParamSchema::bool()),
@@ -2390,7 +2764,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "extract_scanned_features" => schemas(&[
             ("input", raster_in()),
             ("output", vector_out()),
-            ("feature_type", ToolParamSchema::enum_values(&["lines", "polygons"])),
+            (
+                "feature_type",
+                ToolParamSchema::enum_values(&["lines", "polygons"]),
+            ),
             ("foreground_value", float()),
             ("threshold", float()),
             ("noise_size", int()),
@@ -2410,12 +2787,26 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         "create_spatial_sampling_locations" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
-            ("method", ToolParamSchema::enum_values(&["simple_random", "stratified", "systematic", "cluster"])),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "simple_random",
+                    "stratified",
+                    "systematic",
+                    "cluster",
+                ]),
+            ),
             ("num_samples", int()),
             ("strata_field", ToolParamSchema::string()),
-            ("allocation", ToolParamSchema::enum_values(&["proportional", "equal", "population_field"])),
+            (
+                "allocation",
+                ToolParamSchema::enum_values(&["proportional", "equal", "population_field"]),
+            ),
             ("population_field", ToolParamSchema::string()),
-            ("bin_shape", ToolParamSchema::enum_values(&["square", "hexagon", "triangle"])),
+            (
+                "bin_shape",
+                ToolParamSchema::enum_values(&["square", "hexagon", "triangle"]),
+            ),
             ("bin_size", float()),
             ("num_clusters", int()),
             ("min_distance", float()),
@@ -2467,6 +2858,86 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("group_field", ToolParamSchema::string()),
             ("natural_sort", ToolParamSchema::bool()),
             ("close_path", ToolParamSchema::bool()),
+        ]),
+        "zonal_geometry" => schemas(&[
+            ("zones", raster_in()),
+            ("output", raster_out()),
+            (
+                "measure",
+                ToolParamSchema::enum_values(&[
+                    "area",
+                    "perimeter",
+                    "thickness",
+                    "centroid_x",
+                    "centroid_y",
+                    "major_axis",
+                    "minor_axis",
+                    "orientation",
+                ]),
+            ),
+            ("as_table", ToolParamSchema::bool()),
+        ]),
+        "zonal_fill" => schemas(&[
+            ("zones", raster_in()),
+            ("weight", raster_in()),
+            ("output", raster_out()),
+        ]),
+        "calculate_polygon_main_angle" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("angle_field", ToolParamSchema::string()),
+            (
+                "convention",
+                ToolParamSchema::enum_values(&["arithmetic", "geographic", "graphic"]),
+            ),
+        ]),
+        "band_collection_statistics" => schemas(&[
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", file_out()),
+            (
+                "detail",
+                ToolParamSchema::enum_values(&["detailed", "brief"]),
+            ),
+        ]),
+        "line_statistics" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean", "majority", "maximum", "median", "minimum", "minority", "range",
+                    "variety", "length",
+                ]),
+            ),
+            ("search_radius", float()),
+            ("cell_size", float()),
+        ]),
+        "optimized_hot_spot_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("analysis_field", ToolParamSchema::string()),
+            (
+                "aggregation",
+                ToolParamSchema::enum_values(&["fishnet", "snap"]),
+            ),
+            ("cell_size", float()),
+            ("distance_band", float()),
+        ]),
+        "optimized_outlier_analysis" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("analysis_field", ToolParamSchema::string()),
+            (
+                "aggregation",
+                ToolParamSchema::enum_values(&["fishnet", "snap"]),
+            ),
+            ("cell_size", float()),
+            ("distance_band", float()),
+            ("fdr_alpha", float()),
         ]),
         _ => return None,
     };

@@ -94,13 +94,24 @@ impl Tool for CalculateDistanceBandTool {
         let layer = load_input_layer(input)?;
 
         // Representative point per feature; remember which feature it came from.
+        // Non-point/multipoint geometries have no representative location and are
+        // skipped; the count is surfaced so the band isn't silently computed over
+        // a subset (which would mislead threshold selection).
         let mut pts: Vec<[f64; 2]> = Vec::new();
         let mut feat_of: Vec<usize> = Vec::new();
+        let mut skipped_non_point = 0usize;
         for (fi, feature) in layer.features.iter().enumerate() {
             if let Some((x, y)) = feature.geometry.as_ref().and_then(point_xy) {
                 pts.push([x, y]);
                 feat_of.push(fi);
+            } else {
+                skipped_non_point += 1;
             }
+        }
+        if skipped_non_point > 0 {
+            ctx.progress.info(&format!(
+                "skipped {skipped_non_point} non-point feature(s) with no representative location"
+            ));
         }
         let n = pts.len();
         if n <= prm.neighbors {
@@ -182,6 +193,7 @@ impl Tool for CalculateDistanceBandTool {
         outputs.insert("avg_distance".to_string(), json!(avg));
         outputs.insert("max_distance".to_string(), json!(mx));
         outputs.insert("distance_method".to_string(), json!(prm.method.label()));
+        outputs.insert("skipped_non_point".to_string(), json!(skipped_non_point));
         if let Some(p) = out_path {
             outputs.insert("output".to_string(), json!(p));
         }
@@ -231,20 +243,37 @@ struct Params {
 }
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
+    // Accept only integers >= 1: reject non-integers (3.5), negatives, and 0
+    // rather than silently coercing them to 1.
+    let invalid_neighbors =
+        || ToolError::Validation("'neighbors' must be an integer >= 1".to_string());
     let neighbors = match args.get("neighbors") {
         None | Some(Value::Null) => 1,
-        Some(Value::Number(n)) => n.as_u64().unwrap_or(1).max(1) as usize,
-        Some(Value::String(s)) if s.trim().is_empty() => 1,
-        Some(Value::String(s)) => s
-            .trim()
-            .parse::<usize>()
-            .map_err(|_| ToolError::Validation("'neighbors' must be an integer".to_string()))?
-            .max(1),
-        Some(_) => {
-            return Err(ToolError::Validation(
-                "'neighbors' must be a number".to_string(),
-            ))
+        Some(Value::Number(n)) => {
+            // Integer JSON numbers, or whole-valued floats like 3.0.
+            let k = if let Some(u) = n.as_u64() {
+                u
+            } else {
+                let f = n.as_f64().ok_or_else(invalid_neighbors)?;
+                if f.fract() != 0.0 || f < 1.0 {
+                    return Err(invalid_neighbors());
+                }
+                f as u64
+            };
+            if k < 1 {
+                return Err(invalid_neighbors());
+            }
+            k as usize
         }
+        Some(Value::String(s)) if s.trim().is_empty() => 1,
+        Some(Value::String(s)) => {
+            let k = s.trim().parse::<usize>().map_err(|_| invalid_neighbors())?;
+            if k < 1 {
+                return Err(invalid_neighbors());
+            }
+            k
+        }
+        Some(_) => return Err(invalid_neighbors()),
     };
     let method = match args
         .get("distance_method")
@@ -348,5 +377,10 @@ mod tests {
         assert!(bad(json!({})).is_err());
         assert!(bad(json!({ "input": "a.geojson", "distance_method": "chebyshev" })).is_err());
         assert!(bad(json!({ "input": "a.geojson", "neighbors": 3 })).is_ok());
+        // Strict neighbors: reject non-integers, 0, and negatives; accept 3.0.
+        assert!(bad(json!({ "input": "a.geojson", "neighbors": 3.5 })).is_err());
+        assert!(bad(json!({ "input": "a.geojson", "neighbors": 0 })).is_err());
+        assert!(bad(json!({ "input": "a.geojson", "neighbors": -2 })).is_err());
+        assert!(bad(json!({ "input": "a.geojson", "neighbors": 3.0 })).is_ok());
     }
 }

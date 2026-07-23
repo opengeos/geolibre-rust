@@ -1977,6 +1977,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_height", float()),
             ("min_points", int()),
             ("cell_size", float()),
+        ]),
         "cell_statistics" => schemas(&[
             ("inputs", ToolParamSchema::input_multiple(ToolDatasetSchema::Raster)),
             ("output", raster_out()),

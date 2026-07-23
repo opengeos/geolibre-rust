@@ -7,7 +7,61 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use wbcore::{ToolArgs, ToolError};
-use wbvector::{memory_store, Layer, VectorFormat};
+use wbvector::{memory_store, Coord, Geometry, Layer, VectorFormat};
+
+/// Even-odd ray-casting test: is `(x, y)` inside the closed ring `coords`?
+/// Points exactly on an edge are treated as inside (deterministic tie-break).
+pub fn ring_contains(coords: &[Coord], x: f64, y: f64) -> bool {
+    let n = coords.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = (coords[i].x, coords[i].y);
+        let (xj, yj) = (coords[j].x, coords[j].y);
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// Tests whether `(x, y)` falls inside a polygon (inside its exterior and
+/// outside every hole).
+pub fn polygon_contains(exterior: &[Coord], interiors: &[Vec<Coord>], x: f64, y: f64) -> bool {
+    if !ring_contains(exterior, x, y) {
+        return false;
+    }
+    for hole in interiors {
+        if ring_contains(hole, x, y) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Tests whether `(x, y)` falls inside a `Polygon`/`MultiPolygon` geometry.
+/// Non-areal geometries always return `false`.
+pub fn geometry_contains_point(geom: &Geometry, x: f64, y: f64) -> bool {
+    match geom {
+        Geometry::Polygon {
+            exterior,
+            interiors,
+        } => {
+            let holes: Vec<Vec<Coord>> = interiors.iter().map(|r| r.0.clone()).collect();
+            polygon_contains(&exterior.0, &holes, x, y)
+        }
+        Geometry::MultiPolygon(polys) => polys.iter().any(|(ext, hs)| {
+            let holes: Vec<Vec<Coord>> = hs.iter().map(|r| r.0.clone()).collect();
+            polygon_contains(&ext.0, &holes, x, y)
+        }),
+        Geometry::GeometryCollection(gs) => gs.iter().any(|g| geometry_contains_point(g, x, y)),
+        _ => false,
+    }
+}
 
 /// Parses an optional string parameter (absent / null / empty -> None).
 pub fn parse_optional_str<'a>(args: &'a ToolArgs, key: &str) -> Result<Option<&'a str>, ToolError> {

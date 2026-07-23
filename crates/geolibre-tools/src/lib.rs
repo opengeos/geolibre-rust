@@ -125,6 +125,7 @@ mod raster_to_tiles;
 mod reconstruct_tracks;
 mod regions;
 mod regularize_building_footprints;
+mod regularize_adjacent_building_footprint;
 mod remove_overlap_multiple;
 mod render;
 mod render_png;
@@ -325,6 +326,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(spectral_index::SpectralIndexTool),
         Box::new(vector_convert::VectorConvertTool),
         Box::new(regularize_building_footprints::RegularizeBuildingFootprintsTool),
+        Box::new(regularize_adjacent_building_footprint::RegularizeAdjacentBuildingFootprintTool),
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
@@ -1141,6 +1143,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("diagonal_penalty", float()),
             ("min_radius", float()),
             ("max_radius", float()),
+        ]),
+        "regularize_adjacent_building_footprint" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("group", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["right_angles", "right_angles_and_diagonals"])),
+            ("tolerance", float()),
+            ("precision", float()),
+            ("adjacency_distance", float()),
         ]),
         "smooth_natural_features" => schemas(&[
             ("input", vector_in()),

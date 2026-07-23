@@ -19,6 +19,7 @@ mod focal_statistics;
 mod multicriteria_overlay;
 mod surface_volume;
 mod generate_spatial_weights_matrix;
+mod calculate_distance_band;
 mod point_statistics;
 mod kml_to_features;
 mod graphic_buffer;
@@ -264,6 +265,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
         Box::new(surface_volume::SurfaceVolumeTool),
         Box::new(generate_spatial_weights_matrix::GenerateSpatialWeightsMatrixTool),
+        Box::new(calculate_distance_band::CalculateDistanceBandTool),
         Box::new(point_statistics::PointStatisticsTool),
         Box::new(kml_to_features::KmlToFeaturesTool),
         Box::new(graphic_buffer::GraphicBufferTool),
@@ -623,6 +625,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("exponent", float()),
             ("row_standardization", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
+        ]),
+        "calculate_distance_band" => schemas(&[
+            ("input", vector_in()),
+            ("neighbors", int()),
+            ("distance_method", ToolParamSchema::enum_values(&["euclidean", "manhattan"])),
+            ("output", file_out()),
         ]),
         "point_statistics" => schemas(&[
             ("input", vector_in()),

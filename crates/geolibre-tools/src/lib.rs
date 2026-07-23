@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod diffusion_interpolation_with_barriers;
 mod compare_spatial_weights;
 mod spatial_eigenvector_filtering;
 mod enforce_river_monotonicity;
@@ -251,6 +252,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(diffusion_interpolation_with_barriers::DiffusionInterpolationWithBarriersTool),
         Box::new(compare_spatial_weights::CompareSpatialWeightsTool),
         Box::new(spatial_eigenvector_filtering::SpatialEigenvectorFilteringTool),
         Box::new(enforce_river_monotonicity::EnforceRiverMonotonicityTool),
@@ -485,6 +487,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "diffusion_interpolation_with_barriers" => schemas(&[
+            ("input", vector_in()),
+            ("z_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("cell_size", float()),
+            ("barriers", vector_in()),
+            ("bandwidth", float()),
+            ("number_iterations", int()),
+            ("weight_field", ToolParamSchema::string()),
+            ("epsg", int()),
+        ]),
         "compare_spatial_weights" => schemas(&[
             ("input", vector_in()),
             ("output", table_out()),

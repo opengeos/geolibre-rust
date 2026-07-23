@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod classification_accuracy_assessment;
 mod diffusion_interpolation_with_barriers;
 mod compare_spatial_weights;
 mod spatial_eigenvector_filtering;
@@ -252,6 +253,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(classification_accuracy_assessment::ClassificationAccuracyAssessmentTool),
         Box::new(diffusion_interpolation_with_barriers::DiffusionInterpolationWithBarriersTool),
         Box::new(compare_spatial_weights::CompareSpatialWeightsTool),
         Box::new(spatial_eigenvector_filtering::SpatialEigenvectorFilteringTool),
@@ -487,6 +489,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "classification_accuracy_assessment" => schemas(&[
+            ("points", vector_in()),
+            ("class_field", ToolParamSchema::string()),
+            ("input", raster_in()),
+            ("classified_field", ToolParamSchema::string()),
+            ("band", int()),
+            ("output", vector_out()),
+        ]),
         "diffusion_interpolation_with_barriers" => schemas(&[
             ("input", vector_in()),
             ("z_field", ToolParamSchema::string()),

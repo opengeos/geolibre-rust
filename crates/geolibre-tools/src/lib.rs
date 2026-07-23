@@ -87,6 +87,7 @@ mod eliminate_polygon_part;
 mod eliminate_polygons;
 mod emerging_hot_spot_analysis;
 mod empirical_bayesian_kriging;
+mod gaussian_geostatistical_simulations;
 mod expand_shrink;
 mod exploratory_regression;
 mod extract_sinks;
@@ -443,6 +444,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multidimensional_anomaly::MultidimensionalAnomalyTool),
         Box::new(propagate_displacement::PropagateDisplacementTool),
         Box::new(empirical_bayesian_kriging::EmpiricalBayesianKrigingTool),
+        Box::new(gaussian_geostatistical_simulations::GaussianGeostatisticalSimulationsTool),
         Box::new(exploratory_regression::ExploratoryRegressionTool),
         Box::new(causal_inference_analysis::CausalInferenceAnalysisTool),
         Box::new(align_features::AlignFeaturesTool),
@@ -2255,6 +2257,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("transform", ToolParamSchema::enum_values(&["none", "log_empirical"])),
             ("error_output", raster_out()),
             ("seed", int()),
+        ]),
+        "gaussian_geostatistical_simulations" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("num_realizations", int()),
+            ("cell_size", float()),
+            ("variogram_model", ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"])),
+            ("nugget", float()),
+            ("sill", float()),
+            ("range", float()),
+            ("max_neighbors", int()),
+            ("seed", int()),
+            ("output_mean", raster_out()),
+            ("output_std", raster_out()),
         ]),
         "exploratory_regression" => schemas(&[
             ("input", vector_in()),

@@ -217,6 +217,7 @@ mod pairwise_comparison_weights;
 mod kernel_density_ratio;
 mod detect_incidents;
 mod find_argument_statistics;
+mod cell_statistics;
 mod multidimensional_anomaly;
 mod align_features;
 mod multivariate_clustering;
@@ -432,6 +433,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(kernel_density_ratio::KernelDensityRatioTool),
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
+        Box::new(cell_statistics::CellStatisticsTool),
         Box::new(multidimensional_anomaly::MultidimensionalAnomalyTool),
         Box::new(propagate_displacement::PropagateDisplacementTool),
         Box::new(empirical_bayesian_kriging::EmpiricalBayesianKrigingTool),
@@ -1919,6 +1921,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("comparison", ToolParamSchema::enum_values(&[">", ">=", "<", "<="])),
             ("dates", ToolParamSchema::string()),
             ("min_valid", int()),
+        ]),
+        "cell_statistics" => schemas(&[
+            ("inputs", ToolParamSchema::input_multiple(ToolDatasetSchema::Raster)),
+            ("output", raster_out()),
+            ("statistic", ToolParamSchema::enum_values(&["mean", "majority", "maximum", "median", "minimum", "minority", "percentile", "range", "std", "sum", "variety"])),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            ("percentile_value", float()),
         ]),
         "multidimensional_anomaly" => schemas(&[
             ("input", ToolParamSchema::string()),

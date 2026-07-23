@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod enforce_river_monotonicity;
 mod calculate_grid_convergence_angle;
 mod maximum_likelihood_classification;
 mod focal_statistics;
@@ -248,6 +249,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(enforce_river_monotonicity::EnforceRiverMonotonicityTool),
         Box::new(calculate_grid_convergence_angle::CalculateGridConvergenceAngleTool),
         Box::new(maximum_likelihood_classification::MaximumLikelihoodClassificationTool),
         Box::new(focal_statistics::FocalStatisticsTool),
@@ -479,6 +481,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "enforce_river_monotonicity" => schemas(&[
+            ("input", vector_in()),
+            ("surface", raster_in()),
+            ("output", raster_out()),
+            ("tolerance", float()),
+            ("sample_distance", float()),
+            ("band", int()),
+        ]),
         "calculate_grid_convergence_angle" => schemas(&[
             ("input", vector_in()),
             ("angle_field", ToolParamSchema::string()),

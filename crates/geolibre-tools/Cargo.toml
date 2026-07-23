@@ -60,10 +60,10 @@ exif = { package = "kamadak-exif", version = "0.6.1" }
 calamine = "0.36"
 # 1-D/2-D nearest-neighbour search (propensity-score caliper matching and
 # spatial-confounder neighbour averaging in causal_inference_analysis).
-# Redirected to the workspace's vendored copy by the root `[patch.crates-io]`
-# (see root Cargo.toml) which fixes kdtree 0.8.0's wasm-breaking `criterion`
-# normal-dependency packaging bug.
-kdtree = "0.8"
+# 0.8.1 moved `criterion` (which pulls wasm/WASI-incompatible rayon) to
+# dev-dependencies, fixing 0.8.0's packaging bug — so the workspace no longer
+# needs to vendor/patch this crate.
+kdtree = "0.8.1"
 # Pure-Rust streaming XML pull parser (no C deps; already in the dependency
 # graph transitively via wbvector), used by gpx_to_features to read GPX
 # waypoints/tracks/routes. WASM-clean; reads through std::fs like the other

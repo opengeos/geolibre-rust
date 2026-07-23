@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod calculate_grid_convergence_angle;
 mod maximum_likelihood_classification;
 mod focal_statistics;
 mod multicriteria_overlay;
@@ -247,6 +248,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(calculate_grid_convergence_angle::CalculateGridConvergenceAngleTool),
         Box::new(maximum_likelihood_classification::MaximumLikelihoodClassificationTool),
         Box::new(focal_statistics::FocalStatisticsTool),
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
@@ -477,6 +479,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "calculate_grid_convergence_angle" => schemas(&[
+            ("input", vector_in()),
+            ("angle_field", ToolParamSchema::string()),
+            ("angle_type", ToolParamSchema::enum_values(&["geographic", "arithmetic"])),
+            ("central_meridian", float()),
+            ("output", vector_out()),
+        ]),
         "maximum_likelihood_classification" => schemas(&[
             ("input", raster_in()),
             ("training", raster_in()),

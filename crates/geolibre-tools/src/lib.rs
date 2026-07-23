@@ -104,6 +104,7 @@ mod mgwr;
 mod geoparquet_io;
 mod h3_polyfill;
 mod hdbscan;
+mod optics_clustering;
 mod interpolate_shape;
 mod line_of_sight;
 mod h3_to_vector;
@@ -346,6 +347,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(solar_radiation::SolarRadiationTool),
         Box::new(hdbscan::HdbscanTool),
+        Box::new(optics_clustering::OpticsClusteringTool),
         Box::new(colocation_analysis::ColocationAnalysisTool),
         Box::new(similarity_search::SimilaritySearchTool),
         Box::new(detect_feature_changes::DetectFeatureChangesTool),
@@ -1683,6 +1685,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("min_cluster_size", int()),
             ("min_samples", int()),
+        ]),
+        "optics_clustering" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("min_features_cluster", int()),
+            ("search_distance", float()),
+            ("cluster_sensitivity", float()),
         ]),
         "colocation_analysis" => schemas(&[
             ("input", vector_in()),

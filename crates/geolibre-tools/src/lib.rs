@@ -251,6 +251,15 @@ mod zonal_fill;
 mod zonal_geometry;
 mod zonal_histogram;
 
+mod calculate_transit_service_frequency;
+mod feature_to_line;
+mod group_by_proximity;
+mod hot_spot_analysis_comparison;
+mod polygon_volume;
+mod rescale_by_function;
+mod split_raster;
+mod surface_parameters;
+
 use std::collections::BTreeMap;
 
 use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
@@ -485,6 +494,14 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(line_statistics::LineStatisticsTool),
         Box::new(optimized_hot_spot_analysis::OptimizedHotSpotAnalysisTool),
         Box::new(optimized_outlier_analysis::OptimizedOutlierAnalysisTool),
+        Box::new(polygon_volume::PolygonVolumeTool),
+        Box::new(hot_spot_analysis_comparison::HotSpotAnalysisComparisonTool),
+        Box::new(group_by_proximity::GroupByProximityTool),
+        Box::new(feature_to_line::FeatureToLineTool),
+        Box::new(split_raster::SplitRasterTool),
+        Box::new(surface_parameters::SurfaceParametersTool),
+        Box::new(rescale_by_function::RescaleByFunctionTool),
+        Box::new(calculate_transit_service_frequency::CalculateTransitServiceFrequencyTool),
     ]
 }
 
@@ -2938,6 +2955,130 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("cell_size", float()),
             ("distance_band", float()),
             ("fdr_alpha", float()),
+        ]),
+        "polygon_volume" => schemas(&[
+            ("surface", raster_in()),
+            ("input", vector_in()),
+            ("height_field", ToolParamSchema::string()),
+            (
+                "direction",
+                ToolParamSchema::enum_values(&["above", "below", "both"]),
+            ),
+            ("band", int()),
+            ("output", vector_out()),
+        ]),
+        "hot_spot_analysis_comparison" => schemas(&[
+            ("input1", vector_in()),
+            ("input2", vector_in()),
+            ("bin_field", ToolParamSchema::string()),
+            ("significance", float()),
+            ("match_field", ToolParamSchema::string()),
+            ("tolerance", float()),
+            ("permutations", int()),
+            ("seed", int()),
+            ("output", vector_out()),
+        ]),
+        "group_by_proximity" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            (
+                "relationship",
+                ToolParamSchema::enum_values(&["near", "intersects"]),
+            ),
+            ("spatial_near_distance", float()),
+            ("attribute_field", ToolParamSchema::string()),
+            ("group_field", ToolParamSchema::string()),
+        ]),
+        "feature_to_line" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("cluster_tolerance", float()),
+            ("attributes", ToolParamSchema::bool()),
+        ]),
+        "split_raster" => schemas(&[
+            ("input", raster_in()),
+            ("output_dir", file_out()),
+            ("base_name", ToolParamSchema::string()),
+            (
+                "split_method",
+                ToolParamSchema::enum_values(&["count", "size", "polygons"]),
+            ),
+            ("num_x", int()),
+            ("num_y", int()),
+            ("tile_size_x", int()),
+            ("tile_size_y", int()),
+            ("polygons", vector_in()),
+            ("overlap", int()),
+            ("format", ToolParamSchema::enum_values(&["tif", "png"])),
+        ]),
+        "surface_parameters" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "parameter",
+                ToolParamSchema::enum_values(&[
+                    "slope",
+                    "aspect",
+                    "mean_curvature",
+                    "profile_curvature",
+                    "tangential_curvature",
+                    "plan_curvature",
+                    "gaussian_curvature",
+                    "casorati_curvature",
+                    "contour_geodesic_torsion",
+                ]),
+            ),
+            (
+                "fit",
+                ToolParamSchema::enum_values(&["quadratic", "biquadratic"]),
+            ),
+            ("neighborhood_distance", float()),
+            (
+                "neighborhood_type",
+                ToolParamSchema::enum_values(&["fixed", "adaptive"]),
+            ),
+            ("band", int()),
+        ]),
+        "rescale_by_function" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "function",
+                ToolParamSchema::enum_values(&[
+                    "linear",
+                    "inverse_linear",
+                    "power",
+                    "exponential",
+                    "logarithmic",
+                    "logistic",
+                    "gaussian",
+                    "near",
+                    "small",
+                    "large",
+                    "symmetric_linear",
+                ]),
+            ),
+            ("from_scale", float()),
+            ("to_scale", float()),
+            ("param1", float()),
+            ("param2", float()),
+            ("low_threshold", float()),
+            ("high_threshold", float()),
+            ("value_below", float()),
+            ("value_above", float()),
+            ("band", int()),
+        ]),
+        "calculate_transit_service_frequency" => schemas(&[
+            ("input", ToolParamSchema::input(ToolDatasetSchema::File)),
+            ("target", ToolParamSchema::enum_values(&["stops", "lines"])),
+            ("date", ToolParamSchema::string()),
+            ("start_time", ToolParamSchema::string()),
+            ("duration_minutes", float()),
+            (
+                "count",
+                ToolParamSchema::enum_values(&["departures", "arrivals"]),
+            ),
+            ("output", vector_out()),
         ]),
         _ => return None,
     };

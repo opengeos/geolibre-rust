@@ -73,6 +73,7 @@ mod colocation_analysis;
 mod common;
 mod corridor;
 mod count_overlapping_features;
+mod non_maximum_suppression;
 mod create_spatially_balanced_points;
 mod cut_fill;
 mod delineate_built_up_areas;
@@ -333,6 +334,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
+        Box::new(non_maximum_suppression::NonMaximumSuppressionTool),
         Box::new(subdivide_polygon::SubdividePolygonTool),
         Box::new(generate_transects_along_lines::GenerateTransectsAlongLinesTool),
         Box::new(polygon_neighbors::PolygonNeighborsTool),
@@ -1243,6 +1245,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_count", int()),
             ("id_field", ToolParamSchema::string()),
             ("report_ids", table_out()),
+        ]),
+        "non_maximum_suppression" => schemas(&[
+            ("input", vector_in()),
+            ("confidence_score_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("max_overlap_ratio", float()),
+            ("class_value_field", ToolParamSchema::string()),
         ]),
         "subdivide_polygon" => schemas(&[
             ("input", vector_in()),

@@ -1837,7 +1837,9 @@ dependencies = [
 
 [[package]]
 name = "kdtree"
-version = "0.8.0"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cd666c2aae5dde60d2f9bfa4e1f8c17698fce13d599c0f9b76725641fec13d9"
 dependencies = [
  "num-traits",
  "thiserror 2.0.18",

@@ -393,17 +393,6 @@ The `whitebox_next_gen` crates are referenced as path dependencies in
 releasing (note `wbtools_oss` is `publish = false`, so git or vendoring is
 required).
 
-### TODO: remove the vendored `kdtree` patch once `kdtree 0.8.1` ships
-
-`vendor/kdtree/` and the `[patch.crates-io]` block in the root `Cargo.toml` work
-around a bug in the published `kdtree 0.8.0` (it declares `criterion` as a normal
-dependency, which pulls `rayon` and breaks the WASI build). The fix is already on
-`kdtree-rs` `master` (PRs #70 and #89) but unreleased. Tracking issue:
-https://github.com/mrhooray/kdtree-rs/issues/91
-
-When `kdtree 0.8.1` (or later) is published, delete `vendor/kdtree/` and the
-`[patch.crates-io]` block, then rebuild to confirm the WASI build stays green.
-
 ## Use from JavaScript
 
 > Note: the repository is `geolibre-rust` (the Rust source), but the published

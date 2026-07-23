@@ -1,3 +1,0 @@
-pre-release-replacements = [
-  {file="README.md", search="kdtree = \"[0-9\\.]+\"", replace="{{crate_name}} = \"{{version}}\""},
-]

@@ -14,14 +14,6 @@ repository = "https://github.com/opengeos/geolibre-rust"
 
 # Size-optimized WASM build. Mirrors opengeos/whitebox-wasm so the resulting
 # wasm32-wasip1 artifact stays small enough to ship to the browser.
-# kdtree 0.8.0 declares `criterion` (a bench harness) as a NORMAL dependency,
-# and criterion pulls rayon, which `compile_error!`s on wasm/WASI. We patch it to
-# a local copy that moves criterion to dev-dependencies. The correct long-term
-# fix is upstream (mrhooray/kdtree-rs); swap this for that fork's git URL once
-# merged.
-[patch.crates-io]
-kdtree = { path = "vendor/kdtree" }
-
 [profile.release]
 opt-level = "z"
 lto = true

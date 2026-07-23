@@ -8,6 +8,7 @@
 //! [`geolibre_tools`].
 
 mod aggregate_points;
+mod spatial_eigenvector_filtering;
 mod enforce_river_monotonicity;
 mod calculate_grid_convergence_angle;
 mod maximum_likelihood_classification;
@@ -249,6 +250,7 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(spatial_eigenvector_filtering::SpatialEigenvectorFilteringTool),
         Box::new(enforce_river_monotonicity::EnforceRiverMonotonicityTool),
         Box::new(calculate_grid_convergence_angle::CalculateGridConvergenceAngleTool),
         Box::new(maximum_likelihood_classification::MaximumLikelihoodClassificationTool),
@@ -481,6 +483,21 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     };
 
     let map = match tool_id {
+        "spatial_eigenvector_filtering" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "contiguity_edges",
+                    "contiguity_edges_corners",
+                    "knn",
+                ]),
+            ),
+            ("number_of_neighbors", int()),
+            ("min_autocorrelation", float()),
+            ("max_components", int()),
+        ]),
         "enforce_river_monotonicity" => schemas(&[
             ("input", vector_in()),
             ("surface", raster_in()),

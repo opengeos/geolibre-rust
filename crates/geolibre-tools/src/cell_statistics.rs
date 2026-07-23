@@ -91,12 +91,33 @@ impl Tool for CellStatisticsTool {
             .map(|p| load_input_raster(p))
             .collect::<Result<_, _>>()?;
         let (rows, cols) = (rasters[0].rows, rasters[0].cols);
+        let base = &rasters[0];
+        // Cell values are combined position-by-position, so the inputs must be
+        // co-registered: same size, origin, resolution, and CRS. Same-size
+        // rasters from different geotransforms would otherwise be blended under
+        // the first raster's geometry.
+        let aligned = |a: f64, b: f64| (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0);
         let mut layers: Vec<(usize, isize)> = Vec::new();
         for (i, r) in rasters.iter().enumerate() {
             if r.rows != rows || r.cols != cols {
                 return Err(ToolError::Validation(format!(
                     "raster {i} is {}x{}, expected {rows}x{cols}",
                     r.rows, r.cols
+                )));
+            }
+            if !aligned(r.x_min, base.x_min)
+                || !aligned(r.y_min, base.y_min)
+                || !aligned(r.cell_size_x, base.cell_size_x)
+                || !aligned(r.cell_size_y, base.cell_size_y)
+            {
+                return Err(ToolError::Validation(format!(
+                    "raster {i} is not co-registered with input 0 (origin/resolution differ); inputs must share the same grid"
+                )));
+            }
+            if r.crs.epsg.is_some() && base.crs.epsg.is_some() && r.crs.epsg != base.crs.epsg {
+                return Err(ToolError::Validation(format!(
+                    "raster {i} CRS (EPSG {:?}) differs from input 0 (EPSG {:?})",
+                    r.crs.epsg, base.crs.epsg
                 )));
             }
             for b in 0..r.bands {
@@ -520,6 +541,49 @@ mod tests {
         assert_eq!(ignore.get(0, 0, 0), 6.0);
         let strict = run(json!({ "inputs": path, "statistic": "mean", "ignore_nodata": false }));
         assert_eq!(strict.get(0, 0, 0), -9999.0, "one nodata -> cell nodata");
+    }
+
+    /// A single-band raster at a chosen origin, for co-registration tests.
+    fn raster_at(x_min: f64, y_min: f64, cell: f64, val: f64) -> String {
+        let mut r = Raster::new(RasterConfig {
+            cols: 2,
+            rows: 2,
+            bands: 1,
+            x_min,
+            y_min,
+            cell_size: cell,
+            cell_size_y: Some(cell),
+            nodata: -9999.0,
+            data_type: DataType::F32,
+            crs: CrsInfo {
+                epsg: Some(3857),
+                wkt: None,
+                proj4: None,
+            },
+            metadata: Vec::new(),
+        });
+        for row in 0..2 {
+            for col in 0..2 {
+                r.set(0, row, col, val).unwrap();
+            }
+        }
+        let id = wbraster::memory_store::put_raster(r);
+        wbraster::memory_store::make_raster_memory_path(&id)
+    }
+
+    /// Same-size rasters with different origins are rejected (not silently
+    /// blended under the first raster's geotransform).
+    #[test]
+    fn rejects_misregistered_inputs() {
+        let a = raster_at(0.0, 0.0, 1.0, 3.0);
+        let b = raster_at(100.0, 0.0, 1.0, 5.0); // shifted origin
+        let inputs = format!("{a},{b}");
+        let args: ToolArgs = serde_json::from_value(json!({ "inputs": inputs })).unwrap();
+        let err = CellStatisticsTool.run(&args, &ctx()).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("co-registered"),
+            "misaligned rasters must be rejected, got {err:?}"
+        );
     }
 
     #[test]

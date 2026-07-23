@@ -148,6 +148,7 @@ mod tabulate_intersection;
 mod thin_road_network;
 mod time_series_clustering;
 mod trace_proximity_events;
+mod find_meeting_locations;
 mod transform_features;
 mod transform_fields;
 mod vector_common;
@@ -367,6 +368,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(path_distance::PathDistanceTool),
         Box::new(time_series_clustering::TimeSeriesClusteringTool),
         Box::new(trace_proximity_events::TraceProximityEventsTool),
+        Box::new(find_meeting_locations::FindMeetingLocationsTool),
         Box::new(detect_image_anomalies::DetectImageAnomaliesTool),
         Box::new(resolve_building_conflicts::ResolveBuildingConflictsTool),
         Box::new(delineate_built_up_areas::DelineateBuiltUpAreasTool),
@@ -1354,6 +1356,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_duration", ToolParamSchema::string()),
             ("entities", ToolParamSchema::string()),
             ("depth", int()),
+        ]),
+        "find_meeting_locations" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("search_distance", float()),
+            ("min_meeting_duration", float()),
+            ("max_meeting_duration", float()),
+            ("min_participants", int()),
+            ("time_step", float()),
+            ("output", vector_out()),
+            ("output_area", vector_out()),
         ]),
         "time_series_clustering" => schemas(&[
             ("input", vector_in()),

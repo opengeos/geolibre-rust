@@ -103,6 +103,7 @@ mod median_center;
 mod mgwr;
 mod multicriteria_overlay;
 mod multiple_ring_buffer;
+mod near_3d;
 mod neighborhood_summary_statistics;
 mod non_maximum_suppression;
 mod optics_clustering;
@@ -206,6 +207,7 @@ mod band_collection_statistics;
 mod calculate_polygon_main_angle;
 mod cell_statistics;
 mod collapse_road_detail;
+mod compute_accuracy_for_object_detection;
 mod contour_with_barriers;
 mod convert_coordinate_notation;
 mod create_spatial_sampling_locations;
@@ -390,6 +392,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
         Box::new(generate_near_table::GenerateNearTableTool),
+        Box::new(near_3d::Near3dTool),
         Box::new(neighborhood_summary_statistics::NeighborhoodSummaryStatisticsTool),
         Box::new(storage_capacity::StorageCapacityTool),
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
@@ -492,6 +495,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(extract_scanned_features::ExtractScannedFeaturesTool),
         Box::new(gtfs_to_features::GtfsToFeaturesTool),
         Box::new(create_spatial_sampling_locations::CreateSpatialSamplingLocationsTool),
+        Box::new(compute_accuracy_for_object_detection::ComputeAccuracyForObjectDetectionTool),
         Box::new(contour_with_barriers::ContourWithBarriersTool),
         Box::new(percentile_contours::PercentileContoursTool),
         Box::new(spatial_association_between_zones::SpatialAssociationBetweenZonesTool),
@@ -1672,6 +1676,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_elevation", float()),
             ("max_elevation", float()),
             ("band", int()),
+        ]),
+        "near_3d" => schemas(&[
+            ("input", vector_in()),
+            ("near_features", vector_in()),
+            ("output", vector_out()),
+            ("search_radius", float()),
+            ("location", ToolParamSchema::bool()),
+            ("angle", ToolParamSchema::bool()),
+            ("delta", ToolParamSchema::bool()),
         ]),
         "neighborhood_summary_statistics" => schemas(&[
             ("input", vector_in()),
@@ -2876,6 +2889,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("num_clusters", int()),
             ("min_distance", float()),
             ("seed", int()),
+        ]),
+        "compute_accuracy_for_object_detection" => schemas(&[
+            ("detected", vector_in()),
+            ("ground_truth", vector_in()),
+            ("output", table_out()),
+            ("detected_class_field", ToolParamSchema::string()),
+            ("ground_truth_class_field", ToolParamSchema::string()),
+            ("confidence_field", ToolParamSchema::string()),
+            ("min_iou", float()),
         ]),
         "contour_with_barriers" => schemas(&[
             ("input", raster_in()),

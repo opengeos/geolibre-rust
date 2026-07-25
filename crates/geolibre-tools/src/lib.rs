@@ -165,6 +165,7 @@ mod write_pmtiles;
 
 mod sort_features;
 
+mod calculate_central_meridian_and_parallels;
 mod calculate_composite_index;
 
 mod calculate_rates;
@@ -425,6 +426,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(calculate_missing_z_values::CalculateMissingZValuesTool),
         Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
         Box::new(sort_features::SortFeaturesTool),
+        Box::new(calculate_central_meridian_and_parallels::CalculateCentralMeridianAndParallelsTool),
         Box::new(calculate_composite_index::CalculateCompositeIndexTool),
         Box::new(calculate_rates::CalculateRatesTool),
         Box::new(color_polygons::ColorPolygonsTool),
@@ -1762,6 +1764,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("fields", ToolParamSchema::string()),
             ("index_field", ToolParamSchema::string()),
+        ]),
+        "calculate_central_meridian_and_parallels" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("field", ToolParamSchema::string()),
+            ("standard_offset", float()),
         ]),
         "calculate_composite_index" => schemas(&[
             ("input", vector_in()),

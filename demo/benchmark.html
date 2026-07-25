@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>geolibre-rust — vector interop benchmark</title>
+    <!-- apache-arrow is only needed to prove the Arrow IPC bytes parse
+         zero-copy on the JS side; the page still works without it. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "apache-arrow": "https://esm.sh/apache-arrow@21.0.0"
+        }
+      }
+    </script>
+    <style>
+      :root { color-scheme: light dark; --line: rgba(127,127,127,0.3); --soft: rgba(127,127,127,0.12); }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; max-width: 1080px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+      h1 { margin-bottom: 0.25rem; }
+      h2 { margin: 1.5rem 0 0.5rem; font-size: 1.05rem; }
+      .muted { opacity: 0.7; }
+      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); }
+      button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      input, select { font: inherit; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+      select, select option { color-scheme: light dark; background-color: Field; color: FieldText; }
+      label { font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 0.2rem; }
+      .row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin: 0.75rem 0; }
+      .panel { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; margin: 1rem 0; }
+      table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+      th, td { text-align: right; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
+      th:first-child, td:first-child { text-align: left; }
+      tbody tr.best td { font-weight: 700; }
+      .bar { height: 0.5rem; border-radius: 999px; background: #2563eb; display: block; }
+      pre { background: var(--soft); padding: 0.75rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; }
+      code { font-family: ui-monospace, monospace; }
+      .note { font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Vector interop benchmark</h1>
+    <p class="muted">
+      The same source bytes, read once per path by the same pure-Rust engine, delivered to
+      JavaScript three different ways. What is being measured is the <em>handoff</em>: how long
+      until the main thread holds coordinates a GPU could draw.
+    </p>
+    <p class="note muted">
+      <strong>GeoJSON</strong> is the historical path — WASM returns a string, JS parses it, then
+      the app flattens the parsed objects into typed arrays.
+      <strong>Binary</strong> returns deck.gl's binary attribute layout directly.
+      <strong>Arrow IPC</strong> returns a GeoArrow record batch for apache-arrow / DuckDB-WASM /
+      <code>@geoarrow/deck.gl-layers</code>.
+    </p>
+
+    <div class="panel">
+      <div class="row">
+        <div>
+          <label for="source">Source</label>
+          <select id="source">
+            <option value="synthetic">Generated points</option>
+            <option value="file">Your file…</option>
+          </select>
+        </div>
+        <div id="synthetic-opts" style="display:contents">
+          <div>
+            <label for="count">Features</label>
+            <select id="count">
+              <option>10000</option>
+              <option selected>50000</option>
+              <option>190000</option>
+            </select>
+          </div>
+          <div>
+            <label for="attrs">Attributes</label>
+            <select id="attrs">
+              <option>5</option>
+              <option selected>20</option>
+              <option>53</option>
+            </select>
+          </div>
+        </div>
+        <div id="file-opts" hidden>
+          <label for="file">Vector file</label>
+          <input type="file" id="file" />
+        </div>
+        <div>
+          <label for="runs">Runs</label>
+          <select id="runs">
+            <option>1</option>
+            <option selected>3</option>
+            <option>5</option>
+          </select>
+        </div>
+        <button class="primary" id="run" disabled>Loading WASM…</button>
+      </div>
+      <p class="muted note" id="status">
+        Generated points mimic the case from
+        <a href="https://github.com/opengeos/geolibre-rust/issues/31">issue #31</a>: many points,
+        wide attribute table.
+      </p>
+    </div>
+
+    <div id="results" hidden>
+      <h2>Time to typed arrays <span class="muted" id="runs-label"></span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Path</th><th>WASM → JS</th><th>Parse / flatten</th><th>Total</th>
+            <th>Encoding + handoff</th><th>Payload</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="note muted" id="read-cost"></p>
+      <p class="note muted" id="verify"></p>
+    </div>
+
+    <div id="detail" hidden>
+      <h2>What each path returned</h2>
+      <pre id="detail-body"></pre>
+    </div>
+
+    <script type="module">
+      import init, {
+        vector_to_geojson,
+        vector_to_binary,
+        vector_to_arrow_ipc,
+        vector_info,
+      } from "./geolibre_wasm.js?v=__BUILD__";
+
+      const $ = (id) => document.getElementById(id);
+      const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`);
+      const fmtBytes = (b) =>
+        b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
+      const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+
+      let tableFromIPC = null;
+      try {
+        ({ tableFromIPC } = await import("apache-arrow"));
+      } catch {
+        // Offline: still time the IPC bytes, just skip the JS-side parse.
+      }
+
+      await init({ module_or_path: "./geolibre_wasm_bg.wasm?v=__BUILD__" });
+      $("run").disabled = false;
+      $("run").textContent = "Run benchmark";
+
+      $("source").addEventListener("change", () => {
+        const file = $("source").value === "file";
+        $("synthetic-opts").style.display = file ? "none" : "contents";
+        $("file-opts").hidden = !file;
+      });
+
+      // ── source data ────────────────────────────────────────────────────────
+
+      // A GeoJSON FeatureCollection is the honest common input: every path then
+      // reads the identical bytes through the identical Rust reader, so the only
+      // difference measured is how the result crosses into JavaScript.
+      function syntheticGeoJson(count, attrCount) {
+        const parts = ['{"type":"FeatureCollection","features":['];
+        for (let i = 0; i < count; i++) {
+          // Deterministic pseudo-random spread — no Math.random, so repeated
+          // runs are comparable.
+          const lon = (((i * 2654435761) % 3600000) / 10000 - 180).toFixed(5);
+          const lat = (((i * 40503) % 1700000) / 10000 - 85).toFixed(5);
+          const props = [];
+          for (let a = 0; a < attrCount; a++) {
+            props.push(
+              a % 3 === 0
+                ? `"attr_${a}":${(i * (a + 1)) % 100000}`
+                : a % 3 === 1
+                  ? `"attr_${a}":${(((i * (a + 7)) % 10000) / 100).toFixed(2)}`
+                  : `"attr_${a}":"value_${(i * (a + 3)) % 997}"`,
+            );
+          }
+          parts.push(
+            `${i ? "," : ""}{"type":"Feature","geometry":{"type":"Point","coordinates":[${lon},${lat}]},"properties":{${props.join(",")}}}`,
+          );
+        }
+        parts.push("]}");
+        return new TextEncoder().encode(parts.join(""));
+      }
+
+      function formatFor(name) {
+        const ext = String(name).split(".").pop().toLowerCase();
+        return (
+          { geojson: "geojson", json: "geojson", fgb: "flatgeobuf", gpkg: "geopackage",
+            parquet: "geoparquet", kml: "kml", kmz: "kmz", gpx: "gpx", gml: "gml",
+            topojson: "topojson" }[ext] ?? "geojson"
+        );
+      }
+
+      // ── the three paths ────────────────────────────────────────────────────
+
+      // Historical path: string out, JSON.parse, then flatten to typed arrays —
+      // the work an app does before it can hand anything to the GPU.
+      function runGeoJson(bytes, format) {
+        const t0 = performance.now();
+        const text = vector_to_geojson(bytes, format);
+        const t1 = performance.now();
+        const fc = JSON.parse(text);
+        const n = fc.features.length;
+        const positions = new Float64Array(n * 2);
+        const firstNumeric = new Float64Array(n);
+        let key = null;
+        for (let i = 0; i < n; i++) {
+          const f = fc.features[i];
+          const c = f.geometry?.coordinates ?? [NaN, NaN];
+          positions[2 * i] = c[0];
+          positions[2 * i + 1] = c[1];
+          if (key === null) key = Object.keys(f.properties ?? {})[0] ?? "";
+          firstNumeric[i] = Number(f.properties?.[key]);
+        }
+        const t2 = performance.now();
+        return {
+          produce: t1 - t0,
+          parse: t2 - t1,
+          bytes: text.length,
+          features: n,
+          positions,
+        };
+      }
+
+      // Binary path: typed arrays straight out of WASM, nothing to parse.
+      // Every attribute column is materialized, so the payload and the timing
+      // stay comparable with Arrow, which carries the whole table.
+      function runBinary(bytes, format) {
+        const t0 = performance.now();
+        const b = vector_to_binary(bytes, format);
+        const t1 = performance.now();
+        const positions = b.point_positions();
+        let payload = positions.byteLength + b.point_feature_ids().byteLength;
+        const schema = JSON.parse(b.schema_json);
+        schema.forEach((field, i) => {
+          if (field.type === "Integer" || field.type === "Float" || field.type === "Boolean") {
+            payload += b.numeric_column(i).byteLength;
+          } else {
+            payload += b.text_column(i).byteLength + b.text_column_offsets(i).byteLength;
+          }
+        });
+        const t2 = performance.now();
+        const featureCount = b.feature_count;
+        b.free();
+        return { produce: t1 - t0, parse: t2 - t1, bytes: payload, features: featureCount, positions };
+      }
+
+      // Arrow path: one GeoArrow record batch, consumable by apache-arrow and
+      // DuckDB-WASM without a copy.
+      function runArrow(bytes, format) {
+        const t0 = performance.now();
+        const ipc = vector_to_arrow_ipc(bytes, format);
+        const t1 = performance.now();
+        let features = null;
+        let positions = null;
+        if (tableFromIPC) {
+          const table = tableFromIPC(ipc);
+          features = table.numRows;
+          // Interleaved geoarrow.point coordinates: one flat Float64Array.
+          const geom = table.getChild("geometry");
+          positions = geom?.getChildAt(0)?.toArray() ?? null;
+        }
+        const t2 = performance.now();
+        return { produce: t1 - t0, parse: t2 - t1, bytes: ipc.byteLength, features, positions };
+      }
+
+      // ── driver ─────────────────────────────────────────────────────────────
+
+      $("run").addEventListener("click", async () => {
+        const btn = $("run");
+        btn.disabled = true;
+        const runs = Number($("runs").value);
+
+        let bytes, format, label;
+        if ($("source").value === "file") {
+          const f = $("file").files?.[0];
+          if (!f) {
+            $("status").textContent = "Pick a file first.";
+            btn.disabled = false;
+            return;
+          }
+          $("status").textContent = `Reading ${f.name}…`;
+          await new Promise((r) => setTimeout(r));
+          bytes = new Uint8Array(await f.arrayBuffer());
+          format = formatFor(f.name);
+          label = `${f.name} (${format})`;
+        } else {
+          const count = Number($("count").value);
+          const attrs = Number($("attrs").value);
+          $("status").textContent = `Generating ${count.toLocaleString()} features × ${attrs} attributes…`;
+          await new Promise((r) => setTimeout(r));
+          bytes = syntheticGeoJson(count, attrs);
+          format = "geojson";
+          label = `${count.toLocaleString()} points × ${attrs} attributes`;
+        }
+
+        $("status").textContent = `Benchmarking ${label} — source ${fmtBytes(bytes.byteLength)}…`;
+        await new Promise((r) => setTimeout(r));
+
+        // Decoding the source is shared work: every path runs the same Rust
+        // reader first. Time it on its own so the table can separate it from
+        // the part that actually differs — how the layer crosses into JS.
+        const readSamples = [];
+        for (let i = 0; i < runs; i++) {
+          const t0 = performance.now();
+          vector_info(bytes, format);
+          readSamples.push(performance.now() - t0);
+        }
+        const readCost = median(readSamples);
+
+        const paths = [
+          ["GeoJSON string + JSON.parse", runGeoJson],
+          ["Binary (typed arrays)", runBinary],
+          ["Arrow IPC (GeoArrow)", runArrow],
+        ];
+        const results = [];
+        for (const [name, fn] of paths) {
+          const samples = [];
+          let last = null;
+          for (let i = 0; i < runs; i++) {
+            last = fn(bytes, format);
+            samples.push(last);
+          }
+          results.push({
+            name,
+            produce: median(samples.map((s) => s.produce)),
+            parse: median(samples.map((s) => s.parse)),
+            bytes: last.bytes,
+            features: last.features,
+            positions: last.positions,
+          });
+        }
+
+        for (const r of results) r.total = r.produce + r.parse;
+        // The shared read is inside every path's WASM call; what is left is the
+        // encode-and-cross-the-boundary cost that actually differs. On small
+        // inputs the read swamps everything and the subtraction is pure noise,
+        // so say so rather than printing a fabricated 0.
+        const separable = readCost < Math.min(...results.map((r) => r.total));
+        for (const r of results) r.handoff = separable ? r.total - readCost : r.total;
+        const fastest = Math.min(...results.map((r) => r.handoff));
+        const slowest = Math.max(...results.map((r) => r.handoff));
+
+        $("rows").innerHTML = results
+          .map((r) => {
+            const parse =
+              r.name.startsWith("Arrow") && !tableFromIPC ? "<span class='muted'>n/a</span>" : fmtMs(r.parse);
+            const ratio =
+              r.handoff === fastest ? "" : ` <span class="muted">(${(r.handoff / fastest).toFixed(1)}×)</span>`;
+            return `<tr class="${r.handoff === fastest ? "best" : ""}">
+              <td>${r.name}</td>
+              <td>${fmtMs(r.produce)}</td>
+              <td>${parse}</td>
+              <td>${fmtMs(r.total)}</td>
+              <td>${separable ? fmtMs(r.handoff) : "<span class='muted'>—</span>"}${ratio}</td>
+              <td>${fmtBytes(r.bytes)}</td>
+              <td style="width:22%"><span class="bar" style="width:${Math.max(2, (r.handoff / slowest) * 100)}%"></span></td>
+            </tr>`;
+          })
+          .join("");
+        $("read-cost").textContent =
+          `Every path first decodes the source with the same Rust reader — ${fmtMs(readCost)} here, ` +
+          `included in the "WASM → JS" and "Total" columns. ` +
+          (separable
+            ? `"Encoding + handoff" subtracts it, leaving the part that differs between paths.`
+            : `At this size the read dominates the totals, so subtracting it would be noise rather than a ` +
+              `measurement; the ratios below rank totals instead. Try a larger input.`) +
+          ` The GeoJSON row is charitable: it flattens coordinates and one attribute column, and leaves the ` +
+          `rest of the attributes as the objects JSON.parse already built, while the binary and Arrow rows ` +
+          `materialize every column.`;
+        $("runs-label").textContent = `— median of ${runs} run${runs > 1 ? "s" : ""}, ${label}`;
+        $("results").hidden = false;
+
+        // Honest comparison check: the paths must agree on what they produced.
+        const counts = results.map((r) => r.features).filter((c) => c !== null);
+        const agree = counts.every((c) => c === counts[0]);
+        const coord = results
+          .map((r) => r.positions)
+          .filter(Boolean)
+          .map((p) => (p.length ? `${p[0].toFixed(5)}, ${p[1].toFixed(5)}` : "—"));
+        const coordsAgree = coord.every((c) => c === coord[0]);
+        $("verify").textContent =
+          `${counts[0]?.toLocaleString() ?? "?"} features per path (${agree ? "agree" : "DISAGREE"}); ` +
+          `first coordinate ${coord[0] ?? "—"} (${coordsAgree ? "agree" : "DISAGREE"})` +
+          (tableFromIPC ? "" : "; apache-arrow unavailable offline, Arrow parse not timed");
+
+        $("detail-body").textContent = vector_info(bytes, format);
+        $("detail").hidden = false;
+        $("status").textContent = `Source: ${label}, ${fmtBytes(bytes.byteLength)} of ${format}.`;
+        btn.disabled = false;
+      });
+    </script>
+  </body>
+</html>

@@ -25,6 +25,29 @@ wbspatialstats = { git = "https://github.com/opengeos/whitebox-wasm" }
 geolibre-pmtiles = { path = "../geolibre-pmtiles" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
+# GeoArrow output + the in-memory GeoParquet reader. All four arrow crates and
+# parquet already arrive transitively through wbvector's `geoparquet` feature;
+# naming them here just makes them callable. Versions must stay in lockstep
+# with that transitive copy or the arrow types will not unify.
+#
+# Reaching this code is what costs bundle size, not linking it: making both
+# readers callable takes the browser artifact from ~4.5 MB to ~6.4 MB (1.2 ->
+# 1.9 MB gzipped). Both are on by default and can be switched off individually
+# by a size-sensitive consumer — see [features] below.
+arrow-array = { version = "58.3", optional = true }
+arrow-buffer = { version = "58.3", optional = true }
+arrow-ipc = { version = "58.3", optional = true }
+arrow-schema = { version = "58.3", optional = true }
+parquet = { version = "58.3", optional = true }
+bytes = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+default = ["arrow", "geoparquet"]
+# vector_to_arrow_ipc: GeoArrow-encoded Arrow IPC output.
+arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-ipc", "dep:arrow-schema"]
+# Reading .parquet from a byte buffer in the browser.
+geoparquet = ["dep:parquet", "dep:bytes", "dep:serde_json"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

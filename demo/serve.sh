@@ -34,6 +34,7 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
 sed 's/__BUILD__/dev/g' "$DEMO_DIR/index.html" > "$STAGE/index.html"
+sed 's/__BUILD__/dev/g' "$DEMO_DIR/benchmark.html" > "$STAGE/benchmark.html"
 cp "$TOOLS_MJS" "$CLI_WASM" "$LIB_JS" "$LIB_WASM" "$SAMPLE" "$STAGE/"
 
 echo "Serving demo at http://localhost:$PORT/  (Ctrl-C to stop)"

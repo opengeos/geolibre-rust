@@ -49,6 +49,33 @@ const meta = JSON.parse(geotiff_info(tiffBytes));
 Classes include `GeoTiffReader` (parse once, read many), `CogBuilder` (encode
 Cloud Optimized GeoTIFFs), and `CogStream` (range-request tiled COG reading).
 
+### Vector data as binary, not GeoJSON
+
+`vector_to_geojson` returns a string, so the consumer pays for `JSON.parse` plus
+a re-encode into typed arrays before anything reaches the GPU. Two binary paths
+skip both steps, reading the same formats through the same reader
+(`geojson`, `topojson`, `gml`, `gpx`, `kml`, `flatgeobuf`, `geopackage`,
+`geoparquet`, `kmz` -- see `vector_formats()`):
+
+```js
+import init, { vector_to_binary, vector_to_arrow_ipc } from "geolibre-wasm";
+await init();
+
+// deck.gl binary attributes: Float64Array positions + Uint32Array indices.
+const b = vector_to_binary(bytes, "geoparquet");
+b.point_positions();          // Float64Array, position_size values per vertex
+b.numeric_column(0);          // Float64Array, one value per feature
+JSON.parse(b.schema_json);    // [{name, type}, ...]
+b.free();
+
+// GeoArrow record batch for apache-arrow, DuckDB-WASM, @geoarrow/deck.gl-layers.
+const ipc = vector_to_arrow_ipc(bytes, "flatgeobuf"); // Uint8Array
+```
+
+Reprojecting variants (`vector_to_binary_reproject`,
+`vector_to_arrow_ipc_reproject`) take `dst_epsg` and `src_epsg`, where `0`
+means "use the layer's own CRS".
+
 ## Tools usage (`./tools`)
 
 ```js

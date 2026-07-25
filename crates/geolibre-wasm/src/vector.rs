@@ -2,8 +2,12 @@
 //! and optional reprojection. Backed by the pure-Rust `wbvector` engine.
 //!
 //! In-memory formats: GeoJSON, TopoJSON, GML, GPX, KML (text); FlatGeobuf,
-//! GeoPackage, KMZ (binary). Shapefile / GeoParquet / MapInfo / OSM-PBF are
+//! GeoPackage, GeoParquet, KMZ (binary). Shapefile / MapInfo / OSM-PBF are
 //! file-oriented in the engine and not yet exposed here.
+//!
+//! Every reader here feeds three output paths, all sharing [`read_layer`]:
+//! GeoJSON text (this module), deck.gl binary attributes
+//! ([`crate::binary`]), and Arrow IPC ([`crate::arrow_ipc`]).
 use wasm_bindgen::prelude::*;
 use wbvector::Layer;
 
@@ -12,7 +16,7 @@ fn jerr<E: std::fmt::Display>(ctx: &str) -> impl Fn(E) -> JsValue + '_ {
 }
 
 /// Parse a vector dataset (bytes + format name) into a `Layer`.
-fn read_layer(data: &[u8], format: &str) -> Result<Layer, JsValue> {
+pub(crate) fn read_layer(data: &[u8], format: &str) -> Result<Layer, JsValue> {
     let as_text = || std::str::from_utf8(data)
         .map_err(|_| JsValue::from_str("text vector format requires valid UTF-8"));
     let layer = match format.to_lowercase().as_str() {
@@ -24,16 +28,48 @@ fn read_layer(data: &[u8], format: &str) -> Result<Layer, JsValue> {
         "flatgeobuf" | "fgb" => wbvector::flatgeobuf::from_bytes(data),
         "geopackage" | "gpkg" => wbvector::geopackage::from_bytes(data.to_vec()),
         "kmz" => wbvector::kmz::from_bytes(data),
+        // Upstream's GeoParquet reader is path-based, which the browser build
+        // has no filesystem for; read it from the buffer instead.
+        #[cfg(feature = "geoparquet")]
+        "geoparquet" | "parquet" => {
+            return crate::geoparquet_mem::from_bytes(data)
+                .map_err(|e| JsValue::from_str(&format!("read: {e}")))
+        }
+        #[cfg(not(feature = "geoparquet"))]
+        "geoparquet" | "parquet" => return Err(JsValue::from_str(
+            "this build was compiled without the 'geoparquet' feature")),
         other => return Err(JsValue::from_str(&format!(
-            "unsupported vector format '{other}' (try: geojson, topojson, gml, gpx, kml, flatgeobuf, geopackage, kmz)"))),
+            "unsupported vector format '{other}' (try: {})", vector_formats()))),
     };
     layer.map_err(jerr("read"))
+}
+
+/// Apply the reprojection convention shared by every vector entry point:
+/// `src_epsg` of `0` means "use the layer's own CRS", falling back to EPSG:4326
+/// when it declares none (GeoJSON is WGS84 by RFC 7946).
+pub(crate) fn reproject_layer(
+    layer: Layer,
+    dst_epsg: u32,
+    src_epsg: u32,
+) -> Result<Layer, JsValue> {
+    let src = if src_epsg != 0 {
+        src_epsg
+    } else {
+        layer.crs_epsg().unwrap_or(4326)
+    };
+    layer
+        .reproject_from_to_epsg(src, dst_epsg)
+        .map_err(jerr("reproject"))
 }
 
 /// Vector formats this build can read from memory (comma-separated).
 #[wasm_bindgen]
 pub fn vector_formats() -> String {
-    "geojson,topojson,gml,gpx,kml,flatgeobuf,geopackage,kmz".to_string()
+    let mut formats = "geojson,topojson,gml,gpx,kml,flatgeobuf,geopackage,kmz".to_string();
+    if cfg!(feature = "geoparquet") {
+        formats.push_str(",geoparquet");
+    }
+    formats
 }
 
 /// Read a vector dataset and return it as a GeoJSON `FeatureCollection` string.
@@ -55,12 +91,7 @@ pub fn vector_to_geojson_reproject(
     src_epsg: u32,
 ) -> Result<String, JsValue> {
     let layer = read_layer(data, format)?;
-    let src = if src_epsg != 0 { Some(src_epsg) } else { layer.crs_epsg() };
-    let rep = match src {
-        Some(s) => layer.reproject_from_to_epsg(s, dst_epsg),
-        None => layer.reproject_from_to_epsg(4326, dst_epsg),
-    }
-    .map_err(jerr("reproject"))?;
+    let rep = reproject_layer(layer, dst_epsg, src_epsg)?;
     Ok(wbvector::geojson::to_string(&rep))
 }
 

@@ -413,6 +413,64 @@ console.log(r.width, r.height, r.bands, r.epsg);
 const band0 = r.read_band_f64(0);          // Float64Array
 ```
 
+### Vector data without JSON in the middle
+
+Reading a vector layer as GeoJSON hands JavaScript a *string*: the consumer pays
+for `JSON.parse` and then for re-encoding the parsed objects into the typed
+arrays a GPU actually wants. For a few hundred thousand features that dominates
+load time, so the same layer can also come back in binary form. All three paths
+share one reader, so any supported format (including GeoParquet, read straight
+from the buffer -- no server, no filesystem) works with any of them:
+
+```js
+import init, {
+  vector_to_geojson,   // string        -- portable, needs JSON.parse
+  vector_to_binary,    // typed arrays  -- deck.gl binary attributes
+  vector_to_arrow_ipc, // Uint8Array    -- GeoArrow record batch
+  vector_formats,
+} from "geolibre-wasm";
+
+await init();
+vector_formats(); // geojson,topojson,gml,gpx,kml,flatgeobuf,geopackage,kmz,geoparquet
+
+// deck.gl's binary layout: no string is ever produced.
+const b = vector_to_binary(parquetBytes, "geoparquet");
+const layer = new GeoJsonLayer({
+  data: {
+    points: {
+      type: "Point",
+      positions: { value: b.point_positions(), size: b.position_size },
+      featureIds: { value: b.point_feature_ids(), size: 1 },
+      globalFeatureIds: { value: b.point_global_feature_ids(), size: 1 },
+      properties: [],
+    },
+    lines: {}, polygons: {},
+  },
+});
+b.free(); // release the WASM-side buffers when done
+
+// Or one GeoArrow record batch, shared by the query engine and the renderer.
+const ipc = vector_to_arrow_ipc(fgbBytes, "flatgeobuf");
+const table = tableFromIPC(ipc);              // apache-arrow, zero-copy
+await conn.insertArrowFromIPCStream(ipc, { name: "roads" }); // DuckDB-WASM
+```
+
+Attributes come back columnar rather than as one JS object per feature:
+`schema_json` lists the fields, `numeric_column(i)` returns a `Float64Array`,
+and `text_column(i)` / `text_column_offsets(i)` return UTF-8 bytes with their
+split points. Geometry is delivered as `positions` plus the index arrays
+deck.gl expects (`line_path_indices()`, `polygon_indices()`,
+`polygon_primitive_polygon_indices()`), one set per geometry class.
+
+Both binary paths are cargo features of `geolibre-wasm`, on by default:
+`arrow` (Arrow IPC) and `geoparquet` (reading `.parquet` from bytes). Together
+they take the browser artifact from ~4.5 MB to ~6.4 MB (1.2 -> 1.9 MB
+gzipped); building with `--no-default-features` returns it to the smaller size
+and leaves `vector_to_binary` available.
+
+[`demo/benchmark.html`](demo/benchmark.html) times all three paths against each
+other on the same source bytes.
+
 Tool runner (the `./tools` export) -- the whitebox + GeoLibre tool suite:
 
 ```js

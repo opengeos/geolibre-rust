@@ -9,6 +9,11 @@
 //!   [`geotiff_read_band_f64`]) for one-shot use.
 //! - **Stateful classes** ([`GeoTiffReader`] parses once and serves many reads;
 //!   [`CogBuilder`] encodes Cloud Optimized GeoTIFFs to bytes).
+#[cfg(feature = "arrow")]
+mod arrow_ipc;
+mod binary;
+#[cfg(feature = "geoparquet")]
+mod geoparquet_mem;
 mod vector;
 mod lidar;
 mod analysis;

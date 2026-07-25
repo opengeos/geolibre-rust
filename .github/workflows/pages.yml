@@ -71,6 +71,7 @@ jobs:
           ./build.sh
           mkdir -p site
           cp demo/index.html           site/index.html
+          cp demo/benchmark.html       site/benchmark.html
           cp npm/tools.mjs             site/tools.mjs
           cp npm/geolibre-cli.wasm     site/geolibre-cli.wasm
           cp npm/geolibre_wasm.js      site/geolibre_wasm.js
@@ -78,7 +79,7 @@ jobs:
           cp examples/sample.tif       site/sample.tif
           # cache-bust the glue + wasm together so returning visitors never mix
           # an old cached loader with a freshly built module
-          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html
+          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html site/benchmark.html
 
       - uses: actions/configure-pages@v6
 

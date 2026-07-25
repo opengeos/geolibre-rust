@@ -71,6 +71,7 @@ mod fill;
 mod fill_missing_values;
 mod fill_spill_merge;
 mod fill_spill_merge_core;
+mod find_dwell_locations;
 mod find_identical;
 mod find_meeting_locations;
 mod find_space_time_matches;
@@ -399,6 +400,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(storage_capacity::StorageCapacityTool),
         Box::new(find_space_time_matches::FindSpaceTimeMatchesTool),
         Box::new(create_spatially_balanced_points::CreateSpatiallyBalancedPointsTool),
+        Box::new(find_dwell_locations::FindDwellLocationsTool),
         Box::new(find_identical::FindIdenticalTool),
         Box::new(path_distance::PathDistanceTool),
         Box::new(time_series_clustering::TimeSeriesClusteringTool),
@@ -1647,6 +1649,23 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("zero_factor", float()),
             ("max_slope", float()),
             ("band", int()),
+        ]),
+        "find_dwell_locations" => schemas(&[
+            ("input", vector_in()),
+            ("track_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("distance_tolerance", float()),
+            ("time_tolerance", float()),
+            (
+                "output_type",
+                ToolParamSchema::enum_values(&[
+                    "dwell_features",
+                    "mean_centers",
+                    "convex_hulls",
+                    "all_features",
+                ]),
+            ),
         ]),
         "find_identical" => schemas(&[
             ("input", vector_in()),

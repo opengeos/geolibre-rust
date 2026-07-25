@@ -19,6 +19,7 @@ mod build_balanced_zones;
 mod calculate_adjacent_fields;
 mod calculate_distance_band;
 mod calculate_grid_convergence_angle;
+mod calculate_missing_z_values;
 mod calculate_motion_statistics;
 mod calculate_utm_zone;
 mod cartogram;
@@ -421,6 +422,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(vector_to_pmtiles::VectorToPmTilesTool),
         Box::new(pmtiles_extract::PmtilesExtractTool),
         Box::new(boundary_clean::BoundaryCleanTool),
+        Box::new(calculate_missing_z_values::CalculateMissingZValuesTool),
         Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
         Box::new(sort_features::SortFeaturesTool),
         Box::new(calculate_composite_index::CalculateCompositeIndexTool),
@@ -1734,6 +1736,13 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max", float()),
             ("gamma", float()),
             ("band", int()),
+        ]),
+        "calculate_missing_z_values" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("placeholder", float()),
+            ("method", ToolParamSchema::enum_values(&["linear", "nearest"])),
+            ("extrapolate", ToolParamSchema::bool()),
         ]),
         "calculate_motion_statistics" => schemas(&[
             ("input", vector_in()),

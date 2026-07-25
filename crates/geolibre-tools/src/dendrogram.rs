@@ -129,7 +129,7 @@ impl Tool for DendrogramTool {
         let mut by_class: BTreeMap<String, Vec<Vec<f64>>> = BTreeMap::new();
         for feat in layer.features.iter() {
             let class = match feat.get(&layer.schema, class_field) {
-                Ok(v) => field_string(&v),
+                Ok(v) => field_string(v),
                 Err(_) => continue,
             };
             if class.is_empty() {

@@ -1,17 +1,22 @@
 name: Deploy demo to Pages
 
-# Production deploy of the browser demo. It publishes to the root of the
-# `gh-pages` branch, served from the org custom domain (opengeos.github.io
-# inherits opengeos.org) at https://opengeos.org/geolibre-rust/.
+# Production deploy of the browser demo, served from the org custom domain
+# (opengeos.github.io inherits opengeos.org) at https://opengeos.org/geolibre-rust/.
 #
-# Per-PR previews (see pages-preview.yml) publish to `pr-preview/pr-<N>/` on the
-# SAME branch, so production and every preview share one repo, one branch and
-# one Pages site. `keep_files: true` below is what makes that coexistence work:
-# a production deploy overwrites the demo files at the root but leaves the
-# `pr-preview/` subtree untouched, so open previews survive a push to main.
+# This uses the native GitHub Pages deployment: the assembled site is uploaded as
+# a workflow artifact and served straight from it. Nothing is committed to the
+# repo. That matters here because each deploy carries ~25 MB of WASM
+# (geolibre-cli.wasm + geolibre_wasm_bg.wasm) which does not delta-compress, so
+# the previous branch-based deploy grew `gh-pages` by ~25 MB *per push to main* —
+# 467 MB of permanent history in its first four days. Artifacts expire instead
+# (retention-days defaults to 1 for Pages artifacts).
 #
 # One-time setup (repo admin): Settings -> Pages -> Build and deployment ->
-# Source = "Deploy from a branch" -> Branch = gh-pages / (root).
+# Source = "GitHub Actions". The old "Deploy from a branch" / gh-pages source
+# must be switched over or this workflow's deploy step will fail.
+#
+# No .nojekyll needed: the native deployment serves the artifact verbatim and
+# never runs Jekyll.
 
 on:
   push:
@@ -19,11 +24,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
+# Do not cancel a deploy that is already publishing — let it finish and queue the
+# next one behind it, so main never lands on a half-swapped site.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -66,15 +75,18 @@ jobs:
           # an old cached loader with a freshly built module
           sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html
 
-      - name: Publish to gh-pages (root)
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          publish_branch: gh-pages
-          # Overwrite the demo files but preserve the pr-preview/ subtree so open
-          # PR previews are not wiped by a production deploy.
-          keep_files: true
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_message: "deploy: ${{ github.sha }}"
+          path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

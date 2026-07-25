@@ -59,6 +59,7 @@ mod emerging_hot_spot_analysis;
 mod empirical_bayesian_kriging;
 mod enforce_river_monotonicity;
 mod estimate_time_to_event;
+mod evaluate_bin_sizes;
 mod excel_to_table;
 mod expand_shrink;
 mod exploratory_interpolation;
@@ -334,6 +335,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(attribute_uncertainty::AttributeUncertaintyTool),
         Box::new(split_line_at_point::SplitLineAtPointTool),
         Box::new(directional_trend::DirectionalTrendTool),
+        Box::new(evaluate_bin_sizes::EvaluateBinSizesTool),
         Box::new(excel_to_table::ExcelToTableTool),
         Box::new(add_surface_information::AddSurfaceInformationTool),
         Box::new(create_routes::CreateRoutesTool),
@@ -1038,6 +1040,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("azimuth", ToolParamSchema::string()),
             ("order", int()),
             ("output", vector_out()),
+        ]),
+        "evaluate_bin_sizes" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("bin_shape", ToolParamSchema::enum_values(&["hexagon", "square"])),
+            ("sizes", ToolParamSchema::string()),
+            ("steps", int()),
+            ("analysis_field", ToolParamSchema::string()),
         ]),
         "excel_to_table" => schemas(&[
             ("input", ToolParamSchema::input(ToolDatasetSchema::File)),

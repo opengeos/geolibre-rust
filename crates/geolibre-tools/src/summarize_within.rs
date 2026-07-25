@@ -22,7 +22,7 @@
 use std::collections::BTreeMap;
 
 use geo::{
-    Area, BooleanOps, BoundingRect, Coord as GeoCoord, Euclidean, Intersects, Length, LineString,
+    Area, BooleanOps, BoundingRect, Coord as GeoCoord, Euclidean, Length, LineString,
     MultiLineString, MultiPolygon, Polygon,
 };
 use serde_json::{json, Value};
@@ -661,13 +661,6 @@ fn ring_to_linestring(ring: &Ring) -> LineString {
             .map(|c| GeoCoord { x: c.x, y: c.y })
             .collect(),
     )
-}
-
-// Keeps `Intersects` in the import set meaningful for future predicate work and
-// avoids an unused-import warning if the bbox fast path is ever removed.
-#[allow(dead_code)]
-fn quick_intersects(a: &MultiPolygon, b: &MultiPolygon) -> bool {
-    a.intersects(b)
 }
 
 #[cfg(test)]

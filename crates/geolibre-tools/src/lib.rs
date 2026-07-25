@@ -130,6 +130,7 @@ mod resolve_building_conflicts;
 mod ripleys_k;
 mod rubbersheet_features;
 mod similarity_search;
+mod simplify_3d_line;
 mod simplify_shared_edges;
 mod slice_raster;
 mod smooth_natural_features;
@@ -354,6 +355,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(smooth_natural_features::SmoothNaturalFeaturesTool),
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
+        Box::new(simplify_3d_line::Simplify3dLineTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
@@ -1369,6 +1371,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                 "part_option",
                 ToolParamSchema::enum_values(&["CONTAINED_ONLY", "ANY"]),
             ),
+        ]),
+        "simplify_3d_line" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("z_factor", float()),
         ]),
         "simplify_shared_edges" => schemas(&[
             ("input", vector_in()),

@@ -256,6 +256,7 @@ mod table_to_geometry;
 mod time_series_cross_correlation;
 mod time_series_forecast;
 mod topo_to_raster;
+mod zonal_characterization;
 mod zonal_fill;
 mod zonal_geometry;
 mod zonal_histogram;
@@ -506,6 +507,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(merge_lines_by_pseudo_node::MergeLinesByPseudoNodeTool),
         Box::new(identify_narrow_polygons::IdentifyNarrowPolygonsTool),
         Box::new(zonal_geometry::ZonalGeometryTool),
+        Box::new(zonal_characterization::ZonalCharacterizationTool),
         Box::new(zonal_fill::ZonalFillTool),
         Box::new(calculate_polygon_main_angle::CalculatePolygonMainAngleTool),
         Box::new(band_collection_statistics::BandCollectionStatisticsTool),
@@ -2993,6 +2995,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                 ]),
             ),
             ("as_table", ToolParamSchema::bool()),
+        ]),
+        "zonal_characterization" => schemas(&[
+            ("zones", raster_in()),
+            ("rasters", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("percentile", float()),
+            ("zone_band", int()),
+            ("ignore_nodata", ToolParamSchema::bool()),
         ]),
         "zonal_fill" => schemas(&[
             ("zones", raster_in()),

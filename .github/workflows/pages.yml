@@ -23,10 +23,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege by default. The grants that can actually publish a site
+# (pages: write and the OIDC token) are scoped to the deploy job below, so the
+# build job — which runs build.sh, a piped wasm-pack installer and a downloaded
+# wasi-sdk — never holds a token that can deploy.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Do not cancel a deploy that is already publishing — let it finish and queue the
 # next one behind it, so main never lands on a half-swapped site.
@@ -37,6 +39,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+      pages: read # configure-pages reads the site's URL metadata
     steps:
       - uses: actions/checkout@v6
 
@@ -84,6 +89,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write # create the Pages deployment
+      id-token: write # mint the OIDC token deploy-pages exchanges with Pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

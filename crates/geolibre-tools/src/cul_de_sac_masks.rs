@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 
-use geo::{BooleanOps, Buffer, MultiPolygon};
+use geo::{Buffer, MultiPolygon};
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,

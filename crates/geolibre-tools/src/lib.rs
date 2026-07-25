@@ -136,6 +136,7 @@ mod ripleys_k;
 mod rubbersheet_features;
 mod similarity_search;
 mod simplify_3d_line;
+mod simplify_building;
 mod simplify_shared_edges;
 mod slice_raster;
 mod smooth_natural_features;
@@ -365,6 +366,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(eliminate_polygons::EliminatePolygonsTool),
         Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
         Box::new(simplify_3d_line::Simplify3dLineTool),
+        Box::new(simplify_building::SimplifyBuildingTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
@@ -1402,6 +1404,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("tolerance", float()),
             ("z_factor", float()),
+        ]),
+        "simplify_building" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("minimum_area", float()),
+            ("keep_collapsed_points", ToolParamSchema::bool()),
+            ("corner_tolerance", float()),
         ]),
         "simplify_shared_edges" => schemas(&[
             ("input", vector_in()),

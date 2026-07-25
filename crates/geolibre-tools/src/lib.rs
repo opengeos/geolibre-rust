@@ -15,6 +15,7 @@ mod apportion_polygon;
 mod assign_projection;
 mod attribute_uncertainty;
 mod boundary_clean;
+mod buffer_3d;
 mod build_balanced_zones;
 mod calculate_adjacent_fields;
 mod calculate_distance_band;
@@ -79,6 +80,7 @@ mod find_meeting_locations;
 mod find_space_time_matches;
 mod flip_line;
 mod focal_statistics;
+mod forest_based_forecast;
 mod fuzzy_overlay;
 mod gaussian_geostatistical_simulations;
 mod generate_near_table;
@@ -96,6 +98,7 @@ mod hdbscan;
 mod hilbert;
 mod incremental_spatial_autocorrelation;
 mod integrate;
+mod interpolate_from_spatiotemporal_points;
 mod interpolate_shape;
 mod kml_to_features;
 mod lidar_common;
@@ -374,6 +377,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
         Box::new(line_of_sight::LineOfSightTool),
         Box::new(corridor::CorridorTool),
+        Box::new(interpolate_from_spatiotemporal_points::InterpolateFromSpatiotemporalPointsTool),
         Box::new(interpolate_shape::InterpolateShapeTool),
         Box::new(collapse_dual_lines_to_centerline::CollapseDualLinesToCenterlineTool),
         Box::new(count_overlapping_features::CountOverlappingFeaturesTool),
@@ -397,6 +401,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(rubbersheet_features::RubbersheetFeaturesTool),
         Box::new(snap_tracks::SnapTracksTool),
         Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
+        Box::new(forest_based_forecast::ForestBasedForecastTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
@@ -425,6 +430,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(ripleys_k::RipleysKTool),
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
         Box::new(mgwr::MgwrTool),
+        Box::new(buffer_3d::Buffer3dTool),
         Box::new(build_balanced_zones::BuildBalancedZonesTool),
         Box::new(cartogram::CartogramTool),
         Box::new(thin_road_network::ThinRoadNetworkTool),
@@ -1472,6 +1478,30 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("percent", float()),
             ("band", int()),
         ]),
+        "interpolate_from_spatiotemporal_points" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            (
+                "time_step",
+                ToolParamSchema::enum_values(&[
+                    "daily",
+                    "weekly",
+                    "monthly",
+                    "quarterly",
+                    "yearly",
+                ]),
+            ),
+            ("cell_size", float()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["idw", "nearest", "mean", "median"]),
+            ),
+            ("power", float()),
+            ("neighbors", int()),
+            ("min_points", int()),
+        ]),
         "interpolate_shape" => schemas(&[
             ("input", vector_in()),
             ("surface", raster_in()),
@@ -1784,6 +1814,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                 ToolParamSchema::enum_values(&["convex_hull", "buffer"]),
             ),
             ("sum_fields", ToolParamSchema::string()),
+        ]),
+        "forest_based_forecast" => schemas(&[
+            ("input", vector_in()),
+            ("location_field", ToolParamSchema::string()),
+            ("time_field", ToolParamSchema::string()),
+            ("value_field", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("forecast_steps", int()),
+            ("time_window", int()),
+            ("validation_steps", int()),
+            ("n_trees", int()),
+            ("min_leaf_size", int()),
+            ("max_depth", int()),
+            ("seed", int()),
         ]),
         "fuzzy_overlay" => schemas(&[
             ("input", raster_in()),
@@ -2288,6 +2332,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("tolerance", float()),
             ("max_iterations", int()),
+        ]),
+        "buffer_3d" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("distance", float()),
+            ("distance_field", ToolParamSchema::string()),
+            ("shape", ToolParamSchema::enum_values(&["round", "flat"])),
+            ("quality", int()),
         ]),
         "build_balanced_zones" => schemas(&[
             ("input", vector_in()),

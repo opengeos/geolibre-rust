@@ -143,6 +143,7 @@ mod split_line_at_point;
 mod storage_capacity;
 mod subdivide_polygon;
 mod summarize_nearby;
+mod summarize_within;
 mod summary_statistics;
 mod surface_volume;
 mod tabulate_intersection;
@@ -236,6 +237,7 @@ mod pairwise_comparison_weights;
 mod percentile_contours;
 mod points_to_path;
 mod porous_puff;
+mod predict_using_trend_raster;
 mod presence_only_prediction;
 mod propagate_displacement;
 mod repair_geometry;
@@ -299,6 +301,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(collect_events::CollectEventsTool),
         Box::new(slice_raster::SliceRasterTool),
         Box::new(gpx_to_features::GpxToFeaturesTool),
+        Box::new(summarize_within::SummarizeWithinTool),
         Box::new(summary_statistics::SummaryStatisticsTool),
         Box::new(median_center::MedianCenterTool),
         Box::new(flip_line::FlipLineTool),
@@ -445,6 +448,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(geotagged_photos_to_points::GeotaggedPhotosToPointsTool),
         Box::new(darcy_flow::DarcyFlowTool),
         Box::new(porous_puff::PorousPuffTool),
+        Box::new(predict_using_trend_raster::PredictUsingTrendRasterTool),
         Box::new(time_series_cross_correlation::TimeSeriesCrossCorrelationTool),
         Box::new(generalized_linear_regression::GeneralizedLinearRegressionTool),
         Box::new(interpolate_with_barriers::InterpolateWithBarriersTool),
@@ -2117,6 +2121,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("sum_fields", ToolParamSchema::string()),
             ("zone_field", ToolParamSchema::string()),
         ]),
+        "summarize_within" => schemas(&[
+            ("polygons", vector_in()),
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("fields", ToolParamSchema::string()),
+            ("keep_all", ToolParamSchema::bool()),
+            ("shape_sum", ToolParamSchema::bool()),
+            ("group_field", ToolParamSchema::string()),
+        ]),
         "summarize_nearby" => schemas(&[
             ("input", vector_in()),
             ("summary_features", vector_in()),
@@ -2515,6 +2528,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("streamlines", vector_out()),
             ("step", float()),
             ("max_steps", int()),
+        ]),
+        "predict_using_trend_raster" => schemas(&[
+            ("input", raster_in()),
+            ("intercept", raster_in()),
+            ("output", raster_out()),
+            ("times", ToolParamSchema::string()),
+            ("start", float()),
+            ("end", float()),
+            ("interval", float()),
+            ("band", int()),
         ]),
         "porous_puff" => schemas(&[
             ("magnitude", raster_in()),

@@ -39,6 +39,7 @@ mod create_cartographic_partitions;
 mod create_overpass;
 mod create_routes;
 mod create_spatially_balanced_points;
+mod cul_de_sac_masks;
 mod cut_fill;
 mod delineate_built_up_areas;
 mod delineate_depressions;
@@ -415,6 +416,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(directional_distribution::DirectionalDistributionTool),
         Box::new(tabulate_intersection::TabulateIntersectionTool),
         Box::new(summarize_nearby::SummarizeNearbyTool),
+        Box::new(cul_de_sac_masks::CulDeSacMasksTool),
         Box::new(cut_fill::CutFillTool),
         Box::new(ripleys_k::RipleysKTool),
         Box::new(geographically_weighted_regression::GeographicallyWeightedRegressionTool),
@@ -2207,6 +2209,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("distances", ToolParamSchema::string()),
             ("sum_fields", ToolParamSchema::string()),
             ("id_field", ToolParamSchema::string()),
+        ]),
+        "cul_de_sac_masks" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("reference_scale", float()),
+            ("symbol_width", float()),
+            ("margin", float()),
+            ("tolerance", float()),
+            ("attributes", ToolParamSchema::enum_values(&["ids_only", "all"])),
         ]),
         "cut_fill" => schemas(&[
             ("input", raster_in()),

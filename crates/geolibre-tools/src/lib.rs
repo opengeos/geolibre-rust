@@ -44,6 +44,7 @@ mod delineate_built_up_areas;
 mod delineate_depressions;
 mod delineate_mounts;
 mod dem_filter;
+mod dendrogram;
 mod densify_sampling_network;
 mod detect_feature_changes;
 mod detect_image_anomalies;
@@ -320,6 +321,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(locate_lines_along_routes::LocateLinesAlongRoutesTool),
         Box::new(optimal_interpolation::OptimalInterpolationTool),
         Box::new(calculate_adjacent_fields::CalculateAdjacentFieldsTool),
+        Box::new(dendrogram::DendrogramTool),
         Box::new(densify_sampling_network::DensifySamplingNetworkTool),
         Box::new(feature_vertices_to_points::FeatureVerticesToPointsTool),
         Box::new(create_overpass::CreateOverpassTool),
@@ -915,6 +917,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("include_diagonal", ToolParamSchema::bool()),
             ("snap_tolerance", float()),
+        ]),
+        "dendrogram" => schemas(&[
+            ("input", vector_in()),
+            ("class_field", ToolParamSchema::string()),
+            ("fields", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("distance", ToolParamSchema::enum_values(&["variance", "mean_only"])),
+            ("standardize", ToolParamSchema::bool()),
+            ("output_text", file_out()),
         ]),
         "densify_sampling_network" => schemas(&[
             ("prediction_error", raster_in()),

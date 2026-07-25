@@ -1,0 +1,153 @@
+name: PR preview (GitHub Pages)
+
+# Builds the browser demo for every pull request and publishes it to the shared
+# preview host, opengeos/pages-preview, under geolibre-rust/pr-<N>/. A sticky
+# comment carries the URL; the preview is deleted when the PR closes.
+#
+#   preview #N: https://opengeos.org/pages-preview/geolibre-rust/pr-<N>/
+#
+# This workflow used to publish to this repository's own `gh-pages` branch, next
+# to production. #446 moved production to the native Pages deployment
+# (configure-pages + upload-pages-artifact + deploy-pages) because `gh-pages` was
+# growing ~25 MB per deploy and never reclaiming it. A repository has exactly one
+# Pages source, so once that switched, anything on `gh-pages` stopped being
+# served — previews included. Hence the shared host: it keeps this repository's
+# history clean, and that branch can be reset whenever it gets large.
+#
+# WHY pull_request AND NOT pull_request_target
+# opengeos/geolibre-plugins previews fork PRs via pull_request_target, which is
+# safe there because the submitted content is copied as data and never executed
+# during the build. That does not hold here: a preview of this repository means
+# compiling the pull request's own Rust and running its build.sh. Under
+# pull_request_target that code would run with PREVIEW_DEPLOY_TOKEN in scope — a
+# textbook pwn request. So previews run on pull_request, where forks get no
+# secrets, and the job guard below skips fork PRs outright rather than letting
+# them fail confusingly at the deploy step.
+#
+# SETUP (already in place)
+# Secret PREVIEW_DEPLOY_TOKEN: a fine-grained PAT scoped to opengeos/pages-preview
+# ONLY, with two permissions:
+#   Contents: Read and write   -- push the preview to gh-pages
+#   Pages:    Read             -- poll the Pages build so the comment is only
+#                                 posted once the URL actually resolves
+# Pages read is not optional: the wait polls /repos/.../pages/builds with this
+# token, and a token without it never sees a build, so the job spends the timeout
+# and then fails with a misleading "Timed out waiting for build to start". The
+# token needs no access to this repository — the sticky comment is posted with
+# this workflow's own GITHUB_TOKEN.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, closed]
+
+# Least privilege: the push to the preview host uses PREVIEW_DEPLOY_TOKEN, not
+# GITHUB_TOKEN, so this workflow only needs to read its own code and write the
+# sticky comment.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pages-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Build and deploy preview
+    runs-on: ubuntu-latest
+    # Fork PRs get no secrets on pull_request, so the deploy could only fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      # SECURITY: persist-credentials: false keeps GITHUB_TOKEN out of
+      # .git/config. This job builds the pull request's own code — ./build.sh
+      # and everything cargo pulls in — and that code should not be able to read
+      # a token that can write PR comments. The deploy step brings its own
+      # credentials (PREVIEW_DEPLOY_TOKEN), so nothing here needs the persisted
+      # ones.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event.action != 'closed'
+        with:
+          targets: wasm32-wasip1, wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        if: github.event.action != 'closed'
+
+      - name: Install wasm-pack
+        if: github.event.action != 'closed'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install binaryen (wasm-opt)
+        if: github.event.action != 'closed'
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Install wasi-sdk (C toolchain so zstd-sys builds for wasm32-wasip1)
+        if: github.event.action != 'closed'
+        run: |
+          ver=33.0
+          curl -sL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-${ver}-x86_64-linux.tar.gz" | sudo tar xz -C /opt
+          sdk=/opt/wasi-sdk-${ver}-x86_64-linux
+          echo "CC_wasm32_wasip1=$sdk/bin/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_wasip1=$sdk/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "CFLAGS_wasm32_wasip1=--sysroot=$sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+
+      - name: Build both WASM artifacts and assemble the site
+        if: github.event.action != 'closed'
+        run: |
+          set -euo pipefail
+          ./build.sh
+          mkdir -p site
+          # Every page in demo/, not a fixed list: a PR that adds one should get
+          # it in its own preview without editing this workflow. The pages use
+          # relative asset paths, which is what lets them work from a
+          # subdirectory of the shared host.
+          cp demo/*.html                site/
+          cp npm/tools.mjs              site/tools.mjs
+          cp npm/geolibre-cli.wasm      site/geolibre-cli.wasm
+          cp npm/geolibre_wasm.js       site/geolibre_wasm.js
+          cp npm/geolibre_wasm_bg.wasm  site/geolibre_wasm_bg.wasm
+          cp examples/sample.tif        site/sample.tif
+          # cache-bust the glue + wasm together (unique per commit)
+          sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/*.html
+
+      # This repository ships unusually large files (geolibre-cli.wasm is ~21 MB),
+      # so check them against the Pages per-file cap before publishing rather
+      # than debugging a half-broken preview.
+      - name: Check the build fits GitHub Pages
+        if: github.event.action != 'closed'
+        run: |
+          set -euo pipefail
+          echo "preview size: $(du -sh site | cut -f1)"
+          # 104857600 bytes = 100 MB, the Pages per-file hard limit.
+          oversized=$(find site -type f -size +104857600c -printf '%s\t%p\n' || true)
+          if [ -n "$oversized" ]; then
+            echo "::error::Files exceed the 100 MB GitHub Pages limit:"
+            echo "$oversized"
+            exit 1
+          fi
+
+      # On `closed` this removes geolibre-rust/pr-<N>/ instead of deploying.
+      - name: Publish preview
+        # Pinned to a SHA rather than the mutable v1 tag: this is a third-party
+        # action and it receives PREVIEW_DEPLOY_TOKEN, so a moved tag would hand
+        # that token to code nobody reviewed.
+        uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9 # v1.8.1
+        with:
+          source-dir: ./site
+          deploy-repository: opengeos/pages-preview
+          token: ${{ secrets.PREVIEW_DEPLOY_TOKEN }}
+          pages-base-url: opengeos.org/pages-preview
+          preview-branch: gh-pages
+          # pages-preview is shared across opengeos repositories, and the action
+          # composes the path as "<umbrella-dir>/pr-<number>". Namespacing by
+          # this repository's name is what keeps our pr-447 from colliding with
+          # another repository's pr-447.
+          umbrella-dir: geolibre-rust
+          action: ${{ github.event.action == 'closed' && 'remove' || 'deploy' }}
+          # Without this the sticky comment is posted as soon as the commit is
+          # pushed to gh-pages, so the link 404s until Pages finishes building.
+          wait-for-pages-deployment: true

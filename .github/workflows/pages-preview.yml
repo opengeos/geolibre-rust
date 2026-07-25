@@ -59,7 +59,15 @@ jobs:
     # Fork PRs get no secrets on pull_request, so the deploy could only fail.
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # SECURITY: persist-credentials: false keeps GITHUB_TOKEN out of
+      # .git/config. This job builds the pull request's own code — ./build.sh
+      # and everything cargo pulls in — and that code should not be able to read
+      # a token that can write PR comments. The deploy step brings its own
+      # credentials (PREVIEW_DEPLOY_TOKEN), so nothing here needs the persisted
+      # ones.
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         if: github.event.action != 'closed'

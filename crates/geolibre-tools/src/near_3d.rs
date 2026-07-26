@@ -177,35 +177,39 @@ impl Tool for Near3dTool {
         let mut matched = 0usize;
 
         for (fi, feat) in layer.features.iter().enumerate() {
-            let src = feat.geometry.as_ref().and_then(rep_point_3d);
+            let mut src_pts: Vec<P3> = Vec::new();
+            if let Some(g) = feat.geometry.as_ref() {
+                input_vertices_3d(g, &mut src_pts);
+            }
+            // `src` is the input vertex that ends up closest; it anchors the
+            // reported deltas and angles.
+            let mut src: Option<P3> = None;
 
-            // Search a widening candidate set, then refine exactly. The kd-tree
-            // ranks by *vertex* distance, so the true winner may not be the
-            // nearest vertex; take a generous candidate pool before refining.
-            let best = src.and_then(|p| {
+            // Minimise over every input vertex. For each, search a widening
+            // candidate set then refine exactly: the kd-tree ranks by *vertex*
+            // distance, so the true winner may not be the nearest vertex.
+            let mut best: Option<(f64, P3, usize, usize)> = None;
+            for p in &src_pts {
                 let want = 32usize.min(near_segs.len().max(1) * 2);
-                let cands = tree
-                    .nearest(&p, want, &squared_euclidean)
-                    .ok()?
-                    .into_iter()
-                    .map(|(_, &si)| si);
-
-                let mut best: Option<(f64, P3, usize)> = None;
-                for si in cands {
+                let Ok(hits) = tree.nearest(p, want, &squared_euclidean) else {
+                    continue;
+                };
+                for (_, &si) in hits {
                     let s = &near_segs[si];
                     if self_join && s.feature == fi {
                         continue;
                     }
-                    let (d2, q) = point_seg_dist2(p, s.a, s.b);
+                    let (d2, q) = point_seg_dist2(*p, s.a, s.b);
                     if radius2.is_some_and(|r2| d2 > r2) {
                         continue;
                     }
-                    if best.is_none_or(|(bd, _, _)| d2 < bd) {
-                        best = Some((d2, q, si));
+                    if best.is_none_or(|(bd, _, _, _)| d2 < bd) {
+                        best = Some((d2, q, s.feature, s.layer));
+                        src = Some(*p);
                     }
                 }
-                best.map(|(d2, q, si)| (d2.sqrt(), q, near_segs[si].feature, near_segs[si].layer))
-            });
+            }
+            let best = best.map(|(d2, q, f, l)| (d2.sqrt(), q, f, l));
 
             let mut fields: Vec<(String, FieldValue)> = layer
                 .schema
@@ -389,24 +393,45 @@ fn run_ring(coords: &[Coord], run: &mut impl FnMut(&[Coord])) {
     run(&closed);
 }
 
-/// Representative 3D point for an input feature.
-fn rep_point_3d(geom: &Geometry) -> Option<P3> {
+/// Collects every 3D vertex of an input feature.
+///
+/// The nearest distance is minimised over **all** of these, not over a single
+/// representative point. Taking only the first vertex would measure from
+/// wherever the geometry happens to start, which for a line or ring is
+/// arbitrary — and would give the wrong answer for this module's own
+/// motivating case (two utility lines crossing 8 m apart vertically, where the
+/// crossing is rarely at vertex 0).
+fn input_vertices_3d(geom: &Geometry, out: &mut Vec<P3>) {
     match geom {
-        Geometry::Point(c) => Some([c.x, c.y, z_of(c)]),
+        Geometry::Point(c) => out.push([c.x, c.y, z_of(c)]),
         Geometry::MultiPoint(cs) | Geometry::LineString(cs) => {
-            cs.first().map(|c| [c.x, c.y, z_of(c)])
+            out.extend(cs.iter().map(|c| [c.x, c.y, z_of(c)]))
         }
         Geometry::MultiLineString(parts) => {
-            parts.iter().flatten().next().map(|c| [c.x, c.y, z_of(c)])
+            out.extend(parts.iter().flatten().map(|c| [c.x, c.y, z_of(c)]))
         }
-        Geometry::Polygon { exterior, .. } => {
-            exterior.coords().first().map(|c| [c.x, c.y, z_of(c)])
+        Geometry::Polygon {
+            exterior,
+            interiors,
+        } => {
+            out.extend(exterior.coords().iter().map(|c| [c.x, c.y, z_of(c)]));
+            for r in interiors {
+                out.extend(r.coords().iter().map(|c| [c.x, c.y, z_of(c)]));
+            }
         }
-        Geometry::MultiPolygon(parts) => parts
-            .first()
-            .and_then(|(e, _)| e.coords().first())
-            .map(|c| [c.x, c.y, z_of(c)]),
-        Geometry::GeometryCollection(gs) => gs.iter().find_map(rep_point_3d),
+        Geometry::MultiPolygon(parts) => {
+            for (e, hs) in parts {
+                out.extend(e.coords().iter().map(|c| [c.x, c.y, z_of(c)]));
+                for r in hs {
+                    out.extend(r.coords().iter().map(|c| [c.x, c.y, z_of(c)]));
+                }
+            }
+        }
+        Geometry::GeometryCollection(gs) => {
+            for g in gs {
+                input_vertices_3d(g, out);
+            }
+        }
     }
 }
 
@@ -565,6 +590,32 @@ mod tests {
         let (_, layer) = run(json!({ "input": input, "near_features": near }));
         assert_eq!(num(&layer, 0, "near_fid"), 1.0, "should choose B");
         assert!((num(&layer, 0, "near_dist") - 5.0).abs() < 1e-9);
+    }
+
+    /// The module doc's motivating case: two utility lines crossing 8 m apart
+    /// vertically, where the crossing is NOT at either line's first vertex.
+    /// Measuring from a single representative vertex would report the distance
+    /// to an arbitrary line end instead of the clearance at the crossing.
+    #[test]
+    fn measures_clearance_at_the_crossing_not_the_first_vertex() {
+        // Input runs west->east at z=0, crossing x=50 at its midpoint.
+        let input = lines(vec![vec![
+            Coord::xyz(0.0, 0.0, 0.0),
+            Coord::xyz(50.0, 0.0, 0.0),
+            Coord::xyz(100.0, 0.0, 0.0),
+        ]]);
+        // Near line runs south->north at x=50, 8 m above.
+        let near = lines(vec![vec![
+            Coord::xyz(50.0, -100.0, 8.0),
+            Coord::xyz(50.0, 100.0, 8.0),
+        ]]);
+        let (_, layer) = run(json!({ "input": input, "near_features": near }));
+        let d = num(&layer, 0, "near_dist");
+        assert!(
+            (d - 8.0).abs() < 1e-9,
+            "expected the 8 m vertical clearance at the crossing, got {d} \
+             (first-vertex reduction would report ~50)"
+        );
     }
 
     /// search_radius excludes far features and the miss is explicit.

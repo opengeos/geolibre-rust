@@ -37,6 +37,8 @@ use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum BinShape {
     Square,
+    /// Row-offset ("brick") binning — see `hex_bin` for what this does and
+    /// does not guarantee.
     Hexagon,
 }
 
@@ -63,7 +65,7 @@ impl Tool for EvaluateBinSizesTool {
                 },
                 ToolParamSpec {
                     name: "bin_shape",
-                    description: "hexagon (default) | square.",
+                    description: "hexagon (default; row-offset approximation, see docs) | square.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -286,8 +288,21 @@ fn square_bin(x: f64, y: f64, size: f64) -> (i64, i64) {
     ((x / size).floor() as i64, (y / size).floor() as i64)
 }
 
-/// Flat-top hexagon bin index via axial coordinates. `size` is the hexagon
-/// width (centre-to-centre spacing along x).
+/// Row-offset bin index approximating a hexagonal layout. `size` is the
+/// centre-to-centre spacing along x.
+///
+/// Rows are half-width offset and spaced by `size * sqrt(3)/2`, which gives the
+/// staggered arrangement and the row density of a true hex grid — but
+/// membership is still decided by a rectangular `floor` on x, so the cells are
+/// offset rectangles rather than hexagons. A point can therefore land in a
+/// different bin than true axial hex rounding would assign, by up to half a row
+/// height near a row boundary.
+///
+/// For this tool's purpose that is adequate: the diagnostics reported (bin
+/// occupancy, counts per bin, coefficient of variation) depend on the bin
+/// *size and density*, not on exact cell boundaries. Callers who need genuine
+/// hexagons for the aggregation itself should use the bundled
+/// `hexagonal_grid_from_*` tools once a size has been chosen here.
 fn hex_bin(x: f64, y: f64, size: f64) -> (i64, i64) {
     let w = size;
     let h = size * 0.8660254037844386; // sqrt(3)/2
@@ -595,7 +610,8 @@ mod tests {
         ));
     }
 
-    /// The hex tessellation genuinely offsets alternate rows.
+    /// Alternate rows really are offset (the property the approximation does
+    /// guarantee); this does NOT assert exact hexagonal cell membership.
     #[test]
     fn hex_rows_are_offset() {
         // Two points one hex-row apart at the same x should not share a column

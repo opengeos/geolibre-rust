@@ -253,6 +253,10 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
 /// Resolves the requested prediction times from either an explicit `times` list
 /// or a `start`/`end`/`interval` range.
 fn parse_times(args: &ToolArgs) -> Result<Vec<f64>, ToolError> {
+    // A host UI may post `times` as a bare JSON number for the single-time case.
+    if let Some(n) = args.get("times").and_then(Value::as_f64) {
+        return Ok(vec![n]);
+    }
     if let Some(raw) = args.get("times").and_then(Value::as_str) {
         if !raw.trim().is_empty() {
             let mut out = Vec::new();

@@ -176,6 +176,10 @@ fn extent_params(geom: &Geometry, offset: f64) -> Option<Params> {
     let mut lat_min = f64::INFINITY;
     let mut lat_max = f64::NEG_INFINITY;
     collect(geom, &mut lons, &mut lat_min, &mut lat_max);
+    // Drop non-finite longitudes before the min/max folds: a single NaN would
+    // poison them and write NaN into the output, and an infinite value would
+    // reach normalize_lon.
+    lons.retain(|l| l.is_finite());
     if lons.is_empty() || !lat_min.is_finite() || !lat_max.is_finite() {
         return None;
     }
@@ -231,18 +235,29 @@ fn central_meridian(lons: &[f64]) -> (f64, bool) {
 }
 
 /// Wraps a longitude into [-180, 180].
-fn normalize_lon(mut lon: f64) -> f64 {
-    while lon > 180.0 {
-        lon -= 360.0;
+///
+/// Uses `rem_euclid` rather than a subtract-until-in-range loop: the loop form
+/// never terminates for a non-finite input (`inf - 360.0 == inf`), which would
+/// hang the caller. Non-finite input is returned unchanged so the caller's own
+/// finiteness checks stay authoritative.
+fn normalize_lon(lon: f64) -> f64 {
+    if !lon.is_finite() {
+        return lon;
     }
-    while lon < -180.0 {
-        lon += 360.0;
+    let wrapped = (lon + 180.0).rem_euclid(360.0) - 180.0;
+    // rem_euclid maps exactly +180 to -180; keep the positive representation.
+    if wrapped == -180.0 && lon > 0.0 {
+        180.0
+    } else {
+        wrapped
     }
-    lon
 }
 
 fn collect(geom: &Geometry, lons: &mut Vec<f64>, lat_min: &mut f64, lat_max: &mut f64) {
     let mut push = |c: &Coord| {
+        if !c.x.is_finite() || !c.y.is_finite() {
+            return;
+        }
         lons.push(c.x);
         *lat_min = lat_min.min(c.y);
         *lat_max = lat_max.max(c.y);
@@ -413,8 +428,14 @@ mod tests {
     #[test]
     fn genuine_crossing_extent_is_flagged() {
         let (cm, crossed) = central_meridian(&[-179.17, 179.77, -130.0]);
-        assert!(crossed, "an extent spanning the antimeridian must be flagged");
-        assert!(cm.abs() > 90.0, "central meridian should sit near 180, got {cm}");
+        assert!(
+            crossed,
+            "an extent spanning the antimeridian must be flagged"
+        );
+        assert!(
+            cm.abs() > 90.0,
+            "central meridian should sit near 180, got {cm}"
+        );
     }
 
     /// standard_offset = 0 puts the parallels on the edges.

@@ -247,7 +247,15 @@ fn repair_geometry_z(
                 })
                 .collect(),
         ),
-        other => other.clone(),
+        // Recurse rather than passing through: the other new 3D tools
+        // (buffer_3d, near_3d) both descend into collections, and silently
+        // reporting "nothing to do" for a collection full of gaps is worse
+        // than doing the work.
+        Geometry::GeometryCollection(gs) => Geometry::GeometryCollection(
+            gs.iter()
+                .map(|g| repair_geometry_z(g, placeholder, method, extrapolate, filled, unfilled))
+                .collect(),
+        ),
     }
 }
 

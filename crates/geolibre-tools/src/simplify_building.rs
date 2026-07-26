@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use geo::{Area, BooleanOps, Coord as GeoCoord, LineString, MultiPolygon, Polygon};
+use geo::{Area, Coord as GeoCoord, LineString, MultiPolygon, Polygon};
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
@@ -119,7 +119,10 @@ impl Tool for SimplifyBuildingTool {
 
         let mut out = Layer::new(layer.name.clone());
         out.crs = layer.crs.clone();
-        out.geom_type = layer.geom_type;
+        // Every simplified footprint is written as a MultiPolygon, so declare
+        // that rather than inheriting the input's (usually Polygon) type --
+        // writers that key off geom_type would otherwise mislabel the layer.
+        out.geom_type = Some(GeometryType::MultiPolygon);
         for fd in layer.schema.fields().iter() {
             out.add_field(fd.clone());
         }
@@ -405,12 +408,6 @@ fn linestring_to_ring(ls: &LineString) -> Ring {
         coords.pop();
     }
     Ring::new(coords)
-}
-
-// Keeps the BooleanOps import meaningful for the area computation path.
-#[allow(dead_code)]
-fn union_area(a: &MultiPolygon, b: &MultiPolygon) -> f64 {
-    a.union(b).unsigned_area()
 }
 
 // ── parameter parsing ────────────────────────────────────────────────────────

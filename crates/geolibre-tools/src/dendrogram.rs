@@ -9,9 +9,17 @@
 //!
 //! This is that diagnostic. Classes are characterized by their mean vector in
 //! the chosen feature space (and, under `distance = variance`, their pooled
-//! within-class spread), then agglomeratively merged by average linkage. The
-//! merge *distance* is what carries the information: classes that join very
-//! early are the ones a clustering run failed to separate.
+//! within-class spread), then agglomeratively merged by **centroid linkage**
+//! (UPGMC): each merge replaces the pair with their size-weighted centroid and
+//! later distances are measured between centroids. The merge *distance* is what
+//! carries the information: classes that join very early are the ones a
+//! clustering run failed to separate.
+//!
+//! Centroid linkage permits *inversions* — a later merge can occur at a smaller
+//! distance than an earlier one — so the sequence is not guaranteed monotonic.
+//! `min_merge_distance` therefore reports the distance of the **first** merge
+//! (the closest pair of original classes, which is the diagnostic that matters)
+//! rather than claiming to be the global minimum over all merges.
 //!
 //! Class counts here are small (tens, not thousands), so the naive O(n^3)
 //! agglomeration is entirely adequate and avoids pulling in a clustering crate.
@@ -32,9 +40,9 @@ use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_
 enum Distance {
     /// Euclidean distance between class means only.
     MeanOnly,
-    /// Mean distance normalized by the pooled within-class spread, so a pair of
-    /// tight classes reads as better separated than a pair of diffuse ones at
-    /// the same mean separation.
+    /// Centroid distance normalized by the pooled within-class spread, so a
+    /// pair of tight classes reads as better separated than a pair of diffuse
+    /// ones at the same centroid separation.
     Variance,
 }
 
@@ -226,7 +234,7 @@ impl Tool for DendrogramTool {
             sigs.len()
         ));
 
-        // Agglomerative merge, average linkage.
+        // Agglomerative merge, centroid (UPGMC) linkage.
         let mut out = Layer::new("dendrogram");
         out.add_field(FieldDef::new("step", FieldType::Integer));
         out.add_field(FieldDef::new("merged_a", FieldType::Text));
@@ -292,8 +300,11 @@ impl Tool for DendrogramTool {
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("class_count".to_string(), json!(by_class.len()));
         outputs.insert("merge_count".to_string(), json!(step));
-        // The smallest merge distance is the headline diagnostic: a near-zero
-        // value means two classes were not actually separated.
+        // The FIRST merge distance is the headline diagnostic: a near-zero value
+        // means two original classes were not actually separated. Under centroid
+        // linkage this is not necessarily the global minimum over all merges
+        // (inversions are possible), which is why it is named for the first
+        // merge rather than presented as a minimum over the whole tree.
         outputs.insert("min_merge_distance".to_string(), json!(first_merge));
         if let Some(p) = text_out {
             outputs.insert("output_text".to_string(), json!(p));

@@ -200,8 +200,18 @@ impl Tool for InterpolateFromSpatiotemporalPointsTool {
         );
         let span = (max_x - min_x).max(max_y - min_y).max(f64::EPSILON);
         let cell = parse_optional_f64(args, "cell_size")?.unwrap_or(span / 50.0);
-        let cols = (((max_x - min_x) / cell).ceil() as usize + 1).max(1);
-        let rows = (((max_y - min_y) / cell).ceil() as usize + 1).max(1);
+        // Compute the grid size in f64 and reject before casting: a huge
+        // extent-to-cell ratio saturates the `as usize` cast, which would make
+        // the guard below pass on a nonsense value.
+        let cols_f = ((max_x - min_x) / cell).ceil() + 1.0;
+        let rows_f = ((max_y - min_y) / cell).ceil() + 1.0;
+        if !cols_f.is_finite() || !rows_f.is_finite() || cols_f * rows_f > 50_000_000.0 {
+            return Err(ToolError::Validation(format!(
+                "cell_size {cell} would produce a {rows_f}x{cols_f} grid; supply a larger cell_size"
+            )));
+        }
+        let cols = (cols_f as usize).max(1);
+        let rows = (rows_f as usize).max(1);
         if cols * rows > 50_000_000 {
             return Err(ToolError::Validation(format!(
                 "cell_size {cell} would produce a {rows}x{cols} grid; supply a larger cell_size"
@@ -227,7 +237,7 @@ impl Tool for InterpolateFromSpatiotemporalPointsTool {
         let mut interpolated = 0usize;
         let mut sparse = 0usize;
 
-        for (si, (key, pts)) in slices.iter().enumerate() {
+        for (si, pts) in slices.values().enumerate() {
             let mut data = vec![OUT_NODATA; rows * cols];
 
             if pts.len() >= min_points {
@@ -270,7 +280,6 @@ impl Tool for InterpolateFromSpatiotemporalPointsTool {
             written.push(write_or_store_output(raster, target.as_deref())?);
             ctx.progress
                 .progress((si as f64 + 1.0) / slices.len().max(1) as f64);
-            let _ = key;
         }
 
         let keys: Vec<i64> = slices.keys().copied().collect();
@@ -301,7 +310,14 @@ fn combine(vals: &[(f64, f64)], method: Method, power: f64) -> f64 {
         Method::Median => {
             let mut vs: Vec<f64> = vals.iter().map(|(_, v)| *v).collect();
             vs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            vs[vs.len() / 2]
+            // Even counts average the two middle values, matching the usual
+            // definition (and `zonal_characterization`'s `quantile`).
+            let n = vs.len();
+            if n % 2 == 1 {
+                vs[n / 2]
+            } else {
+                (vs[n / 2 - 1] + vs[n / 2]) / 2.0
+            }
         }
         Method::Idw => {
             // An observation sitting exactly on the cell centre would divide by

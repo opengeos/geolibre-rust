@@ -153,9 +153,9 @@ impl Tool for CulDeSacMasksTool {
             degree.len()
         ));
 
-        // Ground width: page units divided by the scale denominator gives
-        // ground units per page unit, so a 1 pt casing at 1:24,000 is 24,000 pt
-        // on the ground. `symbol_width` is a full width, so buffer by half.
+        // Page units MULTIPLIED by the scale denominator give ground units, so
+        // a 1 pt casing at 1:24,000 spans 24,000 pt on the ground.
+        // `symbol_width` is a full width, so the buffer radius is half of it.
         let ground = (symbol_width / 2.0 + margin) * scale;
 
         // A cul-de-sac bulb: a single edge whose two endpoints are the SAME node

@@ -231,10 +231,10 @@ impl Tool for SummarizeWithinTool {
         let zones = load_input_layer(poly_path)?;
         let src = load_input_layer(input_path)?;
 
-        for (name, f) in field_specs.iter().map(|(f, _)| (f.clone(), f.clone())) {
-            if src.schema.field_index(&f).is_none() {
+        for (f, _) in field_specs.iter() {
+            if src.schema.field_index(f).is_none() {
                 return Err(ToolError::Validation(format!(
-                    "field '{name}' not found on the summarized layer"
+                    "field '{f}' not found on the summarized layer"
                 )));
             }
         }

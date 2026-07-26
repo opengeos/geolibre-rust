@@ -193,13 +193,26 @@ fn extent_params(geom: &Geometry, offset: f64) -> Option<Params> {
 /// Midpoint of a longitude set, unwrapping across the antimeridian.
 ///
 /// A feature spanning 179°E to -179°E has a raw mean of 0° — the wrong side of
-/// the planet. Detected by comparing the naive span against the unwrapped span:
-/// if shifting negative longitudes by +360 produces a narrower extent, the
-/// feature crosses the antimeridian and the shifted values are correct.
+/// the planet.
+///
+/// The crossing test is `raw_span > 180`, which is the actual geometric
+/// signature: no non-crossing extent can span more than half the globe, and any
+/// crossing one necessarily appears to. Only then is the +360 unwrap applied.
+///
+/// An earlier version instead compared the raw span against the unwrapped span
+/// and took "unwrapped is narrower" as the signal. That is mathematically
+/// equivalent but numerically unsafe: for an extent lying wholly in the western
+/// hemisphere the two spans are *equal*, and float noise in the two subtraction
+/// chains made the shifted one infinitesimally smaller, flagging ordinary
+/// extents (e.g. the US South census region, -106.6..-75.1) as crossing.
 fn central_meridian(lons: &[f64]) -> (f64, bool) {
     let raw_min = lons.iter().cloned().fold(f64::INFINITY, f64::min);
     let raw_max = lons.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let raw_span = raw_max - raw_min;
+
+    if raw_span <= 180.0 {
+        return (normalize_lon((raw_min + raw_max) / 2.0), false);
+    }
 
     let shifted: Vec<f64> = lons
         .iter()
@@ -207,9 +220,10 @@ fn central_meridian(lons: &[f64]) -> (f64, bool) {
         .collect();
     let sh_min = shifted.iter().cloned().fold(f64::INFINITY, f64::min);
     let sh_max = shifted.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let sh_span = sh_max - sh_min;
 
-    if sh_span < raw_span {
+    // If unwrapping does not actually narrow the extent, the feature genuinely
+    // spans more than half the globe (a whole-world layer); keep the raw answer.
+    if sh_max - sh_min < raw_span {
         (normalize_lon((sh_min + sh_max) / 2.0), true)
     } else {
         (normalize_lon((raw_min + raw_max) / 2.0), false)
@@ -373,6 +387,34 @@ mod tests {
         }));
         assert!((num(&layer, 0, "central_meridian") - -110.0).abs() < 1e-9);
         assert_eq!(out.outputs["antimeridian_features"], json!(0));
+    }
+
+    /// Regression: an extent lying wholly in the western hemisphere has raw and
+    /// unwrapped spans that are mathematically EQUAL, so a naive
+    /// "unwrapped is narrower" test flips on float noise. Caught on the real US
+    /// South census region (-106.6..-75.1), which was wrongly flagged.
+    #[test]
+    fn western_hemisphere_extent_is_not_flagged_as_crossing() {
+        for (lo, hi) in [
+            (-106.645646_f64, -75.045448_f64), // US South census region
+            (-104.057698, -80.518798),         // US Midwest
+            (-80.519891, -66.949895),          // US Northeast
+            (-124.733253, -114.039403),        // a single western state
+        ] {
+            let (_, crossed) = central_meridian(&[lo, hi, (lo + hi) / 2.0]);
+            assert!(
+                !crossed,
+                "extent {lo}..{hi} lies in one hemisphere and must not be flagged"
+            );
+        }
+    }
+
+    /// A genuinely crossing extent (Alaska including the Aleutians) still is.
+    #[test]
+    fn genuine_crossing_extent_is_flagged() {
+        let (cm, crossed) = central_meridian(&[-179.17, 179.77, -130.0]);
+        assert!(crossed, "an extent spanning the antimeridian must be flagged");
+        assert!(cm.abs() > 90.0, "central meridian should sit near 180, got {cm}");
     }
 
     /// standard_offset = 0 puts the parallels on the edges.

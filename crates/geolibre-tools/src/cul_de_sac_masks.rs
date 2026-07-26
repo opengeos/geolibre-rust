@@ -13,9 +13,20 @@
 //! rather than just a degree-1 endpoint is what separates a bulb from a plain
 //! dangle — a dead-end stub with no turning circle needs no mask.
 //!
-//! `symbol_width` and `margin` are page units (points/millimetres at
-//! `reference_scale`); they are converted to ground units before buffering, so
-//! the same parameters produce correctly-sized masks at any scale.
+//! `symbol_width` and `margin` are **page** dimensions (points by default) at
+//! `reference_scale`. Converting them to a buffer radius takes two steps that
+//! are easy to conflate:
+//!
+//! 1. page units -> metres on the page (`page_unit`),
+//! 2. page metres -> ground metres (multiply by `reference_scale`),
+//! 3. ground metres -> CRS units (`map_units_per_meter`).
+//!
+//! Skipping step 1 is a factor-2835 error for points: a 1 pt casing at
+//! 1:24,000 covers 8.47 m of ground, not 24,000.
+//!
+//! `map_units_per_meter` defaults to 1, correct for any metre-based projected
+//! CRS (UTM, EPSG:3857). For a geographic layer in degrees pass roughly
+//! `1/111320`; the tool cannot infer this without a projection database.
 
 use std::collections::BTreeMap;
 
@@ -61,12 +72,22 @@ impl Tool for CulDeSacMasksTool {
                 },
                 ToolParamSpec {
                     name: "symbol_width",
-                    description: "Road casing width in page units at the reference scale.",
+                    description: "Road casing width in page units (see 'page_unit') at the reference scale.",
                     required: true,
                 },
                 ToolParamSpec {
                     name: "margin",
                     description: "Extra margin around the symbol, in page units (default 0).",
+                    required: false,
+                },
+                ToolParamSpec {
+                    name: "page_unit",
+                    description: "Unit of 'symbol_width' and 'margin': points (default, 1/72 inch), mm, or inches.",
+                    required: false,
+                },
+                ToolParamSpec {
+                    name: "map_units_per_meter",
+                    description: "CRS units per metre (default 1, correct for metre-based projected CRSs). For a layer in degrees use about 0.000008983.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -103,6 +124,14 @@ impl Tool for CulDeSacMasksTool {
             }
         }
         parse_attributes(args)?;
+        parse_page_unit(args)?;
+        if let Some(u) = parse_optional_f64(args, "map_units_per_meter")? {
+            if !u.is_finite() || u <= 0.0 {
+                return Err(ToolError::Validation(
+                    "'map_units_per_meter' must be greater than 0".to_string(),
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -116,6 +145,8 @@ impl Tool for CulDeSacMasksTool {
             ToolError::Validation("missing required parameter 'symbol_width'".to_string())
         })?;
         let margin = parse_optional_f64(args, "margin")?.unwrap_or(0.0);
+        let page_unit_metres = parse_page_unit(args)?;
+        let map_units_per_meter = parse_optional_f64(args, "map_units_per_meter")?.unwrap_or(1.0);
         let tolerance = parse_optional_f64(args, "tolerance")?.unwrap_or(0.001);
         let keep_all_attrs = parse_attributes(args)?;
 
@@ -157,10 +188,10 @@ impl Tool for CulDeSacMasksTool {
             degree.len()
         ));
 
-        // Page units MULTIPLIED by the scale denominator give ground units, so
-        // a 1 pt casing at 1:24,000 spans 24,000 pt on the ground.
+        // page units -> page metres -> ground metres -> CRS units.
         // `symbol_width` is a full width, so the buffer radius is half of it.
-        let ground = (symbol_width / 2.0 + margin) * scale;
+        let page_m = (symbol_width / 2.0 + margin) * page_unit_metres;
+        let ground = page_m * scale * map_units_per_meter;
 
         // A cul-de-sac bulb: a single edge whose two endpoints are the SAME node
         // (a self-loop), attached to the rest of the network at that node.
@@ -294,6 +325,18 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
     }
 }
 
+/// Metres per page unit.
+fn parse_page_unit(args: &ToolArgs) -> Result<f64, ToolError> {
+    match args.get("page_unit").and_then(Value::as_str).map(str::trim) {
+        None | Some("") | Some("points") | Some("pt") => Ok(0.0254 / 72.0),
+        Some("mm") | Some("millimeters") => Ok(0.001),
+        Some("inches") | Some("in") => Ok(0.0254),
+        Some(o) => Err(ToolError::Validation(format!(
+            "'page_unit' must be points, mm or inches, got '{o}'"
+        ))),
+    }
+}
+
 /// Returns true when all source attributes should be carried onto the mask.
 fn parse_attributes(args: &ToolArgs) -> Result<bool, ToolError> {
     match args
@@ -414,22 +457,65 @@ mod tests {
         assert_eq!(out.outputs["mask_count"], json!(0));
     }
 
-    /// Page units scale to ground units through reference_scale.
+    /// Page dimensions convert to CRS units through the full chain:
+    /// page unit -> page metres -> ground metres (x scale) -> CRS units.
+    ///
+    /// The headline case: a 1 pt casing at 1:24,000 covers 8.47 m of ground,
+    /// NOT 24,000. Treating the scale-multiplied point value as map units
+    /// (the original bug) overstates the radius by a factor of ~2835.
+    #[test]
+    fn page_units_convert_through_scale_to_map_units() {
+        let input = lines(vec![vec![(0.0, 0.0), (10.0, 0.0)], bulb_at(10.0, 0.0, 2.0)]);
+
+        // 1 pt full width -> 0.5 pt radius -> 0.5/72 inch -> m -> x24000.
+        let (out, _) = run(json!({
+            "input": input, "reference_scale": 24000.0, "symbol_width": 1.0
+        }));
+        let r = out.outputs["ground_radius"].as_f64().unwrap();
+        let expect = 0.5 * (0.0254 / 72.0) * 24000.0; // 8.4667 m
+        assert!(
+            (r - expect).abs() < 1e-9,
+            "expected {expect:.4} m of ground, got {r}"
+        );
+        assert!(r < 10.0, "a 1 pt casing must not become a 24 km buffer");
+
+        // mm and inches scale relative to points exactly as their sizes do.
+        let (mm, _) = run(json!({
+            "input": input, "reference_scale": 1000.0,
+            "symbol_width": 1.0, "page_unit": "mm"
+        }));
+        assert!(
+            (mm.outputs["ground_radius"].as_f64().unwrap() - 0.5 * 0.001 * 1000.0).abs() < 1e-9
+        );
+
+        // map_units_per_meter converts ground metres into a non-metric CRS.
+        let (deg, _) = run(json!({
+            "input": input, "reference_scale": 24000.0, "symbol_width": 1.0,
+            "map_units_per_meter": 0.000008983
+        }));
+        assert!(
+            (deg.outputs["ground_radius"].as_f64().unwrap() - expect * 0.000008983).abs() < 1e-15
+        );
+    }
+
+    /// Radius still scales linearly with the map scale denominator.
     #[test]
     fn mask_size_scales_with_reference_scale() {
         let input = lines(vec![vec![(0.0, 0.0), (10.0, 0.0)], bulb_at(10.0, 0.0, 2.0)]);
         let (small, _) = run(json!({
-            "input": input, "reference_scale": 1.0, "symbol_width": 2.0
+            "input": input, "reference_scale": 1000.0, "symbol_width": 2.0
         }));
         let (big, _) = run(json!({
-            "input": input, "reference_scale": 10.0, "symbol_width": 2.0
+            "input": input, "reference_scale": 10000.0, "symbol_width": 2.0
         }));
         let (rs, rb) = (
             small.outputs["ground_radius"].as_f64().unwrap(),
             big.outputs["ground_radius"].as_f64().unwrap(),
         );
-        assert!((rs - 1.0).abs() < 1e-9, "half of 2 page units at 1:1");
-        assert!((rb - 10.0).abs() < 1e-9, "same symbol, 10x scale");
+        assert!(
+            (rb / rs - 10.0).abs() < 1e-9,
+            "10x scale must give 10x radius"
+        );
     }
 
     /// margin widens the mask.
@@ -477,6 +563,13 @@ mod tests {
         ));
         assert!(bad(
             json!({ "input": p, "reference_scale": 1, "symbol_width": 1, "attributes": "some" })
+        ));
+        assert!(bad(
+            json!({ "input": p, "reference_scale": 1, "symbol_width": 1, "page_unit": "picas" })
+        ));
+        assert!(bad(
+            json!({ "input": p, "reference_scale": 1, "symbol_width": 1,
+                            "map_units_per_meter": 0 })
         ));
     }
 }

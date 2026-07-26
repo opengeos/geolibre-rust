@@ -2280,6 +2280,8 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("reference_scale", float()),
             ("symbol_width", float()),
             ("margin", float()),
+            ("page_unit", ToolParamSchema::enum_values(&["points", "mm", "inches"])),
+            ("map_units_per_meter", float()),
             ("tolerance", float()),
             ("attributes", ToolParamSchema::enum_values(&["ids_only", "all"])),
         ]),

@@ -109,8 +109,12 @@ impl Tool for CulDeSacMasksTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let input = require_str(args, "input")?;
         let output = parse_optional_str(args, "output")?;
-        let scale = parse_optional_f64(args, "reference_scale")?.unwrap();
-        let symbol_width = parse_optional_f64(args, "symbol_width")?.unwrap();
+        let scale = parse_optional_f64(args, "reference_scale")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'reference_scale'".to_string())
+        })?;
+        let symbol_width = parse_optional_f64(args, "symbol_width")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'symbol_width'".to_string())
+        })?;
         let margin = parse_optional_f64(args, "margin")?.unwrap_or(0.0);
         let tolerance = parse_optional_f64(args, "tolerance")?.unwrap_or(0.001);
         let keep_all_attrs = parse_attributes(args)?;

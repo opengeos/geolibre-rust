@@ -123,8 +123,12 @@ impl Tool for FindDwellLocationsTool {
         let track_field = require_str(args, "track_field")?;
         let time_field = require_str(args, "time_field")?;
         let output = parse_optional_str(args, "output")?;
-        let dist_tol = parse_optional_f64(args, "distance_tolerance")?.unwrap();
-        let time_tol = parse_optional_f64(args, "time_tolerance")?.unwrap();
+        let dist_tol = parse_optional_f64(args, "distance_tolerance")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'distance_tolerance'".to_string())
+        })?;
+        let time_tol = parse_optional_f64(args, "time_tolerance")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'time_tolerance'".to_string())
+        })?;
         let output_type = parse_output_type(args)?;
 
         let layer = load_input_layer(input)?;
@@ -178,7 +182,13 @@ impl Tool for FindDwellLocationsTool {
         out.crs = layer.crs.clone();
         out.geom_type = Some(match output_type {
             OutputType::ConvexHulls => GeometryType::Polygon,
-            _ => GeometryType::Point,
+            // dwell_features / all_features clone the input geometry through
+            // verbatim, and point_xy accepts MultiPoint, so the written type is
+            // whatever the input was -- inherit it rather than asserting Point.
+            OutputType::DwellFeatures | OutputType::AllFeatures => {
+                layer.geom_type.unwrap_or(GeometryType::Point)
+            }
+            OutputType::MeanCenters => GeometryType::Point,
         });
         if matches!(
             output_type,

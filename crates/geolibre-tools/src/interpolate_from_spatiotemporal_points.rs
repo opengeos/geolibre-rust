@@ -35,7 +35,7 @@ use wbraster::{DataType, Raster, RasterConfig};
 use wbvector::{FieldValue, Geometry};
 
 use crate::common::{parse_optional_output, write_or_store_output};
-use crate::vector_common::{load_input_layer, parse_optional_str};
+use crate::vector_common::load_input_layer;
 
 const OUT_NODATA: f64 = -9999.0;
 

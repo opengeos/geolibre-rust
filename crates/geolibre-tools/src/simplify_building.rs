@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use geo::{Area, Coord as GeoCoord, LineString, MultiPolygon, Polygon};
+use geo::{Area, Centroid, Coord as GeoCoord, LineString, MultiPolygon, Polygon};
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
@@ -110,7 +110,9 @@ impl Tool for SimplifyBuildingTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let input = require_str(args, "input")?;
         let output = parse_optional_str(args, "output")?;
-        let tolerance = parse_optional_f64(args, "tolerance")?.unwrap();
+        let tolerance = parse_optional_f64(args, "tolerance")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'tolerance'".to_string())
+        })?;
         let min_area = parse_optional_f64(args, "minimum_area")?.unwrap_or(0.0);
         let keep_points = parse_optional_bool(args, "keep_collapsed_points")?.unwrap_or(false);
         let corner_tol = parse_optional_f64(args, "corner_tolerance")?.unwrap_or(20.0);
@@ -327,7 +329,16 @@ fn close(mut pts: Vec<GeoCoord<f64>>) -> LineString {
     LineString::new(pts)
 }
 
+/// True area-weighted centroid of the footprint.
+///
+/// A plain mean of the exterior vertices is not the centroid: it is biased
+/// toward whichever edge carries the most vertices, which for a raster-traced
+/// footprint is exactly the stair-stepped side. Falls back to the vertex mean
+/// only for degenerate geometry where `geo` cannot produce a centroid.
 fn centroid_of(mp: &MultiPolygon) -> (f64, f64) {
+    if let Some(c) = mp.centroid() {
+        return (c.x(), c.y());
+    }
     let mut sx = 0.0;
     let mut sy = 0.0;
     let mut n = 0usize;

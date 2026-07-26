@@ -114,7 +114,9 @@ impl Tool for Buffer3dTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let input = require_str(args, "input")?;
         let output = parse_optional_str(args, "output")?;
-        let default_dist = parse_optional_f64(args, "distance")?.unwrap();
+        let default_dist = parse_optional_f64(args, "distance")?.ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'distance'".to_string())
+        })?;
         let dist_field = parse_optional_str(args, "distance_field")?.map(String::from);
         let shape = parse_shape(args)?;
         let quality = parse_optional_f64(args, "quality")?.unwrap_or(12.0) as usize;

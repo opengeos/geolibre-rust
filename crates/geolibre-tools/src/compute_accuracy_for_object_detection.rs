@@ -124,6 +124,18 @@ impl Tool for ComputeAccuracyForObjectDetectionTool {
                 }
             }
         }
+        for (layer, field) in [
+            (&det_layer, det_class_field.as_deref()),
+            (&gt_layer, gt_class_field.as_deref()),
+        ] {
+            if let Some(field) = field {
+                for feature in &layer.features {
+                    feature.get(&layer.schema, field).map_err(|e| {
+                        ToolError::Execution(format!("failed reading class field '{field}': {e}"))
+                    })?;
+                }
+            }
+        }
 
         // Extract detections with class + confidence, and truths with class.
         let mut dets: Vec<Inst> = det_layer
@@ -136,7 +148,7 @@ impl Tool for ComputeAccuracyForObjectDetectionTool {
                     .map(|c| {
                         f.get(&det_layer.schema, c)
                             .map(field_string)
-                            .unwrap_or_default()
+                            .expect("class field was validated before instance collection")
                     })
                     .unwrap_or_else(|| "1".to_string());
                 let conf = conf_field
@@ -164,7 +176,7 @@ impl Tool for ComputeAccuracyForObjectDetectionTool {
                     .map(|c| {
                         f.get(&gt_layer.schema, c)
                             .map(field_string)
-                            .unwrap_or_default()
+                            .expect("class field was validated before instance collection")
                     })
                     .unwrap_or_else(|| "1".to_string());
                 Some(Inst {

@@ -198,12 +198,14 @@ impl Tool for EvaluateBinSizesTool {
                 continue;
             }
             let mut bins: BTreeMap<(i64, i64), f64> = BTreeMap::new();
+            let mut point_counts: BTreeMap<(i64, i64), usize> = BTreeMap::new();
             for (x, y, w) in &pts {
                 let key = match shape {
                     BinShape::Square => square_bin(*x - min_x, *y - min_y, size),
                     BinShape::Hexagon => hex_bin(*x - min_x, *y - min_y, size),
                 };
                 *bins.entry(key).or_insert(0.0) += w;
+                *point_counts.entry(key).or_insert(0) += 1;
             }
             let counts: Vec<f64> = bins.values().copied().collect();
             let nonempty = counts.len();
@@ -246,7 +248,12 @@ impl Tool for EvaluateBinSizesTool {
             // Score favours a high coefficient of variation (structure is
             // visible) while penalizing bins so small that most are empty or a
             // single point. Both extremes score low.
-            let occupancy = (mean / 2.0).min(1.0);
+            let mean_points = if nonempty > 0 {
+                point_counts.values().sum::<usize>() as f64 / nonempty as f64
+            } else {
+                0.0
+            };
+            let occupancy = (mean_points / 2.0).min(1.0);
             let score = cv * occupancy;
             if best.is_none_or(|(bs, _)| score > bs) {
                 best = Some((score, size));

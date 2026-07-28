@@ -25,6 +25,7 @@ use geo::{
     Area, BooleanOps, BoundingRect, Coord as GeoCoord, Euclidean, Length, LineString,
     MultiLineString, MultiPolygon, Polygon,
 };
+use rstar::{RTree, RTreeObject, AABB};
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
@@ -305,6 +306,32 @@ impl Tool for SummarizeWithinTool {
             out.add_field(FieldDef::new(l.clone(), FieldType::Float));
         }
 
+        struct IndexedFeature {
+            index: usize,
+            envelope: AABB<[f64; 2]>,
+        }
+        impl RTreeObject for IndexedFeature {
+            type Envelope = AABB<[f64; 2]>;
+            fn envelope(&self) -> Self::Envelope {
+                self.envelope
+            }
+        }
+        let source_index = RTree::bulk_load(
+            src_feats
+                .iter()
+                .enumerate()
+                .filter_map(|(index, sf)| {
+                    sf.bbox.map(|bbox| IndexedFeature {
+                        index,
+                        envelope: AABB::from_corners(
+                            [bbox.min().x, bbox.min().y],
+                            [bbox.max().x, bbox.max().y],
+                        ),
+                    })
+                })
+                .collect(),
+        );
+
         let mut rows = 0usize;
         let mut matched_zones = 0usize;
         for (zi, zf) in zones.features.iter().enumerate() {
@@ -319,17 +346,11 @@ impl Tool for SummarizeWithinTool {
             // group key -> (accumulators, count, shape measure)
             let mut groups: BTreeMap<String, (Vec<Acc>, usize, f64)> = BTreeMap::new();
 
-            for sf in &src_feats {
-                // Cheap bbox reject before any exact overlay work.
-                if let (Some(a), Some(b)) = (zbox, sf.bbox) {
-                    if a.min().x > b.max().x
-                        || a.max().x < b.min().x
-                        || a.min().y > b.max().y
-                        || a.max().y < b.min().y
-                    {
-                        continue;
-                    }
-                }
+            let Some(zbox) = zbox else { continue };
+            let envelope =
+                AABB::from_corners([zbox.min().x, zbox.min().y], [zbox.max().x, zbox.max().y]);
+            for indexed in source_index.locate_in_envelope_intersecting(&envelope) {
+                let sf = &src_feats[indexed.index];
                 let (weight, measure) = match overlap(&zpoly, zgeom, sf, kind) {
                     Some(v) => v,
                     None => continue,
@@ -677,6 +698,25 @@ mod tests {
             progress: &NullProgress,
             capabilities: &AllowAllCapabilities,
         }
+    }
+
+    #[test]
+    fn line_overlap_uses_clipped_length() {
+        let zone_geom = Geometry::polygon(
+            vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(10.0, 0.0),
+                Coord::xy(10.0, 10.0),
+                Coord::xy(0.0, 10.0),
+            ],
+            vec![],
+        );
+        let zone = to_multipolygon(&zone_geom).unwrap();
+        let line = Geometry::LineString(vec![Coord::xy(-5.0, 5.0), Coord::xy(15.0, 5.0)]);
+        let sf = build_src_feat(&line, SummaryKind::Line, vec![], None).unwrap();
+        let (weight, length) = overlap(&zone, &zone_geom, &sf, SummaryKind::Line).unwrap();
+        assert!((weight - 0.5).abs() < 1e-9);
+        assert!((length - 10.0).abs() < 1e-9);
     }
 
     fn rect(x0: f64, y0: f64, w: f64, h: f64) -> Geometry {

@@ -145,7 +145,7 @@ impl Tool for ZonalCharacterizationTool {
                 },
                 ToolParamSpec {
                     name: "rasters",
-                    description: "Comma-separated 'path:statistic[:name]' entries, e.g. 'dem.tif:mean,ndvi.tif:median'. Statistics: mean, sum, min, max, range, stddev, median, majority, minority, variety, count, percentile.",
+                    description: "Comma-separated 'path:statistic[:name]' entries, e.g. 'dem.tif:mean,ndvi.tif:median'. Value rasters use band 1. Statistics: mean, sum, min, max, range, stddev, median, majority, minority, variety, count, percentile.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -229,9 +229,7 @@ impl Tool for ZonalCharacterizationTool {
         ));
 
         // zone id -> per-raster accumulators (+ cell count for the zone itself)
-        let mut zone_acc: BTreeMap<i64, (Vec<Acc>, usize)> = BTreeMap::new();
-        // Zones invalidated by a no-data value cell when ignore_nodata = false.
-        let mut poisoned: BTreeMap<i64, Vec<bool>> = BTreeMap::new();
+        let mut zone_acc: BTreeMap<i64, (Vec<Acc>, usize, Vec<bool>)> = BTreeMap::new();
 
         for r in 0..rows {
             for c in 0..cols {
@@ -247,17 +245,19 @@ impl Tool for ZonalCharacterizationTool {
                             .map(|s| Acc::new(s.stat.needs_values()))
                             .collect(),
                         0,
+                        if ignore_nodata {
+                            Vec::new()
+                        } else {
+                            vec![false; specs.len()]
+                        },
                     )
                 });
                 entry.1 += 1;
-                let pois = poisoned
-                    .entry(zid)
-                    .or_insert_with(|| vec![false; specs.len()]);
                 for (i, vr) in value_rasters.iter().enumerate() {
                     let v = vr.get(0, r as isize, c as isize);
                     if v == vr.nodata || !v.is_finite() {
                         if !ignore_nodata {
-                            pois[i] = true;
+                            entry.2[i] = true;
                         }
                         continue;
                     }
@@ -282,14 +282,13 @@ impl Tool for ZonalCharacterizationTool {
             out.add_field(FieldDef::new(l.clone(), FieldType::Float));
         }
 
-        for (zid, (accs, cells)) in &zone_acc {
-            let pois = poisoned.get(zid);
+        for (zid, (accs, cells, poisoned)) in &zone_acc {
             let mut fields: Vec<(String, FieldValue)> = vec![
                 ("zone".into(), FieldValue::Integer(*zid)),
                 ("cell_count".into(), FieldValue::Integer(*cells as i64)),
             ];
             for (i, spec) in specs.iter().enumerate() {
-                let invalid = pois.map(|p| p[i]).unwrap_or(false);
+                let invalid = !ignore_nodata && poisoned[i];
                 let v = if invalid {
                     None
                 } else {

@@ -85,6 +85,27 @@ impl Tool for CalculateCentralMeridianAndParallelsTool {
         let offset = parse_optional_f64(args, "standard_offset")?.unwrap_or(1.0 / 6.0);
 
         let layer = load_input_layer(input)?;
+        if layer
+            .crs_epsg()
+            .is_some_and(|epsg| epsg != 4326 && epsg != 4269)
+        {
+            ctx.progress.info(
+                "warning: input CRS is not geographic; coordinates will still be treated as longitude/latitude",
+            );
+        }
+
+        for name in [field, "standard_parallel_1", "standard_parallel_2"] {
+            if layer.schema.field_index(name).is_some() {
+                return Err(ToolError::Validation(format!(
+                    "output field '{name}' conflicts with another field"
+                )));
+            }
+        }
+        if field == "standard_parallel_1" || field == "standard_parallel_2" {
+            return Err(ToolError::Validation(format!(
+                "output field '{field}' conflicts with a standard-parallel field"
+            )));
+        }
 
         let mut out = Layer::new(layer.name.clone());
         out.crs = layer.crs.clone();
@@ -215,6 +236,9 @@ fn central_meridian(lons: &[f64]) -> (f64, bool) {
     let raw_span = raw_max - raw_min;
 
     if raw_span <= 180.0 {
+        return (normalize_lon((raw_min + raw_max) / 2.0), false);
+    }
+    if raw_span >= 360.0 - f64::EPSILON {
         return (normalize_lon((raw_min + raw_max) / 2.0), false);
     }
 
@@ -436,6 +460,13 @@ mod tests {
             cm.abs() > 90.0,
             "central meridian should sit near 180, got {cm}"
         );
+    }
+
+    #[test]
+    fn whole_world_extent_is_not_flagged_as_crossing() {
+        let (cm, crossed) = central_meridian(&[-180.0, 0.0, 180.0]);
+        assert!(!crossed);
+        assert!(cm.abs() < 1e-9);
     }
 
     /// standard_offset = 0 puts the parallels on the edges.

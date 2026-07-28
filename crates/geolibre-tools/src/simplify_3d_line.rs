@@ -220,22 +220,25 @@ fn dp_recurse(
     z_factor: f64,
     keep: &mut [bool],
 ) {
-    if last <= first + 1 {
-        return;
-    }
-    let mut max_d = -1.0_f64;
-    let mut max_i = first;
-    for i in (first + 1)..last {
-        let d = point_chord_distance_3d(&coords[i], &coords[first], &coords[last], z_factor);
-        if d > max_d {
-            max_d = d;
-            max_i = i;
+    let mut stack = vec![(first, last)];
+    while let Some((first, last)) = stack.pop() {
+        if last <= first + 1 {
+            continue;
         }
-    }
-    if max_d > tolerance {
-        keep[max_i] = true;
-        dp_recurse(coords, first, max_i, tolerance, z_factor, keep);
-        dp_recurse(coords, max_i, last, tolerance, z_factor, keep);
+        let mut max_d = -1.0_f64;
+        let mut max_i = first;
+        for i in (first + 1)..last {
+            let d = point_chord_distance_3d(&coords[i], &coords[first], &coords[last], z_factor);
+            if d > max_d {
+                max_d = d;
+                max_i = i;
+            }
+        }
+        if max_d > tolerance {
+            keep[max_i] = true;
+            stack.push((max_i, last));
+            stack.push((first, max_i));
+        }
     }
 }
 

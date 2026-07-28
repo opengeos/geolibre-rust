@@ -1036,6 +1036,7 @@ dependencies = [
  "parquet",
  "png 0.17.16",
  "quick-xml",
+ "rstar",
  "rust_xlsxwriter",
  "serde_json",
  "wbcore",

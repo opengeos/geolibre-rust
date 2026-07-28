@@ -334,11 +334,10 @@ fn detect_dwells(track: &str, fixes: &[Fix], dist_tol: f64, time_tol: f64, out: 
     let n = fixes.len();
     let mut i = 0usize;
     while i < n {
-        let mut run: Vec<Fix> = vec![fixes[i].clone()];
         let (mut sx, mut sy) = (fixes[i].x, fixes[i].y);
         let mut j = i + 1;
         while j < n {
-            let k = run.len() as f64;
+            let k = (j - i) as f64;
             let (cx, cy) = (sx / k, sy / k);
             let dx = fixes[j].x - cx;
             let dy = fixes[j].y - cy;
@@ -347,17 +346,16 @@ fn detect_dwells(track: &str, fixes: &[Fix], dist_tol: f64, time_tol: f64, out: 
             }
             sx += fixes[j].x;
             sy += fixes[j].y;
-            run.push(fixes[j].clone());
             j += 1;
         }
-        let start = run.first().unwrap().t;
-        let end = run.last().unwrap().t;
-        if run.len() >= 2 && (end - start) >= time_tol {
+        let start = fixes[i].t;
+        let end = fixes[j - 1].t;
+        if j - i >= 2 && (end - start) >= time_tol {
             out.push(Dwell {
                 track: track.to_string(),
                 start,
                 end,
-                fixes: run,
+                fixes: fixes[i..j].to_vec(),
             });
             i = j; // consume the whole dwell
         } else {
@@ -567,11 +565,13 @@ mod tests {
             ("a", 200.2, 0.1, 140.0), // parked
             ("a", 400.0, 0.0, 200.0), // leaves
         ]);
-        let (out, _) = run(json!({
+        let (out, layer) = run(json!({
             "input": input, "distance_tolerance": 5.0, "time_tolerance": 60.0
         }));
         assert_eq!(out.outputs["dwell_count"], json!(1));
         assert_eq!(out.outputs["total_dwell_duration"], json!(120.0));
+        assert_eq!(out.outputs["feature_count"], json!(3));
+        assert_eq!(layer.len(), 3);
     }
 
     /// A stationary run that is too brief does not qualify.

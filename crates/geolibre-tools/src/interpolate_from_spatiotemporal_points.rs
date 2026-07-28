@@ -442,13 +442,33 @@ fn parse_iso8601_seconds(s: &str) -> Option<f64> {
     }
     let month: i64 = s.get(5..7)?.parse().ok()?;
     let day: i64 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
     let (mut hh, mut mm, mut ss) = (0i64, 0i64, 0i64);
     if s.len() >= 19 && (b[10] == b'T' || b[10] == b' ') {
         hh = s.get(11..13)?.parse().ok()?;
         mm = s.get(14..16)?.parse().ok()?;
         ss = s.get(17..19)?.parse().ok()?;
     }
-    Some((days_from_civil(year, month, day) * 86400 + hh * 3600 + mm * 60 + ss) as f64)
+    if hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
+    let mut seconds = days_from_civil(year, month, day) * 86400 + hh * 3600 + mm * 60 + ss;
+    if s.len() > 19 && !matches!(s.as_bytes()[19], b'Z' | b'z') {
+        let sign = match s.as_bytes()[19] {
+            b'+' => 1,
+            b'-' => -1,
+            _ => return None,
+        };
+        let oh: i64 = s.get(20..22)?.parse().ok()?;
+        let om: i64 = s.get(23..25)?.parse().ok()?;
+        if s.as_bytes().get(22) != Some(&b':') || oh > 23 || om > 59 || s.len() != 25 {
+            return None;
+        }
+        seconds -= sign * (oh * 3600 + om * 60);
+    }
+    Some(seconds as f64)
 }
 
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -527,6 +547,12 @@ mod tests {
     }
 
     const DAY: f64 = 86400.0;
+
+    #[test]
+    fn suffix_preserves_dotted_directory() {
+        assert_eq!(suffixed("/data/v1.2/out", 3), "/data/v1.2/out_t3");
+        assert_eq!(suffixed("/data/out.tif", 3), "/data/out_t3.tif");
+    }
 
     /// Observations as (x, y, value, time-seconds).
     fn obs_layer(items: Vec<(f64, f64, f64, f64)>) -> String {

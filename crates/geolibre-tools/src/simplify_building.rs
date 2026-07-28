@@ -266,7 +266,7 @@ fn simplify_ring(ring: &LineString, tolerance: f64, corner_tol_deg: f64) -> Line
             let next = pts[(i + 1) % n];
             let d = perpendicular_distance(cur, prev, next);
             let cost = d * corner_penalty(prev, cur, next, corner_tol_deg);
-            if best.is_none_or(|(bc, _)| cost < bc) {
+            if best.map_or(true, |(bc, _)| cost < bc) {
                 best = Some((cost, i));
             }
         }

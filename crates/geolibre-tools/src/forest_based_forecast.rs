@@ -179,6 +179,13 @@ impl Tool for ForestBasedForecastTool {
                 }
             }
         }
+        if let Some(seed) = parse_optional_f64(args, "seed")? {
+            if !seed.is_finite() || seed < 0.0 || seed > u64::MAX as f64 {
+                return Err(ToolError::Validation(
+                    "'seed' must be a finite unsigned 64-bit value".into(),
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -207,27 +214,41 @@ impl Tool for ForestBasedForecastTool {
 
         // Group observations into per-location series.
         let mut series: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
+        let mut location_geometries = BTreeMap::new();
+        let mut dropped_rows = 0usize;
         for feat in layer.features.iter() {
             let (Ok(lv), Ok(tv), Ok(vv)) = (
                 feat.get(&layer.schema, loc_field),
                 feat.get(&layer.schema, time_field),
                 feat.get(&layer.schema, value_field),
             ) else {
+                dropped_rows += 1;
                 continue;
             };
-            let (Some(t), Some(v)) = (tv.as_f64(), vv.as_f64()) else {
+            let t = tv
+                .as_f64()
+                .or_else(|| tv.as_str().and_then(parse_iso8601_seconds));
+            let (Some(t), Some(v)) = (t, vv.as_f64()) else {
+                dropped_rows += 1;
                 continue;
             };
             if !t.is_finite() || !v.is_finite() {
+                dropped_rows += 1;
                 continue;
             }
-            series.entry(field_string(lv)).or_default().push((t, v));
+            let location = field_string(lv);
+            location_geometries
+                .entry(location.clone())
+                .or_insert_with(|| feat.geometry.clone());
+            series.entry(location).or_default().push((t, v));
         }
 
         ctx.progress
             .info(&format!("forecasting {} location series", series.len()));
 
         let mut out = Layer::new("forest_forecast");
+        out.crs = layer.crs.clone();
+        out.geom_type = layer.geom_type;
         out.add_field(FieldDef::new("location", FieldType::Text));
         out.add_field(FieldDef::new("step", FieldType::Integer));
         out.add_field(FieldDef::new("time", FieldType::Float));
@@ -237,6 +258,7 @@ impl Tool for ForestBasedForecastTool {
 
         let mut forecast_locations = 0usize;
         let mut skipped = 0usize;
+        let mut validated_locations = 0usize;
 
         let location_total = series.len();
         for (li, (name, obs)) in series.iter_mut().enumerate() {
@@ -267,6 +289,7 @@ impl Tool for ForestBasedForecastTool {
                     .zip(truth.iter())
                     .map(|(p, t)| (p - t).powi(2))
                     .sum();
+                validated_locations += 1;
                 Some((se / truth.len() as f64).sqrt())
             } else {
                 None
@@ -282,7 +305,7 @@ impl Tool for ForestBasedForecastTool {
 
             for (k, p) in preds.iter().enumerate() {
                 out.add_feature(
-                    None,
+                    location_geometries.get(name).cloned().flatten(),
                     &[
                         ("location", FieldValue::Text(name.clone())),
                         ("step", FieldValue::Integer(k as i64 + 1)),
@@ -312,6 +335,11 @@ impl Tool for ForestBasedForecastTool {
         outputs.insert("forecast_locations".to_string(), json!(forecast_locations));
         // Surfaced so a short series silently producing no forecast is visible.
         outputs.insert("skipped_locations".to_string(), json!(skipped));
+        outputs.insert(
+            "validated_locations".to_string(),
+            json!(validated_locations),
+        );
+        outputs.insert("dropped_rows".to_string(), json!(dropped_rows));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -395,41 +423,36 @@ fn build_tree(
         .max(1)
         .min(n_features);
     let mut candidates: Vec<usize> = Vec::with_capacity(k);
-    for _ in 0..k {
-        candidates.push(rng.below(n_features));
+    while candidates.len() < k {
+        let candidate = rng.below(n_features);
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
     }
 
     let mut best: Option<(f64, usize, f64)> = None; // (sse, feature, threshold)
     for &f in &candidates {
-        let mut vals: Vec<f64> = idx.iter().map(|&i| xs[i][f]).collect();
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        vals.dedup();
-        if vals.len() < 2 {
+        let mut rows: Vec<(f64, f64)> = idx.iter().map(|&i| (xs[i][f], ys[i])).collect();
+        rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        if rows.len() < 2 {
             continue;
         }
-        for w in vals.windows(2) {
-            let thr = (w[0] + w[1]) / 2.0;
-            let (mut ls, mut lc, mut rs, mut rc) = (0.0, 0usize, 0.0, 0usize);
-            for &i in idx {
-                if xs[i][f] <= thr {
-                    ls += ys[i];
-                    lc += 1;
-                } else {
-                    rs += ys[i];
-                    rc += 1;
-                }
-            }
-            if lc == 0 || rc == 0 {
+        let total_sum: f64 = rows.iter().map(|r| r.1).sum();
+        let total_sq: f64 = rows.iter().map(|r| r.1 * r.1).sum();
+        let (mut left_sum, mut left_sq) = (0.0, 0.0);
+        for split in 1..rows.len() {
+            left_sum += rows[split - 1].1;
+            left_sq += rows[split - 1].1 * rows[split - 1].1;
+            if rows[split - 1].0 == rows[split].0 {
                 continue;
             }
-            let (lm, rm) = (ls / lc as f64, rs / rc as f64);
-            let sse: f64 = idx
-                .iter()
-                .map(|&i| {
-                    let m = if xs[i][f] <= thr { lm } else { rm };
-                    (ys[i] - m).powi(2)
-                })
-                .sum();
+            let lc = split as f64;
+            let rc = (rows.len() - split) as f64;
+            let right_sum = total_sum - left_sum;
+            let right_sq = total_sq - left_sq;
+            let sse =
+                (left_sq - left_sum * left_sum / lc) + (right_sq - right_sum * right_sum / rc);
+            let thr = (rows[split - 1].0 + rows[split].0) / 2.0;
             if best.is_none_or(|(bs, _, _)| sse < bs) {
                 best = Some((sse, f, thr));
             }
@@ -478,6 +501,34 @@ fn field_string(v: &FieldValue) -> String {
         FieldValue::Boolean(b) => b.to_string(),
         FieldValue::Null | FieldValue::Blob(_) => String::new(),
     }
+}
+
+fn parse_iso8601_seconds(s: &str) -> Option<f64> {
+    let s = s.trim();
+    if s.len() < 10 || s.as_bytes().get(4) != Some(&b'-') {
+        return None;
+    }
+    let year: i64 = s.get(0..4)?.parse().ok()?;
+    let month: i64 = s.get(5..7)?.parse().ok()?;
+    let day: i64 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let (hh, mm, ss) = if s.len() >= 19 {
+        (
+            s.get(11..13)?.parse::<i64>().ok()?,
+            s.get(14..16)?.parse::<i64>().ok()?,
+            s.get(17..19)?.parse::<i64>().ok()?,
+        )
+    } else {
+        (0, 0, 0)
+    };
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+    let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+    Some((days * 86400 + hh * 3600 + mm * 60 + ss) as f64)
 }
 
 fn require_str<'a>(args: &'a ToolArgs, key: &str) -> Result<&'a str, ToolError> {

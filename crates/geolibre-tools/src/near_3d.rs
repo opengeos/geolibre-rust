@@ -7,20 +7,15 @@
 //! 0 m apart. That inverts the result for exactly the clearance and
 //! conflict-detection questions 3D proximity is used to answer.
 //!
-//! Distances here are straight-line 3D Euclidean. The vendored `kdtree` is
-//! dimension-generic, so the candidate index is built with `k = 3`; for line
-//! and polygon near-features the index holds their vertices and the winner is
-//! then **refined exactly** against the corresponding segments. Using the
-//! vertex distance as the answer would be wrong for long segments, where the
-//! closest point usually lies between two vertices.
+//! Distances here are straight-line 3D Euclidean and are refined exactly
+//! against every candidate segment. Endpoint-only spatial pruning is unsafe
+//! for long segments whose interior crosses the search radius.
 //!
 //! Vertices with no Z are treated as `z = 0` so a 2D near-layer degrades to a
 //! planar answer rather than failing.
 
 use std::collections::BTreeMap;
 
-use kdtree::distance::squared_euclidean;
-use kdtree::KdTree;
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
@@ -131,17 +126,6 @@ impl Tool for Near3dTool {
             }
         }
 
-        // 3D index over segment endpoints; each endpoint points at its segment.
-        let mut tree: KdTree<f64, usize, P3> = KdTree::new(3);
-        for (si, s) in near_segs.iter().enumerate() {
-            tree.add(s.a, si)
-                .map_err(|e| ToolError::Execution(format!("kd-tree insert failed: {e:?}")))?;
-            if s.a != s.b {
-                tree.add(s.b, si)
-                    .map_err(|e| ToolError::Execution(format!("kd-tree insert failed: {e:?}")))?;
-            }
-        }
-
         ctx.progress.info(&format!(
             "matching {} feature(s) against {} near segment(s) in 3D",
             layer.len(),
@@ -185,17 +169,12 @@ impl Tool for Near3dTool {
             // reported deltas and angles.
             let mut src: Option<P3> = None;
 
-            // Minimise over every input vertex. For each, search a widening
-            // candidate set then refine exactly: the kd-tree ranks by *vertex*
-            // distance, so the true winner may not be the nearest vertex.
+            // Minimise over every input vertex and near segment. Endpoint-only
+            // kd-tree candidates are not sufficient: a long segment can cross
+            // the search sphere while both endpoints lie far outside it.
             let mut best: Option<(f64, P3, usize, usize)> = None;
             for p in &src_pts {
-                let want = 32usize.min(near_segs.len().max(1) * 2);
-                let Ok(hits) = tree.nearest(p, want, &squared_euclidean) else {
-                    continue;
-                };
-                for (_, &si) in hits {
-                    let s = &near_segs[si];
+                for s in &near_segs {
                     if self_join && s.feature == fi {
                         continue;
                     }

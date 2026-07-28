@@ -196,7 +196,7 @@ fn repair_geometry_z(
             exterior,
             interiors,
         } => Geometry::Polygon {
-            exterior: wbvector::Ring::new(repair_run(
+            exterior: wbvector::Ring::new(repair_ring(
                 exterior.coords(),
                 placeholder,
                 method,
@@ -207,7 +207,7 @@ fn repair_geometry_z(
             interiors: interiors
                 .iter()
                 .map(|r| {
-                    wbvector::Ring::new(repair_run(
+                    wbvector::Ring::new(repair_ring(
                         r.coords(),
                         placeholder,
                         method,
@@ -223,7 +223,7 @@ fn repair_geometry_z(
                 .iter()
                 .map(|(e, hs)| {
                     (
-                        wbvector::Ring::new(repair_run(
+                        wbvector::Ring::new(repair_ring(
                             e.coords(),
                             placeholder,
                             method,
@@ -233,7 +233,7 @@ fn repair_geometry_z(
                         )),
                         hs.iter()
                             .map(|r| {
-                                wbvector::Ring::new(repair_run(
+                                wbvector::Ring::new(repair_ring(
                                     r.coords(),
                                     placeholder,
                                     method,
@@ -264,6 +264,33 @@ fn is_missing(c: &Coord, placeholder: Option<f64>) -> bool {
         None => true,
         Some(z) => !z.is_finite() || placeholder.map(|p| (z - p).abs() < 1e-9).unwrap_or(false),
     }
+}
+
+fn repair_ring(
+    coords: &[Coord],
+    placeholder: Option<f64>,
+    method: Method,
+    extrapolate: bool,
+    filled: &mut usize,
+    unfilled: &mut usize,
+) -> Vec<Coord> {
+    if coords.is_empty() {
+        return Vec::new();
+    }
+    let Some(start) = coords.iter().position(|c| !is_missing(c, placeholder)) else {
+        *unfilled += coords.len();
+        return coords.to_vec();
+    };
+    let mut closed: Vec<Coord> = coords[start..]
+        .iter()
+        .chain(coords[..start].iter())
+        .cloned()
+        .collect();
+    closed.push(closed[0].clone());
+    let mut repaired = repair_run(&closed, placeholder, method, extrapolate, filled, unfilled);
+    repaired.pop();
+    repaired.rotate_right(start);
+    repaired
 }
 
 /// Fills missing Z across one vertex sequence, interpolating against cumulative
@@ -304,8 +331,9 @@ fn repair_run(
             continue;
         }
         // Nearest valid neighbour on each side.
-        let before = valid.iter().rev().find(|&&v| v < i).copied();
-        let after = valid.iter().find(|&&v| v > i).copied();
+        let split = valid.partition_point(|&v| v < i);
+        let before = split.checked_sub(1).map(|j| valid[j]);
+        let after = valid.get(split).copied().filter(|&v| v > i);
 
         let z = match (before, after) {
             (Some(a), Some(b)) => {

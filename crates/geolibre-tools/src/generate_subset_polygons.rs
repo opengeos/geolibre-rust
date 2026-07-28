@@ -387,7 +387,40 @@ fn split(
             .then_with(|| a.cmp(b))
     });
 
-    let mid = idx.len() / 2;
+    // The split must fall on a distinct-coordinate boundary. A run of
+    // coincident points straddling the midpoint would otherwise be cut in two,
+    // and each half would then count that one location independently — so a
+    // single stack could end up with several `subset_id`s, contradicting the
+    // collapse that `coincident_points = "single"` promises.
+    let boundary = |b: usize| b > 0 && b < idx.len() && key(idx[b - 1]) != key(idx[b]);
+    let target = idx.len() / 2;
+    let mid = if boundary(target) {
+        target
+    } else {
+        // Nearest distinct-coordinate boundary either side of the midpoint.
+        let up = (target + 1..idx.len()).find(|b| boundary(*b));
+        let down = (1..target).rev().find(|b| boundary(*b));
+        match (up, down) {
+            (Some(u), Some(d)) => {
+                if u - target <= target - d {
+                    u
+                } else {
+                    d
+                }
+            }
+            (Some(u), None) => u,
+            (None, Some(d)) => d,
+            // Every point shares this coordinate: no split can separate them.
+            (None, None) => {
+                out.push(Leaf {
+                    rect,
+                    indices: idx.to_vec(),
+                });
+                return;
+            }
+        }
+    };
+
     // Both halves must still clear the minimum, measured with the SAME metric
     // the maximum uses — comparing a raw count against a coincidence-collapsed
     // maximum would let a split proceed that is known in advance to leave an
@@ -768,6 +801,41 @@ mod tests {
             polys.len(),
             1,
             "coincident points cannot be separated, so one subset is correct"
+        );
+    }
+
+    /// A stack of coincident points must land wholly in one subset. If the
+    /// split boundary could fall inside the stack, both halves would count that
+    /// one location and it would receive several subset ids.
+    #[test]
+    fn coincident_stack_is_not_split_across_subsets() {
+        // 30 distinct locations plus a 40-deep stack sitting mid-range, so the
+        // naive midpoint lands inside the stack.
+        let mut pts: Vec<(f64, f64)> = (0..30).map(|i| (i as f64, 0.0)).collect();
+        pts.extend(std::iter::repeat_n((15.0, 0.0), 40));
+        let path = point_layer(&pts);
+        let (_, tagged, _) = run(
+            path,
+            json!({ "min_points_per_subset": 2, "max_points_per_subset": 20, "clip_to_hull": false }),
+        );
+
+        // Collect the subset ids assigned to the stacked coordinate.
+        let xi = tagged.schema.field_index("subset_id").unwrap();
+        let mut ids = std::collections::BTreeSet::new();
+        for f in tagged.iter() {
+            let Some(Geometry::Point(c)) = f.geometry.as_ref() else {
+                continue;
+            };
+            if (c.x - 15.0).abs() < 1e-12 && c.y.abs() < 1e-12 {
+                if let wbvector::FieldValue::Integer(v) = f.attributes[xi] {
+                    ids.insert(v);
+                }
+            }
+        }
+        assert_eq!(
+            ids.len(),
+            1,
+            "the coincident stack must sit in exactly one subset, got ids {ids:?}"
         );
     }
 

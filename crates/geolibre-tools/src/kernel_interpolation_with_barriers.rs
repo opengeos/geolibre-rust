@@ -964,6 +964,38 @@ mod tests {
         assert_eq!(res.outputs["observation_count"], json!(6));
     }
 
+    /// A 45-degree barrier must be impermeable. A rasterized diagonal wall is a
+    /// staircase, and an 8-connected search that ignores corners crosses it
+    /// between the blocked cells even though the burn leaves no cell gaps — the
+    /// axis-aligned tests cannot catch that.
+    #[test]
+    fn diagonal_barrier_is_not_permeable() {
+        // Observations either side of a wall running corner to corner.
+        let pts = points(&[(1.0, 9.0, 0.0), (9.0, 1.0, 100.0)]);
+        let wall = barrier(&[vec![(-1.0, -1.0), (11.0, 11.0)]]);
+
+        let (plain, _) = run(json!({
+            "input": pts.clone(), "z_field": "z", "cell_size": 0.5, "bandwidth": 60.0
+        }));
+        let (walled, _) = run(json!({
+            "input": pts, "z_field": "z", "cell_size": 0.5,
+            "bandwidth": 60.0, "barriers": wall
+        }));
+
+        // Sample well inside the upper-left half, which holds only the 0-valued
+        // observation. Without the wall the 100 leaks across; with it, it cannot.
+        let col = ((2.0 - plain.x_min) / plain.cell_size_x) as isize;
+        let row = ((plain.y_min + plain.rows as f64 * plain.cell_size_y - 8.0) / plain.cell_size_y)
+            as isize;
+        let a = plain.get(0, row, col);
+        let b = walled.get(0, row, col);
+        assert!(a.is_finite() && b.is_finite());
+        assert!(
+            b < a - 1.0,
+            "a diagonal wall must block influence: unblocked {a}, walled {b}"
+        );
+    }
+
     /// A polygon barrier is honoured, not silently ignored — only line barriers
     /// used to be walked, so a MultiPolygon barrier was invisible.
     #[test]

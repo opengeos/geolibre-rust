@@ -134,7 +134,7 @@ impl Tool for SummarizeCategoricalRasterTool {
         let row_area = row_areas(&raster);
 
         // AOI mask: None means "every cell participates". Otherwise each cell
-        // carries the id of the AOI feature containing it, or usize::MAX.
+        // carries EVERY AOI feature containing it, so overlaps are preserved.
         let aoi = match aoi_path {
             Some(path) => {
                 let layer = load_input_layer(path)?;
@@ -154,14 +154,19 @@ impl Tool for SummarizeCategoricalRasterTool {
             for row in 0..rows {
                 let area = row_area[row] * unit_scale;
                 for col in 0..cols {
-                    let aoi_id = match &aoi {
-                        None => 0_usize,
+                    // A cell may belong to SEVERAL overlapping AOI features, so
+                    // it is accumulated once per containing feature. A scalar
+                    // "last writer wins" mask would make each per-feature
+                    // summary depend on feature order and silently drop the
+                    // overlap from all but one of them.
+                    let slots: &[usize] = match &aoi {
+                        None => &[0_usize],
                         Some((mask, _)) => {
-                            let id = mask[row * cols + col];
-                            if id == usize::MAX {
+                            let s = &mask[row * cols + col];
+                            if s.is_empty() {
                                 continue;
                             }
-                            id
+                            s.as_slice()
                         }
                     };
                     let v = raster.get(band, row as isize, col as isize);
@@ -177,12 +182,16 @@ impl Tool for SummarizeCategoricalRasterTool {
                     } else {
                         v.round() as i64
                     };
-                    let e = acc.entry((*band_1based, aoi_id, class)).or_insert((0, 0.0));
-                    e.0 += 1;
-                    e.1 += area;
-                    let t = totals.entry((*band_1based, aoi_id)).or_insert((0, 0.0));
-                    t.0 += 1;
-                    t.1 += area;
+                    for aoi_id in slots {
+                        let e = acc
+                            .entry((*band_1based, *aoi_id, class))
+                            .or_insert((0, 0.0));
+                        e.0 += 1;
+                        e.1 += area;
+                        let t = totals.entry((*band_1based, *aoi_id)).or_insert((0, 0.0));
+                        t.0 += 1;
+                        t.1 += area;
+                    }
                 }
             }
             ctx.progress
@@ -276,13 +285,17 @@ fn row_areas(raster: &wbraster::Raster) -> Vec<f64> {
         .collect()
 }
 
-/// Rasterises the AOI polygons onto the raster grid, returning a per-cell
-/// feature index (`usize::MAX` for cells outside every AOI) and the label list.
+/// Rasterises the AOI polygons onto the raster grid, returning per cell the list
+/// of AOI features containing it (empty outside every AOI) and the label list.
+///
+/// A list rather than a scalar because AOI features may overlap: a cell in an
+/// overlap belongs to each of them, and collapsing it to one would make the
+/// per-feature summaries order-dependent.
 fn build_aoi_mask(
     raster: &wbraster::Raster,
     layer: &Layer,
     id_field: Option<&str>,
-) -> Result<(Vec<usize>, Vec<String>), ToolError> {
+) -> Result<(Vec<Vec<usize>>, Vec<String>), ToolError> {
     let rows = raster.rows;
     let cols = raster.cols;
     let cx = raster.cell_size_x.abs();
@@ -290,7 +303,7 @@ fn build_aoi_mask(
     let y_max = raster.y_min + rows as f64 * cy;
 
     let mut labels: Vec<String> = Vec::new();
-    let mut mask = vec![usize::MAX; rows * cols];
+    let mut mask: Vec<Vec<usize>> = vec![Vec::new(); rows * cols];
 
     let id_idx = match id_field {
         Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
@@ -336,7 +349,10 @@ fn build_aoi_mask(
             for col in col_lo..col_hi {
                 let x = raster.x_min + (col as f64 + 0.5) * cx;
                 if geometry_contains_point(geom, x, y) {
-                    mask[row * cols + col] = slot;
+                    let cell = &mut mask[row * cols + col];
+                    if !cell.contains(&slot) {
+                        cell.push(slot);
+                    }
                 }
             }
         }
@@ -723,6 +739,53 @@ mod tests {
             get_int(&layer, layer.iter().next().unwrap(), "cell_count"),
             Some(2)
         );
+    }
+
+    /// Overlapping AOI features each get a complete summary: a cell in the
+    /// overlap counts for BOTH, rather than only whichever feature happened to
+    /// be rasterized last.
+    #[test]
+    fn overlapping_aoi_features_both_count_the_shared_cells() {
+        // 4x1 row, all class 1. Two AOIs overlapping on the middle two cells.
+        let path = raster(4, 1, 1, &[1.0, 1.0, 1.0, 1.0]);
+        let mut aoi = Layer::new("aoi");
+        aoi.add_field(FieldDef::new("name", FieldType::Text));
+        let mut add = |x0: f64, x1: f64, name: &str| {
+            aoi.add_feature(
+                Some(Geometry::Polygon {
+                    exterior: Ring(vec![
+                        Coord::xy(x0, 0.0),
+                        Coord::xy(x1, 0.0),
+                        Coord::xy(x1, 1.0),
+                        Coord::xy(x0, 1.0),
+                        Coord::xy(x0, 0.0),
+                    ]),
+                    interiors: vec![],
+                }),
+                &[("name", FieldValue::Text(name.into()))],
+            )
+            .unwrap();
+        };
+        add(0.0, 3.0, "west");
+        add(1.0, 4.0, "east");
+        let aid = wbvector::memory_store::put_vector(aoi);
+        let aoi_path = wbvector::memory_store::make_vector_memory_path(&aid);
+
+        let layer = run_with(json!({
+            "input": path, "aoi": aoi_path, "aoi_id_field": "name"
+        }));
+
+        let ai = layer.schema.field_index("aoi_id").unwrap();
+        let mut counts = std::collections::BTreeMap::new();
+        for f in layer.iter() {
+            if let FieldValue::Text(name) = &f.attributes[ai] {
+                counts.insert(name.clone(), get_int(&layer, f, "cell_count").unwrap());
+            }
+        }
+        // Each AOI spans 3 cells; the middle two are shared, so both must
+        // report 3 rather than one of them losing the overlap.
+        assert_eq!(counts.get("west").copied(), Some(3), "counts {counts:?}");
+        assert_eq!(counts.get("east").copied(), Some(3), "counts {counts:?}");
     }
 
     #[test]

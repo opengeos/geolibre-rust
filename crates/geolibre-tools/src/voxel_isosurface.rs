@@ -33,6 +33,13 @@
 //! watertight by construction — `sphere_surface_is_closed` asserts exactly that,
 //! and `capped_surface_is_closed_when_the_blob_meets_the_boundary` asserts it
 //! still holds once `close_boundaries` seals a surface against the volume edge.
+//!
+//! **One documented exception:** cells touching *interior* no-data are skipped,
+//! because their classification is undefined. A no-data pocket inside the volume
+//! therefore leaves an unsealed rim — `close_boundaries` shells only the outer
+//! faces, and inventing a value for unknown cells would fabricate geometry. Fill
+//! the field first (or mask the region out) when a closed solid is required.
+//! `interior_nodata_leaves_an_open_rim` pins this behaviour.
 //! The cost is more triangles for the same surface, which `smooth` and
 //! downstream decimation can absorb.
 //!
@@ -114,7 +121,7 @@ impl Tool for VoxelIsosurfaceTool {
                 },
                 ToolParamSpec {
                     name: "close_boundaries",
-                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true). Implemented by marching an extra below-iso shell, so the cap is welded to the surface; it lies between the boundary plane and one cell beyond it.",
+                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true). Implemented by marching an extra below-iso shell, so the cap is welded to the surface; it lies between the boundary plane and one cell beyond it. This seals the OUTER faces only: cells touching interior no-data are skipped, so a no-data pocket inside the volume still leaves an open rim.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -867,6 +874,81 @@ mod tests {
         assert_eq!(
             unpaired, 0,
             "close_boundaries must seal the surface; {unpaired} edge(s) are not shared by exactly two triangles"
+        );
+    }
+
+    /// Interior no-data is the documented exception to the watertight
+    /// guarantee: those cells are skipped, so a hole inside the volume leaves an
+    /// unsealed rim. Pinned here so the limitation cannot quietly change.
+    #[test]
+    fn interior_nodata_leaves_an_open_rim() {
+        let n = 16;
+        let c = 8.0;
+        let mut r = Raster::new(RasterConfig {
+            cols: n,
+            rows: n,
+            bands: n,
+            x_min: 0.0,
+            y_min: 0.0,
+            cell_size: 1.0,
+            cell_size_y: Some(1.0),
+            nodata: -9999.0,
+            data_type: DataType::F32,
+            crs: CrsInfo {
+                epsg: Some(3857),
+                wkt: None,
+                proj4: None,
+            },
+            metadata: Vec::new(),
+        });
+        for k in 0..n {
+            for j in 0..n {
+                for i in 0..n {
+                    let (x, y, z) = (0.5 + i as f64, n as f64 - 0.5 - j as f64, k as f64);
+                    // A no-data pocket straddling the iso surface itself (the
+                    // sphere at r = 5), so the extracted mesh actually runs into
+                    // it. A pocket buried deep inside the solid would never be
+                    // touched by the surface and would prove nothing.
+                    let v = if (i as f64 - (c + 5.0)).abs() < 2.0
+                        && (j as f64 - c).abs() < 2.0
+                        && (k as f64 - c).abs() < 2.0
+                    {
+                        -9999.0
+                    } else {
+                        -(((x - c).powi(2) + (y - c).powi(2) + (z - c).powi(2)).sqrt())
+                    };
+                    r.set(k as isize, j as isize, i as isize, v).unwrap();
+                }
+            }
+        }
+        let id = wbraster::memory_store::put_raster(r);
+        let path = wbraster::memory_store::make_raster_memory_path(&id);
+
+        let (layer, _) = run(json!({
+            "input": path, "values": "-5", "close_boundaries": true
+        }));
+        let tris = triangles(&layer);
+        assert!(!tris.is_empty());
+
+        type Key = (i64, i64, i64);
+        let q = |v: f64| (v / 1e-7).round() as i64;
+        let mut edges: HashMap<(Key, Key), usize> = HashMap::new();
+        for t in &tris {
+            for k in 0..3 {
+                let a = (q(t[k][0]), q(t[k][1]), q(t[k][2]));
+                let b = (
+                    q(t[(k + 1) % 3][0]),
+                    q(t[(k + 1) % 3][1]),
+                    q(t[(k + 1) % 3][2]),
+                );
+                let key = if a <= b { (a, b) } else { (b, a) };
+                *edges.entry(key).or_insert(0) += 1;
+            }
+        }
+        let unpaired = edges.values().filter(|c| **c != 2).count();
+        assert!(
+            unpaired > 0,
+            "interior no-data is expected to leave an open rim; if this now closes, the guarantee has been strengthened and the docs should be updated"
         );
     }
 

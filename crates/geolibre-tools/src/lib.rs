@@ -9,6 +9,7 @@
 
 mod add_surface_information;
 mod adjust_3d_z;
+mod adjust_stream_to_raster;
 mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
@@ -17,11 +18,13 @@ mod attribute_uncertainty;
 mod boundary_clean;
 mod buffer_3d;
 mod build_balanced_zones;
+mod build_seamlines;
 mod calculate_adjacent_fields;
 mod calculate_distance_band;
 mod calculate_grid_convergence_angle;
 mod calculate_missing_z_values;
 mod calculate_motion_statistics;
+mod calculate_transformation_errors;
 mod calculate_utm_zone;
 mod cartogram;
 mod causal_inference_analysis;
@@ -34,6 +37,7 @@ mod colocation_analysis;
 mod combine;
 mod common;
 mod compare_spatial_weights;
+mod construct_sight_lines;
 mod corridor;
 mod count_overlapping_features;
 mod create_cartographic_partitions;
@@ -53,6 +57,7 @@ mod detect_image_anomalies;
 mod diffusion_interpolation_with_barriers;
 mod directional_distribution;
 mod directional_trend;
+mod dissolve_route_events;
 mod eighty_twenty_analysis;
 mod eliminate_polygon_part;
 mod eliminate_polygons;
@@ -83,8 +88,10 @@ mod focal_statistics;
 mod forest_based_forecast;
 mod fuzzy_overlay;
 mod gaussian_geostatistical_simulations;
+mod generate_breach_lines;
 mod generate_near_table;
 mod generate_od_links;
+mod generate_points_along_3d_lines;
 mod generate_spatial_weights_matrix;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
@@ -96,6 +103,7 @@ mod h3_polyfill;
 mod h3_to_vector;
 mod hdbscan;
 mod hilbert;
+mod idw_3d;
 mod incremental_spatial_autocorrelation;
 mod integrate;
 mod interpolate_from_spatiotemporal_points;
@@ -103,20 +111,25 @@ mod interpolate_shape;
 mod kml_to_features;
 mod lidar_common;
 mod line_of_sight;
+mod local_polynomial_interpolation;
 mod locate_lines_along_routes;
 mod matched_filter_target_detection;
 mod maximum_likelihood_classification;
 mod median_center;
+mod merge_divided_roads;
 mod mgwr;
+mod minimum_bounding_volume;
 mod multicriteria_overlay;
 mod multiple_ring_buffer;
 mod near_3d;
 mod neighborhood_summary_statistics;
 mod non_maximum_suppression;
 mod optics_clustering;
+mod optimal_corridor_connections;
 mod optimal_interpolation;
 mod path_distance;
 mod pmtiles;
+mod pivot_table;
 mod pmtiles_extract;
 mod point_statistics;
 mod points_to_line;
@@ -148,12 +161,17 @@ mod smooth_shared_edges;
 mod snap_tracks;
 mod solar_radiation;
 mod spatial_eigenvector_filtering;
+mod spatially_constrained_multivariate_clustering;
 mod spectral_index;
 mod split_by_attributes;
+mod split_by_features;
 mod split_line_at_point;
+mod stack_profile;
 mod storage_capacity;
 mod subdivide_polygon;
+mod subset_features;
 mod summarize_nearby;
+mod summarize_percent_change;
 mod summarize_within;
 mod summary_statistics;
 mod surface_volume;
@@ -294,6 +312,24 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(build_seamlines::BuildSeamlinesTool),
+        Box::new(merge_divided_roads::MergeDividedRoadsTool),
+        Box::new(spatially_constrained_multivariate_clustering::SpatiallyConstrainedMultivariateClusteringTool),
+        Box::new(optimal_corridor_connections::OptimalCorridorConnectionsTool),
+        Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
+        Box::new(generate_breach_lines::GenerateBreachLinesTool),
+        Box::new(idw_3d::Idw3dTool),
+        Box::new(local_polynomial_interpolation::LocalPolynomialInterpolationTool),
+        Box::new(minimum_bounding_volume::MinimumBoundingVolumeTool),
+        Box::new(stack_profile::StackProfileTool),
+        Box::new(generate_points_along_3d_lines::GeneratePointsAlong3dLinesTool),
+        Box::new(split_by_features::SplitByFeaturesTool),
+        Box::new(construct_sight_lines::ConstructSightLinesTool),
+        Box::new(summarize_percent_change::SummarizePercentChangeTool),
+        Box::new(dissolve_route_events::DissolveRouteEventsTool),
+        Box::new(calculate_transformation_errors::CalculateTransformationErrorsTool),
+        Box::new(subset_features::SubsetFeaturesTool),
+        Box::new(pivot_table::PivotTableTool),
         Box::new(classification_accuracy_assessment::ClassificationAccuracyAssessmentTool),
         Box::new(diffusion_interpolation_with_barriers::DiffusionInterpolationWithBarriersTool),
         Box::new(compare_spatial_weights::CompareSpatialWeightsTool),
@@ -568,6 +604,187 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         || ToolParamSchema::enum_values(&["viridis", "magma", "turbo", "terrain", "grayscale"]);
 
     let map = match tool_id {
+        "build_seamlines" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("footprints", vector_in()),
+            ("method", ToolParamSchema::enum_values(&["voronoi", "order", "radiometry", "edge_detection"])),
+            ("sort_ascending", ToolParamSchema::bool()),
+            ("cell_size", float()),
+            ("band", int()),
+            ("min_region_size", int()),
+            ("blend_width", float()),
+            ("blend_type", ToolParamSchema::enum_values(&["both", "inside", "outside"])),
+        ]),
+        "merge_divided_roads" => schemas(&[
+            ("input", vector_in()),
+            ("merge_field", ToolParamSchema::string()),
+            ("merge_distance", float()),
+            ("output", vector_out()),
+            ("output_displacement_features", vector_out()),
+            ("character_field", ToolParamSchema::string()),
+            ("output_table", table_out()),
+        ]),
+        "spatially_constrained_multivariate_clustering" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("analysis_fields", ToolParamSchema::string()),
+            ("number_of_clusters", int()),
+            ("neighborhood", ToolParamSchema::enum_values(&["contiguity_edges", "contiguity_edges_corners", "knn"])),
+            ("number_of_neighbors", int()),
+            ("constraint", ToolParamSchema::enum_values(&["none", "feature_count", "attribute_value"])),
+            ("constraint_field", ToolParamSchema::string()),
+            ("min_constraint", float()),
+            ("max_constraint", float()),
+            ("scale_data", ToolParamSchema::bool()),
+            ("output_table", table_out()),
+        ]),
+        "optimal_corridor_connections" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("cost_raster", raster_in()),
+            ("barriers", vector_in()),
+            ("corridor_width", float()),
+            ("output_lines", vector_out()),
+            ("neighbor_option", ToolParamSchema::enum_values(&["spanning_tree", "all_pairs"])),
+            ("cell_size", float()),
+        ]),
+        "adjust_stream_to_raster" => schemas(&[
+            ("input", vector_in()),
+            ("dem", raster_in()),
+            ("output", vector_out()),
+            ("snap_distance", float()),
+            ("channel_threshold", float()),
+            ("remove_disconnected", ToolParamSchema::bool()),
+            ("output_stream_raster", raster_out()),
+            ("output_flow_direction", raster_out()),
+            ("output_split_points", vector_out()),
+        ]),
+        "generate_breach_lines" => schemas(&[
+            ("input", vector_in()),
+            ("dem", raster_in()),
+            ("output", vector_out()),
+            ("connection_points", vector_in()),
+            ("method", ToolParamSchema::enum_values(&["minimum_breaching_cost", "shortest_path", "minimum_elevation_change"])),
+            ("max_length", float()),
+        ]),
+        "idw_3d" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("z_field", ToolParamSchema::string()),
+            ("power", float()),
+            ("elev_inflation_factor", float()),
+            ("x_spacing", float()),
+            ("y_spacing", float()),
+            ("z_spacing", float()),
+            ("z_min", float()),
+            ("z_max", float()),
+            ("neighbors", int()),
+            ("search_radius", float()),
+            ("output_cv_features", vector_out()),
+            ("epsg", int()),
+        ]),
+        "local_polynomial_interpolation" => schemas(&[
+            ("input", vector_in()),
+            ("z_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("cell_size", float()),
+            ("order", int()),
+            ("kernel", ToolParamSchema::enum_values(&["exponential", "gaussian", "quartic", "epanechnikov", "fifth_order", "constant"])),
+            ("bandwidth", float()),
+            ("neighbors", int()),
+            ("weight_field", ToolParamSchema::string()),
+            ("condition_number", float()),
+            ("output_type", ToolParamSchema::enum_values(&["prediction", "standard_error", "condition_number"])),
+            ("epsg", int()),
+        ]),
+        "minimum_bounding_volume" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("z_value", ToolParamSchema::string()),
+            ("geometry_type", ToolParamSchema::enum_values(&["convex_hull", "sphere", "envelope"])),
+            ("group_option", ToolParamSchema::enum_values(&["none", "all", "list"])),
+            ("group_field", ToolParamSchema::string()),
+            ("mbv_fields", ToolParamSchema::bool()),
+        ]),
+        "stack_profile" => schemas(&[
+            ("input", vector_in()),
+            ("surfaces", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("sample_distance", float()),
+            ("line_id_field", ToolParamSchema::string()),
+            ("method", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+        ]),
+        "generate_points_along_3d_lines" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["distance", "percentage", "distance_field"])),
+            ("distance", float()),
+            ("percentage", float()),
+            ("distance_field", ToolParamSchema::string()),
+            ("include_end_points", ToolParamSchema::bool()),
+            ("add_chainage", ToolParamSchema::bool()),
+        ]),
+        "split_by_features" => schemas(&[
+            ("input", vector_in()),
+            ("split_features", vector_in()),
+            ("split_field", ToolParamSchema::string()),
+            ("output_dir", ToolParamSchema::string()),
+            ("output_format", ToolParamSchema::enum_values(&["geojson", "shp", "gpkg", "parquet", "csv"])),
+        ]),
+        "construct_sight_lines" => schemas(&[
+            ("observers", vector_in()),
+            ("targets", vector_in()),
+            ("output", vector_out()),
+            ("observer_height_field", ToolParamSchema::string()),
+            ("target_height_field", ToolParamSchema::string()),
+            ("join_field", ToolParamSchema::string()),
+            ("sample_distance", float()),
+            ("output_direction", ToolParamSchema::bool()),
+            ("distance_method", ToolParamSchema::enum_values(&["2d", "3d"])),
+        ]),
+        "summarize_percent_change" => schemas(&[
+            ("input", vector_in()),
+            ("current_features", vector_in()),
+            ("previous_features", vector_in()),
+            ("output", vector_out()),
+            ("search_radius", float()),
+        ]),
+        "dissolve_route_events" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("route_id_field", ToolParamSchema::string()),
+            ("from_measure_field", ToolParamSchema::string()),
+            ("to_measure_field", ToolParamSchema::string()),
+            ("dissolve_fields", ToolParamSchema::string()),
+            ("mode", ToolParamSchema::enum_values(&["dissolve", "concatenate"])),
+            ("tolerance", float()),
+            ("separator", ToolParamSchema::string()),
+        ]),
+        "calculate_transformation_errors" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("method", ToolParamSchema::enum_values(&["affine", "similarity", "projective"])),
+            ("keep_geometry", ToolParamSchema::bool()),
+        ]),
+        "subset_features" => schemas(&[
+            ("input", vector_in()),
+            ("output_training", vector_out()),
+            ("output_test", vector_out()),
+            ("size", float()),
+            ("size_method", ToolParamSchema::enum_values(&["percentage", "absolute"])),
+            ("seed", int()),
+            ("group_field", ToolParamSchema::string()),
+        ]),
+        "pivot_table" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("fields", ToolParamSchema::string()),
+            ("pivot_field", ToolParamSchema::string()),
+            ("value_field", ToolParamSchema::string()),
+            ("aggregate", ToolParamSchema::enum_values(&["first", "sum", "mean", "min", "max", "count"])),
+        ]),
         "classification_accuracy_assessment" => schemas(&[
             ("points", vector_in()),
             ("class_field", ToolParamSchema::string()),

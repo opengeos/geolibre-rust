@@ -15,6 +15,7 @@ mod aggregate_polygons;
 mod apportion_polygon;
 mod assign_projection;
 mod attribute_uncertainty;
+mod block_statistics;
 mod boundary_clean;
 mod buffer_3d;
 mod build_balanced_zones;
@@ -42,6 +43,7 @@ mod corridor;
 mod count_overlapping_features;
 mod create_cartographic_partitions;
 mod create_overpass;
+mod create_underpass;
 mod create_routes;
 mod create_spatially_balanced_points;
 mod cul_de_sac_masks;
@@ -67,6 +69,7 @@ mod enforce_river_monotonicity;
 mod estimate_time_to_event;
 mod evaluate_bin_sizes;
 mod excel_to_table;
+mod euclidean_direction;
 mod expand_shrink;
 mod exploratory_interpolation;
 mod exploratory_regression;
@@ -84,6 +87,7 @@ mod find_identical;
 mod find_meeting_locations;
 mod find_space_time_matches;
 mod flip_line;
+mod focal_flow;
 mod focal_statistics;
 mod forest_based_forecast;
 mod fuzzy_overlay;
@@ -93,6 +97,7 @@ mod generate_near_table;
 mod generate_od_links;
 mod generate_points_along_3d_lines;
 mod generate_spatial_weights_matrix;
+mod generate_subset_polygons;
 mod generate_transects_along_lines;
 mod geographically_weighted_regression;
 mod geoparquet_io;
@@ -105,9 +110,11 @@ mod hdbscan;
 mod hilbert;
 mod idw_3d;
 mod incremental_spatial_autocorrelation;
+mod inside_3d;
 mod integrate;
 mod interpolate_from_spatiotemporal_points;
 mod interpolate_shape;
+mod kernel_interpolation_with_barriers;
 mod kml_to_features;
 mod lidar_common;
 mod line_of_sight;
@@ -120,6 +127,7 @@ mod merge_divided_roads;
 mod mgwr;
 mod minimum_bounding_volume;
 mod multicriteria_overlay;
+mod multilook;
 mod multiple_ring_buffer;
 mod near_3d;
 mod neighborhood_summary_statistics;
@@ -151,8 +159,10 @@ mod reproject_raster;
 mod resolve_building_conflicts;
 mod ripleys_k;
 mod rubbersheet_features;
+mod sar_coherence;
 mod similarity_search;
 mod simplify_3d_line;
+mod simplify_by_circular_arcs;
 mod simplify_building;
 mod simplify_shared_edges;
 mod slice_raster;
@@ -171,6 +181,7 @@ mod storage_capacity;
 mod subdivide_polygon;
 mod subset_features;
 mod summarize_nearby;
+mod summarize_categorical_raster;
 mod summarize_percent_change;
 mod summarize_within;
 mod summary_statistics;
@@ -184,10 +195,12 @@ mod transform_features;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
+mod union_3d;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
 mod vector_to_pmtiles;
+mod voxel_isosurface;
 mod write_pmtiles;
 
 mod sort_features;
@@ -320,12 +333,17 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
         Box::new(local_polynomial_interpolation::LocalPolynomialInterpolationTool),
+        Box::new(kernel_interpolation_with_barriers::KernelInterpolationWithBarriersTool),
         Box::new(minimum_bounding_volume::MinimumBoundingVolumeTool),
+        Box::new(voxel_isosurface::VoxelIsosurfaceTool),
+        Box::new(inside_3d::Inside3dTool),
+        Box::new(union_3d::Union3dTool),
         Box::new(stack_profile::StackProfileTool),
         Box::new(generate_points_along_3d_lines::GeneratePointsAlong3dLinesTool),
         Box::new(split_by_features::SplitByFeaturesTool),
         Box::new(construct_sight_lines::ConstructSightLinesTool),
         Box::new(summarize_percent_change::SummarizePercentChangeTool),
+        Box::new(summarize_categorical_raster::SummarizeCategoricalRasterTool),
         Box::new(dissolve_route_events::DissolveRouteEventsTool),
         Box::new(calculate_transformation_errors::CalculateTransformationErrorsTool),
         Box::new(subset_features::SubsetFeaturesTool),
@@ -339,8 +357,10 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(maximum_likelihood_classification::MaximumLikelihoodClassificationTool),
         Box::new(focal_statistics::FocalStatisticsTool),
         Box::new(multicriteria_overlay::MulticriteriaOverlayTool),
+        Box::new(multilook::MultilookTool),
         Box::new(surface_volume::SurfaceVolumeTool),
         Box::new(generate_spatial_weights_matrix::GenerateSpatialWeightsMatrixTool),
+        Box::new(generate_subset_polygons::GenerateSubsetPolygonsTool),
         Box::new(calculate_distance_band::CalculateDistanceBandTool),
         Box::new(point_statistics::PointStatisticsTool),
         Box::new(kml_to_features::KmlToFeaturesTool),
@@ -355,6 +375,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(summary_statistics::SummaryStatisticsTool),
         Box::new(median_center::MedianCenterTool),
         Box::new(flip_line::FlipLineTool),
+        Box::new(focal_flow::FocalFlowTool),
         Box::new(cell_records_to_sectors::CellRecordsToSectorsTool),
         Box::new(estimate_time_to_event::EstimateTimeToEventTool),
         Box::new(transform_route_events::TransformRouteEventsTool),
@@ -369,6 +390,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(densify_sampling_network::DensifySamplingNetworkTool),
         Box::new(feature_vertices_to_points::FeatureVerticesToPointsTool),
         Box::new(create_overpass::CreateOverpassTool),
+        Box::new(create_underpass::CreateUnderpassTool),
         Box::new(features_to_gtfs::FeaturesToGtfsTool),
         Box::new(adjust_3d_z::Adjust3dZTool),
         Box::new(attribute_uncertainty::AttributeUncertaintyTool),
@@ -408,6 +430,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(eliminate_polygon_part::EliminatePolygonPartTool),
         Box::new(simplify_3d_line::Simplify3dLineTool),
         Box::new(simplify_building::SimplifyBuildingTool),
+        Box::new(simplify_by_circular_arcs::SimplifyByCircularArcsTool),
         Box::new(simplify_shared_edges::SimplifySharedEdgesTool),
         Box::new(smooth_shared_edges::SmoothSharedEdgesTool),
         Box::new(emerging_hot_spot_analysis::EmergingHotSpotAnalysisTool),
@@ -426,6 +449,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(apportion_polygon::ApportionPolygonTool),
         Box::new(central_feature::CentralFeatureTool),
         Box::new(expand_shrink::ExpandShrinkTool),
+        Box::new(euclidean_direction::EuclideanDirectionTool),
         Box::new(reconstruct_tracks::ReconstructTracksTool),
         Box::new(solar_radiation::SolarRadiationTool),
         Box::new(hdbscan::HdbscanTool),
@@ -479,6 +503,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(vector_to_pmtiles::VectorToPmTilesTool),
         Box::new(pmtiles_extract::PmtilesExtractTool),
         Box::new(boundary_clean::BoundaryCleanTool),
+        Box::new(block_statistics::BlockStatisticsTool),
         Box::new(calculate_missing_z_values::CalculateMissingZValuesTool),
         Box::new(calculate_motion_statistics::CalculateMotionStatisticsTool),
         Box::new(sort_features::SortFeaturesTool),
@@ -568,6 +593,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(feature_to_line::FeatureToLineTool),
         Box::new(split_raster::SplitRasterTool),
         Box::new(surface_parameters::SurfaceParametersTool),
+        Box::new(sar_coherence::SarCoherenceTool),
         Box::new(rescale_by_function::RescaleByFunctionTool),
         Box::new(calculate_transit_service_frequency::CalculateTransitServiceFrequencyTool),
     ]
@@ -685,6 +711,29 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output_cv_features", vector_out()),
             ("epsg", int()),
         ]),
+        "kernel_interpolation_with_barriers" => schemas(&[
+            ("input", vector_in()),
+            ("z_field", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("output_error", raster_out()),
+            ("barriers", vector_in()),
+            ("cell_size", float()),
+            (
+                "kernel",
+                ToolParamSchema::enum_values(&[
+                    "exponential",
+                    "gaussian",
+                    "quartic",
+                    "epanechnikov",
+                    "polynomial5",
+                    "constant",
+                ]),
+            ),
+            ("bandwidth", float()),
+            ("power", int()),
+            ("ridge", float()),
+            ("max_neighbors", int()),
+        ]),
         "local_polynomial_interpolation" => schemas(&[
             ("input", vector_in()),
             ("z_field", ToolParamSchema::string()),
@@ -698,6 +747,29 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("condition_number", float()),
             ("output_type", ToolParamSchema::enum_values(&["prediction", "standard_error", "condition_number"])),
             ("epsg", int()),
+        ]),
+        "union_3d" => schemas(&[
+            ("input", vector_in()),
+            ("output", table_out()),
+            ("group_field", ToolParamSchema::string()),
+            ("output_overlap_table", table_out()),
+            ("resolution", int()),
+        ]),
+        "inside_3d" => schemas(&[
+            ("target", vector_in()),
+            ("container", vector_in()),
+            ("output", table_out()),
+            ("mode", ToolParamSchema::enum_values(&["simple", "complex"])),
+            ("output_features", vector_out()),
+        ]),
+        "voxel_isosurface" => schemas(&[
+            ("input", raster_in()),
+            ("values", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("z_min", float()),
+            ("z_spacing", float()),
+            ("close_boundaries", ToolParamSchema::bool()),
+            ("smooth", int()),
         ]),
         "minimum_bounding_volume" => schemas(&[
             ("input", vector_in()),
@@ -743,6 +815,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("sample_distance", float()),
             ("output_direction", ToolParamSchema::bool()),
             ("distance_method", ToolParamSchema::enum_values(&["2d", "3d"])),
+        ]),
+        "summarize_categorical_raster" => schemas(&[
+            ("input", raster_in()),
+            ("output", table_out()),
+            ("aoi", vector_in()),
+            ("aoi_id_field", ToolParamSchema::string()),
+            (
+                "area_units",
+                ToolParamSchema::enum_values(&["map_units", "hectares", "square_kilometers"]),
+            ),
+            ("include_nodata", ToolParamSchema::bool()),
+            ("bands", ToolParamSchema::string()),
         ]),
         "summarize_percent_change" => schemas(&[
             ("input", vector_in()),
@@ -890,6 +974,19 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("ignore_nodata", ToolParamSchema::bool()),
             ("band", int()),
         ]),
+        "multilook" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("complex", ToolParamSchema::bool()),
+            ("range_looks", int()),
+            ("azimuth_looks", int()),
+            ("auto_looks", ToolParamSchema::bool()),
+            (
+                "output_units",
+                ToolParamSchema::enum_values(&["amplitude", "intensity", "db"]),
+            ),
+            ("statistic", ToolParamSchema::enum_values(&["mean", "median"])),
+        ]),
         "multicriteria_overlay" => schemas(&[
             (
                 "inputs",
@@ -919,6 +1016,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("band", int()),
             ("output", table_out()),
+        ]),
+        "generate_subset_polygons" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("output_points", vector_out()),
+            ("min_points_per_subset", int()),
+            ("max_points_per_subset", int()),
+            (
+                "coincident_points",
+                ToolParamSchema::enum_values(&["single", "all"]),
+            ),
+            ("clip_to_hull", ToolParamSchema::bool()),
         ]),
         "generate_spatial_weights_matrix" => schemas(&[
             ("input", vector_in()),
@@ -1068,6 +1177,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("attribute_fields", ToolParamSchema::string()),
         ]),
         "flip_line" => schemas(&[("input", vector_in()), ("output", vector_out())]),
+        "focal_flow" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("threshold", float()),
+            ("band", int()),
+        ]),
         "cell_records_to_sectors" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1182,6 +1297,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                     "DANGLE",
                 ]),
             ),
+        ]),
+        "create_underpass" => schemas(&[
+            ("above", vector_in()),
+            ("below", vector_in()),
+            ("output", vector_out()),
+            ("output_lines", vector_out()),
+            ("margin_along", float()),
+            ("margin_across", float()),
+            ("min_angle", float()),
         ]),
         "create_overpass" => schemas(&[
             ("above", vector_in()),
@@ -1638,6 +1762,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tolerance", float()),
             ("z_factor", float()),
         ]),
+        "simplify_by_circular_arcs" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("tolerance", float()),
+            ("mode", ToolParamSchema::enum_values(&["arcs", "tangent"])),
+            ("min_arc_angle", float()),
+            ("max_radius", float()),
+            ("densify_output", ToolParamSchema::bool()),
+        ]),
         "simplify_building" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -1821,6 +1954,26 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("orientation_only", ToolParamSchema::bool()),
         ]),
+        "block_statistics" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean", "majority", "maximum", "median", "minimum", "minority", "range", "std",
+                    "sum", "variety",
+                ]),
+            ),
+            (
+                "neighborhood",
+                ToolParamSchema::enum_values(&["rectangle", "circle", "annulus", "wedge"]),
+            ),
+            ("size", ToolParamSchema::string()),
+            ("start_angle", float()),
+            ("end_angle", float()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
         "boundary_clean" => schemas(&[
             ("input", raster_in()),
             ("output", raster_out()),
@@ -1838,6 +1991,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
                 "sort",
                 ToolParamSchema::enum_values(&["descending", "ascending", "none"]),
             ),
+            ("band", int()),
+        ]),
+        "euclidean_direction" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("output_distance", raster_out()),
+            ("output_back_direction", raster_out()),
+            ("barriers", raster_in()),
+            ("max_distance", float()),
             ("band", int()),
         ]),
         "expand_shrink" => schemas(&[
@@ -3422,6 +3584,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("polygons", vector_in()),
             ("overlap", int()),
             ("format", ToolParamSchema::enum_values(&["tif", "png"])),
+        ]),
+        "sar_coherence" => schemas(&[
+            ("reference", raster_in()),
+            ("secondary", raster_in()),
+            ("output", raster_out()),
+            ("output_phase", raster_out()),
+            ("window_size", ToolParamSchema::string()),
+            ("bias_correction", ToolParamSchema::bool()),
         ]),
         "surface_parameters" => schemas(&[
             ("input", raster_in()),

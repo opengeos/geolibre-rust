@@ -529,7 +529,9 @@
             dl.hidden = false;
           }
         } catch (e) {
-          $("output").textContent = "Error: " + (e && e.stack ? e.stack : e);
+          // Prefer the message: for a guest trap runTool folds the tool's own
+          // stderr into it, whereas the stack is just wasm-function offsets.
+          $("output").textContent = "Error: " + (e && e.message ? e.message : e);
         } finally {
           $("run").disabled = false;
         }

@@ -132,6 +132,15 @@ async function materializeInput(value) {
   return new Uint8Array(value);
 }
 
+// Build a readable message for a guest trap out of what the tool printed to
+// stderr before aborting. `stdout` here is the shared stdout+stderr capture.
+function describeTrap(argv, err, stdout) {
+  const tool = argv[0] ?? "tool";
+  const tail = stdout.map((s) => s.trimEnd()).filter(Boolean).slice(-12);
+  const detail = tail.length ? `\n${tail.join("\n")}` : "";
+  return `${tool} crashed: ${err.message}${detail}`;
+}
+
 async function exec(argv, inputFiles) {
   const mod = await initTools();
   const inNames = new Set(Object.keys(inputFiles));
@@ -150,7 +159,14 @@ async function exec(argv, inputFiles) {
   const inst = await WebAssembly.instantiate(mod, { wasi_snapshot_preview1: wasi.wasiImport });
   let exitCode = 0;
   try { exitCode = wasi.start(inst); }
-  catch (e) { if (e && e.constructor && e.constructor.name === "WASIProcExit") exitCode = e.code; else throw e; }
+  catch (e) {
+    if (e && e.constructor && e.constructor.name === "WASIProcExit") exitCode = e.code;
+    // A guest trap (a Rust panic aborts to `unreachable`) surfaces as a bare
+    // RuntimeError whose stack is raw wasm-function offsets. The panic message
+    // was already written to stderr, so fold it into the error we rethrow —
+    // otherwise the caller only sees unreadable hex addresses.
+    else throw new Error(describeTrap(argv, e, stdout), { cause: e });
+  }
   // Collect every new file under /work, recursing into subdirectories so tools
   // that write a tree (e.g. raster_to_tiles' {z}/{x}/{y}.png) are surfaced too.
   // Keys are paths relative to /work (nested files use "/" separators).

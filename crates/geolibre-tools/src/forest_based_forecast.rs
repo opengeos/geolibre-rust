@@ -523,6 +523,9 @@ fn parse_iso8601_seconds(s: &str) -> Option<f64> {
     } else {
         (0, 0, 0)
     };
+    if hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;

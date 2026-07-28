@@ -327,8 +327,8 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
 
 /// Metres per page unit.
 fn parse_page_unit(args: &ToolArgs) -> Result<f64, ToolError> {
-    match args.get("page_unit").and_then(Value::as_str).map(str::trim) {
-        None | Some("") | Some("points") | Some("pt") => Ok(0.0254 / 72.0),
+    match parse_optional_str(args, "page_unit")? {
+        None | Some("points") | Some("pt") => Ok(0.0254 / 72.0),
         Some("mm") | Some("millimeters") => Ok(0.001),
         Some("inches") | Some("in") => Ok(0.0254),
         Some(o) => Err(ToolError::Validation(format!(

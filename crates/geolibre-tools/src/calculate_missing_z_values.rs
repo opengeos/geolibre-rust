@@ -482,6 +482,27 @@ mod tests {
         assert_eq!(out.outputs["vertices_unfilled"], json!(0));
     }
 
+    #[test]
+    fn ring_endpoint_repairs_across_closure() {
+        let coords = vec![
+            Coord::xy(0.0, 0.0),
+            Coord::xyz(10.0, 0.0, 0.0),
+            Coord::xyz(10.0, 10.0, 50.0),
+            Coord::xyz(0.0, 10.0, 100.0),
+        ];
+        let (mut filled, mut unfilled) = (0, 0);
+        let repaired = repair_ring(
+            &coords,
+            None,
+            Method::Linear,
+            false,
+            &mut filled,
+            &mut unfilled,
+        );
+        assert!((repaired[0].z.unwrap() - 50.0).abs() < 1e-9);
+        assert_eq!((filled, unfilled), (1, 0));
+    }
+
     /// THE reason to interpolate by distance, not index: unevenly spaced
     /// vertices must weight by geometry.
     #[test]

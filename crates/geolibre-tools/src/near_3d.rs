@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 
+use rstar::{RTree, RTreeObject, AABB};
 use serde_json::{json, Value};
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
@@ -125,6 +126,27 @@ impl Tool for Near3dTool {
                 collect_segments(&nl, li, &mut near_segs);
             }
         }
+        let segment_index = RTree::bulk_load(
+            near_segs
+                .iter()
+                .enumerate()
+                .map(|(index, segment)| IndexedSeg {
+                    index,
+                    envelope: AABB::from_corners(
+                        [
+                            segment.a[0].min(segment.b[0]),
+                            segment.a[1].min(segment.b[1]),
+                            segment.a[2].min(segment.b[2]),
+                        ],
+                        [
+                            segment.a[0].max(segment.b[0]),
+                            segment.a[1].max(segment.b[1]),
+                            segment.a[2].max(segment.b[2]),
+                        ],
+                    ),
+                })
+                .collect(),
+        );
 
         ctx.progress.info(&format!(
             "matching {} feature(s) against {} near segment(s) in 3D",
@@ -174,17 +196,30 @@ impl Tool for Near3dTool {
             // the search sphere while both endpoints lie far outside it.
             let mut best: Option<(f64, P3, usize, usize)> = None;
             for p in &src_pts {
-                for s in &near_segs {
+                let mut consider = |s: &Seg| {
                     if self_join && s.feature == fi {
-                        continue;
+                        return;
                     }
                     let (d2, q) = point_seg_dist2(*p, s.a, s.b);
                     if radius2.is_some_and(|r2| d2 > r2) {
-                        continue;
+                        return;
                     }
                     if best.is_none_or(|(bd, _, _, _)| d2 < bd) {
                         best = Some((d2, q, s.feature, s.layer));
                         src = Some(*p);
+                    }
+                };
+                if let Some(r) = radius {
+                    let query = AABB::from_corners(
+                        [p[0] - r, p[1] - r, p[2] - r],
+                        [p[0] + r, p[1] + r, p[2] + r],
+                    );
+                    for indexed in segment_index.locate_in_envelope_intersecting(&query) {
+                        consider(&near_segs[indexed.index]);
+                    }
+                } else {
+                    for s in &near_segs {
+                        consider(s);
                     }
                 }
             }
@@ -274,6 +309,19 @@ struct Seg {
     b: P3,
     feature: usize,
     layer: usize,
+}
+
+struct IndexedSeg {
+    index: usize,
+    envelope: AABB<P3>,
+}
+
+impl RTreeObject for IndexedSeg {
+    type Envelope = AABB<P3>;
+
+    fn envelope(&self) -> Self::Envelope {
+        self.envelope
+    }
 }
 
 fn z_of(c: &Coord) -> f64 {

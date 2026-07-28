@@ -74,7 +74,7 @@ impl Statistic {
 
     /// Applies the statistic to a block's valid values. `values` may be
     /// reordered. Returns `None` for an empty block.
-    fn apply(self, values: &mut Vec<f64>) -> Option<f64> {
+    fn apply(self, values: &mut [f64]) -> Option<f64> {
         if values.is_empty() {
             return None;
         }
@@ -111,7 +111,7 @@ impl Statistic {
 
 /// Groups equal values, returning `(value, count)` sorted ascending by value so
 /// ties break deterministically (lowest value wins) rather than by hash order.
-fn distinct_counts(values: &mut Vec<f64>) -> Vec<(f64, usize)> {
+fn distinct_counts(values: &mut [f64]) -> Vec<(f64, usize)> {
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mut out: Vec<(f64, usize)> = Vec::new();
     for &v in values.iter() {
@@ -125,7 +125,7 @@ fn distinct_counts(values: &mut Vec<f64>) -> Vec<(f64, usize)> {
 
 /// Most (or least) frequent value. Ties resolve to the lowest value, which keeps
 /// results reproducible across platforms and WASM.
-fn extreme_by_count(values: &mut Vec<f64>, most: bool) -> Option<f64> {
+fn extreme_by_count(values: &mut [f64], most: bool) -> Option<f64> {
     let counts = distinct_counts(values);
     let mut best: Option<(f64, usize)> = None;
     for (v, c) in counts {
@@ -207,7 +207,7 @@ impl Neighborhood {
                 if angle < 0.0 {
                     angle += 360.0;
                 }
-                let mut start = start_deg.rem_euclid(360.0);
+                let start = start_deg.rem_euclid(360.0);
                 let mut end = end_deg.rem_euclid(360.0);
                 if start == end {
                     return true;
@@ -219,7 +219,6 @@ impl Neighborhood {
                         angle += 360.0;
                     }
                 }
-                let _ = &mut start;
                 angle >= start && angle <= end
             }
         }
@@ -488,9 +487,18 @@ fn parse_size_list(s: &str) -> Result<Vec<f64>, ToolError> {
         if t.is_empty() {
             continue;
         }
-        out.push(t.parse::<f64>().map_err(|_| {
+        let v = t.parse::<f64>().map_err(|_| {
             ToolError::Validation(format!("parameter 'size' has non-numeric component '{t}'"))
-        })?);
+        })?;
+        // NaN/inf must be rejected here: `NaN as usize` saturates to 0, which
+        // would make `block_size()` return (0, 0) and leave the block loops in
+        // `run` unable to advance — an infinite spin on caller-controlled input.
+        if !v.is_finite() {
+            return Err(ToolError::Validation(format!(
+                "parameter 'size' component '{t}' must be finite"
+            )));
+        }
+        out.push(v);
     }
     Ok(out)
 }
@@ -732,6 +740,9 @@ mod tests {
             json!({ "input": path.clone(), "neighborhood": "annulus", "size": "5" }),
             json!({ "input": path.clone(), "neighborhood": "irregular" }),
             json!({ "input": path.clone(), "size": "a,b" }),
+            // NaN/inf would saturate to a zero block size and spin forever.
+            json!({ "input": path.clone(), "size": "nan,nan" }),
+            json!({ "input": path.clone(), "size": "inf,3" }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();
             assert!(BlockStatisticsTool.validate(&args).is_err());

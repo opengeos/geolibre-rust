@@ -118,7 +118,7 @@ impl Tool for KernelInterpolationWithBarriersTool {
                 },
                 ToolParamSpec {
                     name: "output_error",
-                    description: "Optional path for the prediction standard-error raster. If omitted, stored in memory (still returned).",
+                    description: "Optional path for the local weighted residual RMS raster — the weighted spread of neighbour residuals about the local fit. This is a goodness-of-fit measure, NOT an ArcGIS-style prediction standard error (it accounts for neither effective degrees of freedom nor leverage). If omitted, stored in memory (still returned).",
                     required: false,
                 },
                 ToolParamSpec {
@@ -243,6 +243,17 @@ impl Tool for KernelInterpolationWithBarriersTool {
                 "requested grid is {rows}x{cols}; increase 'cell_size'"
             )));
         }
+        // One distance grid is allocated per observation, so the real cost is
+        // the product. Bounding only the grid turns a large point layer into an
+        // OOM instead of a validation error.
+        const MAX_DISTANCE_CELLS: usize = 200_000_000;
+        let budget = rows.saturating_mul(cols).saturating_mul(obs.len());
+        if budget > MAX_DISTANCE_CELLS {
+            return Err(ToolError::Validation(format!(
+                "{} observation(s) over a {rows}x{cols} grid needs {budget} distance cells (limit {MAX_DISTANCE_CELLS}); increase 'cell_size' or reduce the observation count",
+                obs.len()
+            )));
+        }
         let y_max = min_y + rows as f64 * cell;
 
         // Bandwidth: default from mean nearest-neighbour spacing, which adapts
@@ -345,10 +356,11 @@ impl Tool for KernelInterpolationWithBarriersTool {
                 cell_size_y: Some(cell),
                 nodata,
                 data_type: DataType::F32,
+                // Carry both the EPSG and the WKT: a layer defined only by WKT
+                // would otherwise produce an unreferenced raster.
                 crs: CrsInfo {
-                    // Carry the point layer's EPSG onto the output grid.
                     epsg: layer.crs_epsg(),
-                    wkt: None,
+                    wkt: layer.crs_wkt().map(str::to_string),
                     proj4: None,
                 },
                 metadata: Vec::new(),
@@ -368,6 +380,10 @@ impl Tool for KernelInterpolationWithBarriersTool {
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("output_error".to_string(), json!(err_path));
+        outputs.insert(
+            "output_error_semantics".to_string(),
+            json!("local weighted residual RMS (not a prediction standard error)"),
+        );
         outputs.insert("observation_count".to_string(), json!(obs.len()));
         outputs.insert("filled_cells".to_string(), json!(filled));
         outputs.insert("unreachable_cells".to_string(), json!(unreachable));
@@ -379,7 +395,13 @@ impl Tool for KernelInterpolationWithBarriersTool {
 }
 
 /// Weighted least-squares fit of a local polynomial, returning the value at
-/// `(cx, cy)` and a residual-based standard error.
+/// `(cx, cy)` and the weighted RMS of the neighbour residuals about that fit.
+///
+/// Deliberately *not* a prediction standard error: no effective-dof or leverage
+/// correction is applied, and for `power == 0` the residuals are taken about the
+/// same weighted mean being reported, so the value goes to zero on a locally
+/// constant neighbourhood. Named and documented as residual RMS so it is not
+/// mistaken for ArcGIS's uncertainty surface.
 #[allow(clippy::too_many_arguments)]
 fn local_fit(
     obs: &[(f64, f64, f64)],
@@ -477,8 +499,9 @@ fn solve3(mut a: [[f64; 3]; 3], mut b: [f64; 3]) -> Option<[f64; 3]> {
         b.swap(col, piv);
         for r in (col + 1)..3 {
             let f = a[r][col] / a[col][col];
-            for c in col..3 {
-                a[r][c] -= f * a[col][c];
+            let pivot_row = a[col];
+            for (c, v) in a[r].iter_mut().enumerate().skip(col) {
+                *v -= f * pivot_row[c];
             }
             b[r] -= f * b[col];
         }
@@ -563,6 +586,17 @@ fn dijkstra_from(
             if blocked[j] {
                 continue;
             }
+            // No corner cutting: a diagonal step passes between two orthogonal
+            // cells, and a rasterized diagonal barrier is exactly such a
+            // staircase. Without this the 8-connected expansion crosses the wall
+            // at its corners even though the burn left no cell gaps.
+            if dr != 0 && dc != 0 {
+                let a = (row as isize + dr) as usize * cols + col;
+                let b = row * cols + (col as isize + dc) as usize;
+                if blocked[a] && blocked[b] {
+                    continue;
+                }
+            }
             let nd = d + cost;
             if nd < dist[j] && nd <= max_dist {
                 dist[j] = nd;
@@ -605,16 +639,48 @@ fn rasterize_barriers(
         }
     };
 
-    for feature in layer.iter() {
-        match feature.geometry.as_ref() {
-            Some(Geometry::LineString(cs)) => walk(cs),
-            Some(Geometry::MultiLineString(ls)) => {
+    // Every ring of every part is burned, including polygon holes, MultiPolygon
+    // members and nested collections — otherwise those barrier inputs are
+    // silently invisible while the shipped interpolate_with_barriers honours
+    // them.
+    fn walk_geometry(geom: &Geometry, walk: &mut impl FnMut(&[Coord])) {
+        match geom {
+            Geometry::LineString(cs) => walk(cs),
+            Geometry::MultiLineString(ls) => {
                 for cs in ls {
                     walk(cs);
                 }
             }
-            Some(Geometry::Polygon { exterior, .. }) => walk(&exterior.0),
-            _ => {}
+            Geometry::Polygon {
+                exterior,
+                interiors,
+            } => {
+                walk(&exterior.0);
+                for hole in interiors {
+                    walk(&hole.0);
+                }
+            }
+            Geometry::MultiPolygon(parts) => {
+                for (ext, holes) in parts {
+                    walk(&ext.0);
+                    for hole in holes {
+                        walk(&hole.0);
+                    }
+                }
+            }
+            Geometry::GeometryCollection(gs) => {
+                for g in gs {
+                    walk_geometry(g, walk);
+                }
+            }
+            // Points bound nothing, so they cannot act as a barrier.
+            Geometry::Point(_) | Geometry::MultiPoint(_) => {}
+        }
+    }
+
+    for feature in layer.iter() {
+        if let Some(geom) = feature.geometry.as_ref() {
+            walk_geometry(geom, &mut walk);
         }
     }
     blocked
@@ -622,12 +688,24 @@ fn rasterize_barriers(
 
 /// Mean nearest-neighbour spacing, scaled up so a default neighbourhood holds
 /// several observations rather than just the closest one.
+///
+/// The scan is all-pairs, so it is evaluated over at most `SAMPLE` probe points
+/// (deterministically strided, not sampled at random). A default does not need
+/// the exact mean, and an uncapped O(n^2) pass makes the tool appear to hang on
+/// a large layer before any grid work starts.
 fn default_bandwidth(obs: &[(f64, f64, f64)]) -> f64 {
     if obs.len() < 2 {
         return 1.0;
     }
+    const SAMPLE: usize = 512;
+    let stride = obs.len().div_ceil(SAMPLE).max(1);
     let mut total = 0.0;
+    let mut probes = 0usize;
     for (i, (xi, yi, _)) in obs.iter().enumerate() {
+        if i % stride != 0 {
+            continue;
+        }
+        probes += 1;
         let mut best = f64::INFINITY;
         for (j, (xj, yj, _)) in obs.iter().enumerate() {
             if i == j {
@@ -642,7 +720,7 @@ fn default_bandwidth(obs: &[(f64, f64, f64)]) -> f64 {
             total += best;
         }
     }
-    let mean = total / obs.len() as f64;
+    let mean = total / probes.max(1) as f64;
     if mean > 0.0 {
         mean * 4.0
     } else {
@@ -680,13 +758,16 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         return Err(ToolError::Validation("'power' must be 0 or 1".to_string()));
     }
     let ridge = opt_f64(args, "ridge")?.unwrap_or(1e-6);
-    if ridge < 0.0 {
+    // NaN passes every `<` comparison, so test finiteness explicitly: a NaN
+    // ridge poisons the normal equations and `NaN as usize` truncates
+    // max_neighbors to 0, emptying every neighbourhood.
+    if !ridge.is_finite() || ridge < 0.0 {
         return Err(ToolError::Validation(
             "'ridge' must be non-negative".to_string(),
         ));
     }
     let max_neighbors = opt_f64(args, "max_neighbors")?.unwrap_or(32.0);
-    if max_neighbors < 1.0 {
+    if !max_neighbors.is_finite() || max_neighbors < 1.0 {
         return Err(ToolError::Validation(
             "'max_neighbors' must be at least 1".to_string(),
         ));
@@ -883,6 +964,44 @@ mod tests {
         assert_eq!(res.outputs["observation_count"], json!(6));
     }
 
+    /// A polygon barrier is honoured, not silently ignored — only line barriers
+    /// used to be walked, so a MultiPolygon barrier was invisible.
+    #[test]
+    fn polygon_barriers_are_rasterized() {
+        let pts = points(&[(0.0, 5.0, 0.0), (10.0, 5.0, 100.0)]);
+        let mut l = Layer::new("barrier_poly");
+        l.geom_type = Some(GeometryType::Polygon);
+        l.add_feature(
+            Some(Geometry::MultiPolygon(vec![(
+                wbvector::Ring::new(vec![
+                    Coord::xy(4.5, -5.0),
+                    Coord::xy(5.5, -5.0),
+                    Coord::xy(5.5, 15.0),
+                    Coord::xy(4.5, 15.0),
+                ]),
+                vec![],
+            )])),
+            &[],
+        )
+        .unwrap();
+        let id = memory_store::put_vector(l);
+        let poly_barrier = memory_store::make_vector_memory_path(&id);
+
+        let (plain, _) = run(json!({
+            "input": pts.clone(), "z_field": "z", "cell_size": 0.5, "bandwidth": 40.0
+        }));
+        let (walled, _) = run(json!({
+            "input": pts, "z_field": "z", "cell_size": 0.5,
+            "bandwidth": 40.0, "barriers": poly_barrier
+        }));
+        let col = ((4.0 - plain.x_min) / plain.cell_size_x) as isize;
+        let row = (plain.rows / 2) as isize;
+        assert!(
+            walled.get(0, row, col) < plain.get(0, row, col) - 1.0,
+            "a polygon barrier must block influence just as a line barrier does"
+        );
+    }
+
     /// A region fully enclosed by barriers with no observation inside gets
     /// no-data rather than a silently extrapolated value.
     #[test]
@@ -987,6 +1106,9 @@ mod tests {
             json!({ "input": pts.clone(), "z_field": "z", "cell_size": -1 }),
             json!({ "input": pts.clone(), "z_field": "z", "bandwidth": 0 }),
             json!({ "input": pts.clone(), "z_field": "z", "ridge": -1 }),
+            // NaN slips past every `<` test, so it needs its own guard.
+            json!({ "input": pts.clone(), "z_field": "z", "ridge": "nan" }),
+            json!({ "input": pts.clone(), "z_field": "z", "max_neighbors": "nan" }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();
             assert!(KernelInterpolationWithBarriersTool.validate(&args).is_err());

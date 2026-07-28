@@ -73,7 +73,7 @@ impl Tool for Union3dTool {
                 },
                 ToolParamSpec {
                     name: "resolution",
-                    description: "Voxel samples per axis used to estimate the union volume (default 96, max 512). Higher is more accurate and slower.",
+                    description: "Voxel samples per axis used to estimate the union volume, 4 to 512 (default 96). Higher is more accurate and slower.",
                     required: false,
                 },
             ],
@@ -81,7 +81,13 @@ impl Tool for Union3dTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        if args.get("input").and_then(Value::as_str).is_none() {
+        if args
+            .get("input")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
             return Err(ToolError::Validation(
                 "missing required string parameter 'input'".to_string(),
             ));
@@ -153,23 +159,33 @@ impl Tool for Union3dTool {
         let mut total_union = 0.0_f64;
         let mut total_sum = 0.0_f64;
         let mut overlap_pairs = 0_u64;
+        let mut total_sampled = 0_u64;
 
         for (gi, (key, solids)) in groups.iter().enumerate() {
             // Exact per-solid volumes.
             let vols: Vec<f64> = solids.iter().map(|s| mesh_volume(&s.tris)).collect();
             let sum_volume: f64 = vols.iter().sum();
 
-            // Non-overlapping solids contribute their exact volume directly and
-            // never enter the sampled path.
-            let overlapping = any_bbox_overlap(solids);
-            let union_volume = if !overlapping {
-                sum_volume
-            } else {
-                occupancy_volume(solids, resolution)
-            };
+            // Split into bbox-connected components: an isolated solid keeps its
+            // exact volume, and only genuinely interacting clusters pay for
+            // sampling. Without this a single touching pair would downgrade an
+            // entire group of otherwise disjoint solids to an estimate, and
+            // over a needlessly large grid.
+            let mut union_volume = 0.0_f64;
+            let mut sampled_components = 0_u64;
+            for comp in bbox_components(solids) {
+                if comp.len() == 1 {
+                    union_volume += vols[comp[0]];
+                } else {
+                    let members: Vec<&Solid> = comp.iter().map(|i| &solids[*i]).collect();
+                    union_volume += occupancy_volume(&members, resolution);
+                    sampled_components += 1;
+                }
+            }
 
             total_sum += sum_volume;
             total_union += union_volume;
+            total_sampled += sampled_components;
 
             out.add_feature(
                 None,
@@ -235,6 +251,7 @@ impl Tool for Union3dTool {
         outputs.insert("open_mesh_count".to_string(), json!(open_meshes));
         outputs.insert("overlap_pair_count".to_string(), json!(overlap_pairs));
         outputs.insert("resolution".to_string(), json!(resolution));
+        outputs.insert("sampled_component_count".to_string(), json!(total_sampled));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -254,20 +271,40 @@ fn bbox_overlap(a: &Solid, b: &Solid) -> bool {
     (0..3).all(|k| a.min[k] <= b.max[k] && a.max[k] >= b.min[k])
 }
 
-fn any_bbox_overlap(solids: &[Solid]) -> bool {
-    for i in 0..solids.len() {
-        for j in (i + 1)..solids.len() {
+/// Groups solid indices into components whose bounding boxes transitively
+/// overlap. Singletons are exactly measurable; only multi-member components
+/// need sampling.
+fn bbox_components(solids: &[Solid]) -> Vec<Vec<usize>> {
+    let n = solids.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    for i in 0..n {
+        for j in (i + 1)..n {
             if bbox_overlap(&solids[i], &solids[j]) {
-                return true;
+                let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                if a != b {
+                    parent[a] = b;
+                }
             }
         }
     }
-    false
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i in 0..n {
+        let r = find(&mut parent, i);
+        groups.entry(r).or_default().push(i);
+    }
+    groups.into_values().collect()
 }
 
 /// Union volume by voxel occupancy: a cell counts once if it is inside **any**
 /// solid, which is exactly what stops overlaps being double-counted.
-fn occupancy_volume(solids: &[Solid], resolution: usize) -> f64 {
+fn occupancy_volume(solids: &[&Solid], resolution: usize) -> f64 {
     let Some((min, max)) = union_bbox(solids) else {
         return 0.0;
     };
@@ -322,7 +359,7 @@ fn pair_intersection_volume(a: &Solid, b: &Solid, resolution: usize) -> f64 {
     both as f64 * cell_vol
 }
 
-fn union_bbox(solids: &[Solid]) -> Option<([f64; 3], [f64; 3])> {
+fn union_bbox(solids: &[&Solid]) -> Option<([f64; 3], [f64; 3])> {
     if solids.is_empty() {
         return None;
     }
@@ -523,6 +560,26 @@ mod tests {
         assert!((v - 0.5).abs() < 0.02, "pair overlap is 0.5, got {v}");
     }
 
+    /// A single overlapping pair must not downgrade unrelated disjoint solids in
+    /// the same group to a sampled estimate.
+    #[test]
+    fn disjoint_solids_stay_exact_alongside_an_overlapping_pair() {
+        let path = solids(vec![
+            // One overlapping pair...
+            box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]),
+            box_mesh([0.5, 0.5, 0.0], [1.5, 1.5, 1.0]),
+            // ...plus two solids far away from everything.
+            box_mesh([100.0, 0.0, 0.0], [102.0, 1.0, 1.0]),
+            box_mesh([200.0, 0.0, 0.0], [203.0, 1.0, 1.0]),
+        ]);
+        let (_, res) = run(json!({ "input": path, "resolution": 64 }));
+        // Only the touching pair needs sampling.
+        assert_eq!(res.outputs["sampled_component_count"], json!(1));
+        // 1.75 (pair) + 2 + 3, with the two isolated boxes contributing exactly.
+        let v = res.outputs["union_volume"].as_f64().unwrap();
+        assert!((v - 6.75).abs() < 0.05, "expected ~6.75, got {v}");
+    }
+
     /// Grouping unions within each group value independently.
     #[test]
     fn group_field_partitions_the_union() {
@@ -630,6 +687,10 @@ mod tests {
         assert!(Union3dTool.validate(&args).is_err());
 
         let path = solids(vec![box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])]);
+        // A blank input must fail validation, not only at run time.
+        let blank: ToolArgs = serde_json::from_value(json!({ "input": "   " })).unwrap();
+        assert!(Union3dTool.validate(&blank).is_err());
+
         for bad in [
             json!({ "input": path.clone(), "resolution": 2 }),
             json!({ "input": path.clone(), "resolution": 5000 }),

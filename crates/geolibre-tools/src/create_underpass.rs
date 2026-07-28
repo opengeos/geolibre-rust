@@ -70,12 +70,12 @@ impl Tool for CreateUnderpassTool {
                 },
                 ToolParamSpec {
                     name: "margin_along",
-                    description: "Half-length of each mask along the above line, in CRS units (the gap is 2x this). Default 1.0.",
+                    description: "Half-length of each mask measured ALONG the above line, in CRS units; the mask spans 2x this in that direction. Default 1.0.",
                     required: false,
                 },
                 ToolParamSpec {
                     name: "margin_across",
-                    description: "Half-width of each mask across the above line, in CRS units. Default 1.0.",
+                    description: "Half-width of each mask ACROSS the above line, in CRS units. For a perpendicular crossing this is what bounds the gap cut into the below line, so the removed length is 2x this. Default 1.0.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -288,9 +288,16 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     let margin_along = parse_optional_f64(args, "margin_along")?.unwrap_or(1.0);
     let margin_across = parse_optional_f64(args, "margin_across")?.unwrap_or(1.0);
     let min_angle = parse_optional_f64(args, "min_angle")?.unwrap_or(15.0);
-    if margin_along <= 0.0 || margin_across <= 0.0 {
+    // NaN must be rejected explicitly: `NaN <= 0.0` is false, so a bare
+    // positivity test lets "nan"/"inf" through and every mask ring comes out
+    // with non-finite coordinates.
+    if !margin_along.is_finite()
+        || !margin_across.is_finite()
+        || margin_along <= 0.0
+        || margin_across <= 0.0
+    {
         return Err(ToolError::Validation(
-            "'margin_along' and 'margin_across' must be positive".to_string(),
+            "'margin_along' and 'margin_across' must be positive, finite numbers".to_string(),
         ));
     }
     if !(0.0..90.0).contains(&min_angle) {
@@ -775,6 +782,8 @@ mod tests {
             json!({ "above": a.clone(), "below": b.clone(), "margin_across": 0.0 }),
             json!({ "above": a.clone(), "below": b.clone(), "min_angle": 95.0 }),
             json!({ "above": a.clone(), "below": b.clone(), "margin_along": "wide" }),
+            json!({ "above": a.clone(), "below": b.clone(), "margin_along": "nan" }),
+            json!({ "above": a.clone(), "below": b.clone(), "margin_across": "inf" }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();
             assert!(CreateUnderpassTool.validate(&args).is_err());

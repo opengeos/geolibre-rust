@@ -12,7 +12,11 @@
 //!
 //! Direction is reported in compass degrees (clockwise from north), with `0`
 //! reserved for source cells and due north reported as `360`, matching ArcGIS so
-//! outputs are directly comparable.
+//! outputs are directly comparable. Back direction follows the ArcGIS
+//! definition too — the bearing to travel **back toward** the closest source, so
+//! it agrees with the forward direction rather than opposing it. The two
+//! coincide without barriers; with barriers the back direction is the first step
+//! of the retrace, read from the Dijkstra predecessor.
 //!
 //! Without barriers the nearest source is found with an **exact** Euclidean
 //! distance transform (Felzenszwalb & Huttenlocher's lower-envelope method)
@@ -63,7 +67,7 @@ impl Tool for EuclideanDirectionTool {
                 },
                 ToolParamSpec {
                     name: "output_back_direction",
-                    description: "Optional path for the back-direction raster (bearing from the cell back along the return path).",
+                    description: "Optional path for the back-direction raster: the bearing to travel from this cell back toward the closest source. Equals the direction raster when no barriers are supplied; with barriers it is the first step of the return path.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -166,9 +170,15 @@ impl Tool for EuclideanDirectionTool {
         ctx.progress.info("locating nearest sources");
         // `nearest[i]` is the (row, col) of the cell's nearest source, and
         // `dist[i]` the distance to it in map units.
-        let (nearest, dist) = match &blocked {
-            None => exact_transform(rows, cols, &is_source, cell_x, cell_y),
-            Some(mask) => dijkstra_transform(rows, cols, &is_source, mask, cell_x, cell_y),
+        let (nearest, dist, prev) = match &blocked {
+            None => {
+                let (n, d) = exact_transform(rows, cols, &is_source, cell_x, cell_y);
+                (n, d, None)
+            }
+            Some(mask) => {
+                let (n, d, p) = dijkstra_transform(rows, cols, &is_source, mask, cell_x, cell_y);
+                (n, d, Some(p))
+            }
         };
 
         ctx.progress.info("computing bearings");
@@ -204,7 +214,24 @@ impl Tool for EuclideanDirectionTool {
                 let dx = (s_col as f64 - col as f64) * cell_x;
                 let dy = (row as f64 - s_row as f64) * cell_y;
                 dir[i] = compass_degrees(dx, dy);
-                back[i] = compass_degrees(-dx, -dy);
+                // ArcGIS defines back direction as the direction to travel back
+                // toward the closest source, so it agrees with the forward
+                // bearing rather than opposing it. Without barriers the return
+                // path is the straight line, so the two coincide; with barriers
+                // it is the first step of the retrace, taken from the Dijkstra
+                // predecessor below.
+                back[i] = match &prev {
+                    None => dir[i],
+                    Some(p) => match p[i] {
+                        usize::MAX => dir[i],
+                        pj => {
+                            let (p_row, p_col) = (pj / cols, pj % cols);
+                            let bx = (p_col as f64 - col as f64) * cell_x;
+                            let by = (row as f64 - p_row as f64) * cell_y;
+                            compass_degrees(bx, by)
+                        }
+                    },
+                };
             }
             ctx.progress
                 .progress((row as f64 + 1.0) / rows.max(1) as f64);
@@ -393,7 +420,7 @@ fn dijkstra_transform(
     blocked: &[bool],
     cell_x: f64,
     cell_y: f64,
-) -> (Vec<Option<(usize, usize)>>, Vec<f64>) {
+) -> (Vec<Option<(usize, usize)>>, Vec<f64>, Vec<usize>) {
     #[derive(PartialEq)]
     struct Node(f64, usize);
     impl Eq for Node {}
@@ -416,6 +443,9 @@ fn dijkstra_transform(
 
     let mut dist = vec![f64::INFINITY; rows * cols];
     let mut nearest: Vec<Option<(usize, usize)>> = vec![None; rows * cols];
+    // Predecessor on the cheapest path home, so back-direction can report the
+    // first step of the retrace rather than a straight-line bearing.
+    let mut prev = vec![usize::MAX; rows * cols];
     let mut heap = BinaryHeap::new();
 
     for row in 0..rows {
@@ -457,16 +487,27 @@ fn dijkstra_transform(
             if blocked[j] {
                 continue;
             }
+            // No corner cutting. A diagonal step passes between two orthogonal
+            // cells; if both are blocked it would squeeze through the corner of
+            // a one-cell-thick diagonal wall, making the barrier permeable.
+            if d_row != 0 && d_col != 0 {
+                let a = (row as isize + d_row) as usize * cols + col;
+                let b = row * cols + (col as isize + d_col) as usize;
+                if blocked[a] && blocked[b] {
+                    continue;
+                }
+            }
             let nd = d + cost;
             if nd < dist[j] {
                 dist[j] = nd;
                 nearest[j] = nearest[i];
+                prev[j] = i;
                 heap.push(Node(nd, j));
             }
         }
     }
 
-    (nearest, dist)
+    (nearest, dist, prev)
 }
 
 fn opt_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolError> {
@@ -615,23 +656,53 @@ mod tests {
         assert!((out.get(0, 3, 3) - 315.0).abs() < 1e-9);
     }
 
-    /// Back-direction is the reciprocal bearing of the forward direction.
+    /// Back direction points **back toward** the source (ArcGIS semantics), so
+    /// without barriers it equals the forward direction rather than opposing it.
     #[test]
-    fn back_direction_is_reciprocal() {
+    fn back_direction_points_toward_the_source() {
         let mut data = [0.0; 9];
         data[4] = 1.0; // source at the centre
         let path = raster(3, 3, &data);
-        let args: ToolArgs = serde_json::from_value(json!({
-            "input": path,
-            "output_back_direction": ""
-        }))
-        .unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({ "input": path })).unwrap();
         let res = EuclideanDirectionTool.run(&args, &ctx()).unwrap();
         let dir = load_input_raster(res.outputs["output"].as_str().unwrap()).unwrap();
+        let back =
+            load_input_raster(res.outputs["output_back_direction"].as_str().unwrap()).unwrap();
+
         // Cell (2,1) is south of the source, so it looks north => 360.
         assert!((dir.get(0, 2, 1) - 360.0).abs() < 1e-9);
-        // And (0,1) is north of it, looking south => 180. The two are reciprocal.
-        assert!((dir.get(0, 0, 1) - 180.0).abs() < 1e-9);
+        for (r, c) in [(0, 0), (0, 1), (1, 0), (1, 2), (2, 1), (2, 2)] {
+            assert!(
+                (back.get(0, r, c) - dir.get(0, r, c)).abs() < 1e-9,
+                "without barriers back direction must equal the forward bearing at ({r},{c}): {} vs {}",
+                back.get(0, r, c),
+                dir.get(0, r, c)
+            );
+        }
+    }
+
+    /// A one-cell-thick diagonal wall must be impermeable: an 8-connected search
+    /// that ignores corners would squeeze between the two blocked cells.
+    #[test]
+    fn diagonal_barrier_is_not_permeable() {
+        // 3x3. Source top-left; a diagonal wall blocks (0,1) and (1,0), sealing
+        // the source into its own corner.
+        let mut src = [0.0; 9];
+        src[0] = 1.0;
+        let source = raster(3, 3, &src);
+
+        let mut bar = [0.0; 9];
+        bar[1] = 1.0; // (0,1)
+        bar[3] = 1.0; // (1,0)
+        let barriers = raster(3, 3, &bar);
+
+        let out = run_with(source, json!({ "barriers": barriers }));
+        assert_eq!(
+            out.get(0, 1, 1),
+            out.nodata,
+            "the cell diagonally past the wall must be unreachable, not reached through the corner"
+        );
+        assert_eq!(out.get(0, 2, 2), out.nodata);
     }
 
     /// max_distance masks far cells to no-data.

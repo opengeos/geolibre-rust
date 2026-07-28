@@ -80,7 +80,7 @@ impl Tool for SarCoherenceTool {
                 },
                 ToolParamSpec {
                     name: "window_size",
-                    description: "Estimation window as 'range,azimuth' in cells (default '5,5').",
+                    description: "Estimation window as 'range,azimuth' in cells (default '5,5'). The estimator is centred, so an even value is rounded UP to the next odd size; the effective window is reported back as window_range/window_azimuth.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -116,7 +116,11 @@ impl Tool for SarCoherenceTool {
         let sec_path = required_str(args, "secondary")?;
         let output = parse_optional_output(args, "output")?;
         let output_phase = parse_optional_output(args, "output_phase")?;
-        let (win_r, win_a) = parse_window(args)?;
+        let (req_r, req_a) = parse_window(args)?;
+        // The estimator uses an inclusive -half..=half range, so the realised
+        // window is always odd. Normalise up front and report the EFFECTIVE
+        // size rather than echoing an even request the run never honoured.
+        let (win_r, win_a) = (req_r | 1, req_a | 1);
         let bias_correction = opt_bool(args, "bias_correction")?.unwrap_or(true);
 
         let reference = load_input_raster(ref_path)?;
@@ -151,7 +155,10 @@ impl Tool for SarCoherenceTool {
 
         let out_nodata = -1.0_f64;
         let mut coh = vec![out_nodata; rows * cols];
-        let mut phase = vec![out_nodata; rows * cols];
+        // NaN, not the coherence sentinel: -1.0 rad is a legitimate wrapped
+        // phase in (-pi, pi], so reusing -1.0 here would mislabel a real value
+        // as unset.
+        let mut phase = vec![f64::NAN; rows * cols];
         let mut valid = 0_u64;
         let mut coh_sum = 0.0_f64;
 
@@ -234,6 +241,8 @@ impl Tool for SarCoherenceTool {
         );
         outputs.insert("window_range".to_string(), json!(win_r));
         outputs.insert("window_azimuth".to_string(), json!(win_a));
+        outputs.insert("window_range_requested".to_string(), json!(req_r));
+        outputs.insert("window_azimuth_requested".to_string(), json!(req_a));
 
         // Phase is always produced (stored in memory when no path is given),
         // matching how create_overpass handles its secondary output. Phase is
@@ -242,7 +251,7 @@ impl Tool for SarCoherenceTool {
         let phase_nodata = -9999.0_f64;
         let buf: Vec<f64> = phase
             .iter()
-            .map(|v| if *v == out_nodata { phase_nodata } else { *v })
+            .map(|v| if v.is_nan() { phase_nodata } else { *v })
             .collect();
         let phase_raster = raster_like_with_data(&reference, buf, phase_nodata, DataType::F32)?;
         let phase_path = write_or_store_output(phase_raster, output_phase)?;
@@ -534,6 +543,44 @@ mod tests {
         assert!(ph.get(0, 2, 2) <= std::f64::consts::PI);
     }
 
+    /// An even window request is rounded up to the next odd size and the
+    /// effective value is reported, rather than echoing a size never used.
+    #[test]
+    fn even_window_is_normalised_and_reported() {
+        let iq: Vec<(f64, f64)> = (0..49)
+            .map(|i| {
+                let p = pseudo_phase(i);
+                (p.cos(), p.sin())
+            })
+            .collect();
+        let a = complex_raster(7, 7, &iq);
+        let b = complex_raster(7, 7, &iq);
+        let (_, res) = run(a, b, json!({ "window_size": "4,4" }));
+        assert_eq!(res.outputs["window_range"], json!(5));
+        assert_eq!(res.outputs["window_azimuth"], json!(5));
+        assert_eq!(res.outputs["window_range_requested"], json!(4));
+    }
+
+    /// A phase of exactly -1.0 rad is a real value, not a no-data marker.
+    #[test]
+    fn phase_of_minus_one_radian_is_preserved() {
+        let shift = 1.0_f64; // reference * conj(secondary) then has phase -1.0
+        let a_iq: Vec<(f64, f64)> = (0..25).map(|_| (1.0, 0.0)).collect();
+        let b_iq: Vec<(f64, f64)> = (0..25).map(|_| (shift.cos(), shift.sin())).collect();
+        let a = complex_raster(5, 5, &a_iq);
+        let b = complex_raster(5, 5, &b_iq);
+        let args: ToolArgs =
+            serde_json::from_value(json!({ "reference": a, "secondary": b })).unwrap();
+        let res = SarCoherenceTool.run(&args, &ctx()).unwrap();
+        let ph = load_input_raster(res.outputs["output_phase"].as_str().unwrap()).unwrap();
+        let v = ph.get(0, 2, 2);
+        assert!(
+            (v + 1.0).abs() < 1e-6 && v != ph.nodata,
+            "-1.0 rad must survive as a real phase, got {v} (nodata {})",
+            ph.nodata
+        );
+    }
+
     /// Bias correction lowers the estimate at small window sizes, where the
     /// magnitude estimator is known to read high.
     #[test]
@@ -570,6 +617,7 @@ mod tests {
         let b = complex_raster(2, 2, &[(1.0, 0.0); 4]);
         for bad in [
             json!({ "reference": a.clone(), "secondary": b.clone(), "window_size": "x" }),
+            json!({ "reference": a.clone(), "secondary": b.clone(), "window_size": "nan" }),
             json!({ "reference": a.clone(), "secondary": b.clone(), "window_size": "0,0" }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();

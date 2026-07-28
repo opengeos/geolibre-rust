@@ -126,18 +126,20 @@ impl Tool for Inside3dTool {
                 continue;
             }
             let solid = Solid::new(cid, tris);
-            // A mesh with boundary edges cannot bound a volume; report rather
-            // than silently producing garbage.
+            // A mesh with boundary edges bounds no volume, so ray-cast parity
+            // against it is arbitrary. Skip it and report the count, matching
+            // union_3d — keeping it would emit exactly the garbage rows the
+            // check exists to prevent.
             if !solid.closed {
                 open_meshes += 1;
+                continue;
             }
             solids.push(solid);
         }
         if solids.is_empty() {
-            return Err(ToolError::Execution(
-                "container layer holds no triangle-mesh solids (expected MultiPolygon parts with Z)"
-                    .to_string(),
-            ));
+            return Err(ToolError::Execution(format!(
+                "container layer holds no CLOSED triangle-mesh solids (expected MultiPolygon parts with Z); {open_meshes} open mesh(es) were skipped"
+            )));
         }
         ctx.progress.info(&format!(
             "{} container solid(s), {} not closed",
@@ -224,11 +226,12 @@ impl Tool for Inside3dTool {
                 let Some((inside, inside_len, frac, spans)) = verdict else {
                     continue;
                 };
+                // Every pair that reached a verdict counts as evaluated; only
+                // the containing ones count as inside.
+                pair_count += 1;
                 if !inside {
                     continue;
                 }
-
-                pair_count += 1;
                 inside_count += 1;
 
                 let mut attrs: Vec<(&str, FieldValue)> = vec![
@@ -372,7 +375,7 @@ impl Solid {
         if (0..3).any(|k| origin[k] < self.min[k] || origin[k] > self.max[k]) {
             return false;
         }
-        let dir = jittered_direction(origin, 0);
+        let dir = ray_direction(origin);
         self.crossing_params(origin, dir, f64::INFINITY).len() % 2 == 1
     }
 
@@ -474,8 +477,11 @@ fn ray_triangle(origin: [f64; 3], dir: [f64; 3], tri: &Tri) -> Option<f64> {
 
 /// Deterministic pseudo-random ray direction derived from the query point, so
 /// results are reproducible on every platform (no RNG, WASM-safe).
-fn jittered_direction(p: [f64; 3], attempt: usize) -> [f64; 3] {
-    let seed = p[0] * 12.9898 + p[1] * 78.233 + p[2] * 37.719 + attempt as f64 * 43.123;
+///
+/// A single cast suffices because shared-edge hits are resolved by deduplicating
+/// on the ray parameter rather than by re-casting.
+fn ray_direction(p: [f64; 3]) -> [f64; 3] {
+    let seed = p[0] * 12.9898 + p[1] * 78.233 + p[2] * 37.719;
     let a = fract(seed.sin() * 43758.5453) * std::f64::consts::TAU;
     let b = fract((seed * 1.618).cos() * 24634.6345) * std::f64::consts::PI;
     [b.sin() * a.cos(), b.sin() * a.sin(), b.cos()]
@@ -802,23 +808,43 @@ mod tests {
         assert_eq!(res.outputs["container_count"], json!(2));
     }
 
-    /// An open (non-closed) mesh is counted and reported rather than silently
-    /// treated as a solid.
+    /// An open (non-closed) mesh bounds no volume, so it is skipped and counted
+    /// rather than ray-cast — parity against an open mesh is arbitrary, which is
+    /// exactly the garbage the check exists to prevent.
     #[test]
-    fn open_meshes_are_reported() {
+    fn open_meshes_are_skipped_not_used() {
         // A single triangle bounds no volume.
-        let open = Geometry::MultiPolygon(vec![(
-            wbvector::Ring::new(vec![
-                Coord::xyz(0.0, 0.0, 0.0),
-                Coord::xyz(1.0, 0.0, 0.0),
-                Coord::xyz(0.0, 1.0, 0.0),
-            ]),
-            Vec::new(),
-        )]);
-        let containers = layer_of("open", vec![open]);
-        let target = layer_of("pts", vec![Geometry::Point(Coord::xyz(0.2, 0.2, 0.0))]);
-        let (_, res) = run(target, containers, json!({}));
+        let open = || {
+            Geometry::MultiPolygon(vec![(
+                wbvector::Ring::new(vec![
+                    Coord::xyz(0.0, 0.0, 0.0),
+                    Coord::xyz(1.0, 0.0, 0.0),
+                    Coord::xyz(0.0, 1.0, 0.0),
+                ]),
+                Vec::new(),
+            )])
+        };
+        let target = layer_of("pts", vec![Geometry::Point(Coord::xyz(5.0, 5.0, 5.0))]);
+
+        // Alongside a real solid: the open mesh is counted but contributes no row.
+        let mixed = layer_of(
+            "mixed",
+            vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]), open()],
+        );
+        let (table, res) = run(target.clone(), mixed, json!({}));
         assert_eq!(res.outputs["open_container_count"], json!(1));
+        assert_eq!(
+            res.outputs["container_count"],
+            json!(1),
+            "only the closed box is a container"
+        );
+        assert_eq!(table.len(), 1, "the open mesh must not produce a row");
+
+        // On its own it leaves nothing to test against, which is an error.
+        let only_open = layer_of("open", vec![open()]);
+        let args: ToolArgs =
+            serde_json::from_value(json!({ "target": target, "container": only_open })).unwrap();
+        assert!(Inside3dTool.run(&args, &ctx()).is_err());
     }
 
     /// The containment test is deterministic: repeated runs agree exactly,

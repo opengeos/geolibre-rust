@@ -300,6 +300,9 @@ fn build_aoi_mask(
     };
 
     for feature in layer.iter() {
+        let Some(geom) = feature.geometry.as_ref() else {
+            continue;
+        };
         // Without an id field every AOI feature collapses into one mask.
         let slot = if id_field.is_some() { labels.len() } else { 0 };
         let label = match id_idx {
@@ -314,15 +317,26 @@ fn build_aoi_mask(
             labels.push(label);
         }
 
-        for row in 0..rows {
+        // Only scan the window this feature can possibly cover: the ray cast
+        // walks every ring, so testing the whole grid per feature is the
+        // dominant cost on a multi-feature AOI.
+        let Some((min_x, min_y, max_x, max_y)) = geometry_bounds(geom) else {
+            continue;
+        };
+        let col_lo =
+            (((min_x - raster.x_min) / cx).floor() as isize).clamp(0, cols as isize) as usize;
+        let col_hi =
+            (((max_x - raster.x_min) / cx).ceil() as isize + 1).clamp(0, cols as isize) as usize;
+        let row_lo = (((y_max - max_y) / cy).floor() as isize).clamp(0, rows as isize) as usize;
+        let row_hi = (((y_max - min_y) / cy).ceil() as isize + 1).clamp(0, rows as isize) as usize;
+
+        for row in row_lo..row_hi {
             // Sample at the cell centre.
             let y = y_max - (row as f64 + 0.5) * cy;
-            for col in 0..cols {
+            for col in col_lo..col_hi {
                 let x = raster.x_min + (col as f64 + 0.5) * cx;
-                if let Some(geom) = &feature.geometry {
-                    if geometry_contains_point(geom, x, y) {
-                        mask[row * cols + col] = slot;
-                    }
+                if geometry_contains_point(geom, x, y) {
+                    mask[row * cols + col] = slot;
                 }
             }
         }
@@ -334,6 +348,61 @@ fn build_aoi_mask(
         ));
     }
     Ok((mask, labels))
+}
+
+/// Axis-aligned bounds of a geometry, or `None` when it holds no coordinates.
+fn geometry_bounds(geom: &wbvector::Geometry) -> Option<(f64, f64, f64, f64)> {
+    let mut b = (
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    );
+    let mut seen = false;
+    let mut visit = |cs: &[wbvector::Coord], b: &mut (f64, f64, f64, f64), seen: &mut bool| {
+        for c in cs {
+            b.0 = b.0.min(c.x);
+            b.1 = b.1.min(c.y);
+            b.2 = b.2.max(c.x);
+            b.3 = b.3.max(c.y);
+            *seen = true;
+        }
+    };
+    fn walk(
+        g: &wbvector::Geometry,
+        b: &mut (f64, f64, f64, f64),
+        seen: &mut bool,
+        visit: &mut impl FnMut(&[wbvector::Coord], &mut (f64, f64, f64, f64), &mut bool),
+    ) {
+        match g {
+            wbvector::Geometry::Point(c) => visit(std::slice::from_ref(c), b, seen),
+            wbvector::Geometry::MultiPoint(cs) | wbvector::Geometry::LineString(cs) => {
+                visit(cs, b, seen)
+            }
+            wbvector::Geometry::MultiLineString(parts) => {
+                for cs in parts {
+                    visit(cs, b, seen);
+                }
+            }
+            wbvector::Geometry::Polygon { exterior, .. } => visit(&exterior.0, b, seen),
+            wbvector::Geometry::MultiPolygon(parts) => {
+                for (ext, _) in parts {
+                    visit(&ext.0, b, seen);
+                }
+            }
+            wbvector::Geometry::GeometryCollection(gs) => {
+                for g in gs {
+                    walk(g, b, seen, visit);
+                }
+            }
+        }
+    }
+    walk(geom, &mut b, &mut seen, &mut visit);
+    if seen {
+        Some(b)
+    } else {
+        None
+    }
 }
 
 fn field_to_string(v: &FieldValue) -> String {
@@ -378,6 +447,10 @@ fn parse_bands(args: &ToolArgs) -> Result<Option<Vec<usize>>, ToolError> {
     if out.is_empty() {
         return Ok(None);
     }
+    // Deduplicate while preserving order: "1,1" would otherwise iterate band 1
+    // twice and double every count and area for that band.
+    let mut seen = std::collections::BTreeSet::new();
+    out.retain(|b| seen.insert(*b));
     Ok(Some(out))
 }
 
@@ -600,6 +673,19 @@ mod tests {
         assert!(
             a1 < a2 * 0.5,
             "the polar cell (89-90N) must be far smaller than the 88-89N cell, got {a1} vs {a2}"
+        );
+    }
+
+    /// Repeating a band must not double-count it.
+    #[test]
+    fn duplicate_band_entries_are_deduplicated() {
+        let path = raster(2, 2, 1, &[1.0, 1.0, 1.0, 1.0]);
+        let layer = run_with(json!({ "input": path, "bands": "1,1" }));
+        assert_eq!(layer.iter().count(), 1);
+        assert_eq!(
+            get_int(&layer, layer.iter().next().unwrap(), "cell_count"),
+            Some(4),
+            "band 1 listed twice must still count 4 cells, not 8"
         );
     }
 

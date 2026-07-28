@@ -30,7 +30,9 @@
 //! in the surface unless they are resolved consistently; a hand-transcribed
 //! table cannot be checked by inspection. The tetrahedral decomposition has only
 //! two topological cases (one or two corners inside), no ambiguity, and is
-//! watertight by construction — `sphere_surface_is_closed` asserts exactly that.
+//! watertight by construction — `sphere_surface_is_closed` asserts exactly that,
+//! and `capped_surface_is_closed_when_the_blob_meets_the_boundary` asserts it
+//! still holds once `close_boundaries` seals a surface against the volume edge.
 //! The cost is more triangles for the same surface, which `smooth` and
 //! downstream decimation can absorb.
 //!
@@ -92,7 +94,7 @@ impl Tool for VoxelIsosurfaceTool {
                 },
                 ToolParamSpec {
                     name: "values",
-                    description: "Comma-separated threshold value(s); one surface per value.",
+                    description: "Threshold value(s): a number, a JSON array of numbers, or a comma-separated string. One surface per value.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -112,7 +114,7 @@ impl Tool for VoxelIsosurfaceTool {
                 },
                 ToolParamSpec {
                     name: "close_boundaries",
-                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true).",
+                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true). Implemented by marching an extra below-iso shell, so the cap is welded to the surface; it lies between the boundary plane and one cell beyond it.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -125,18 +127,16 @@ impl Tool for VoxelIsosurfaceTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        for key in ["input", "values"] {
-            if args
-                .get(key)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or("")
-                .is_empty()
-            {
-                return Err(ToolError::Validation(format!(
-                    "missing required string parameter '{key}'"
-                )));
-            }
+        if args
+            .get("input")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
+            return Err(ToolError::Validation(
+                "missing required string parameter 'input'".to_string(),
+            ));
         }
         parse_values(args)?;
         parse_params(args)?;
@@ -156,6 +156,23 @@ impl Tool for VoxelIsosurfaceTool {
         if nx < 2 || ny < 2 || nz < 2 {
             return Err(ToolError::Validation(format!(
                 "a voxel field needs at least 2 samples on each axis; got {nx}x{ny}x{nz} (bands are Z slices)"
+            )));
+        }
+        // The field is materialised densely as f64, so bound it explicitly:
+        // 1000x1000x100 is already 800 MB, and on 32-bit/wasm32 the product can
+        // overflow `usize` before `vec!` is ever reached.
+        const MAX_VOXELS: usize = 64_000_000;
+        let voxels = nx
+            .checked_mul(ny)
+            .and_then(|v| v.checked_mul(nz))
+            .ok_or_else(|| {
+                ToolError::Validation(format!(
+                    "voxel field {nx}x{ny}x{nz} overflows the address space"
+                ))
+            })?;
+        if voxels > MAX_VOXELS {
+            return Err(ToolError::Validation(format!(
+                "voxel field {nx}x{ny}x{nz} = {voxels} cells exceeds the {MAX_VOXELS}-cell limit; subset the raster first"
             )));
         }
 
@@ -178,8 +195,40 @@ impl Tool for VoxelIsosurfaceTool {
         }
         let at = |i: usize, j: usize, k: usize| field[(k * ny + j) * nx + i];
 
-        // World coordinate of grid sample (i, j, k). Rows run north-down.
-        let world = |i: usize, j: usize, k: usize| -> [f64; 3] {
+        // `close_boundaries` wraps the volume in one extra cell of below-iso
+        // samples and marches that shell too. The cap is then produced by the
+        // same welded machinery as the rest of the mesh, which is what makes the
+        // result watertight — emitting cap quads separately cannot work, because
+        // they get their own unwelded vertices and sit at grid-corner positions
+        // while the surface terminates at interpolated crossings, leaving a rim
+        // gap up to a cell wide.
+        //
+        // The shell has real thickness (a collapsed, zero-thickness shell yields
+        // degenerate tetrahedra whose triangles do not pair). Consequently the
+        // cap lies between the boundary plane and one cell beyond it, tending
+        // toward the boundary as the edge samples approach the iso value.
+        let shell = prm.close_boundaries;
+        let is_shell = |i: isize, j: isize, k: isize| {
+            i < 0 || j < 0 || k < 0 || i >= nx as isize || j >= ny as isize || k >= nz as isize
+        };
+
+        // Sample value at a possibly-shell index; `None` where the field is
+        // no-data (or off-grid with capping disabled).
+        let sample = |i: isize, j: isize, k: isize, outside: f64| -> Option<f64> {
+            if is_shell(i, j, k) {
+                return if shell { Some(outside) } else { None };
+            }
+            let v = at(i as usize, j as usize, k as usize);
+            if v.is_finite() {
+                Some(v)
+            } else {
+                None
+            }
+        };
+
+        // World coordinate of grid sample (i, j, k). Rows run north-down. Shell
+        // indices extrapolate one cell beyond the volume.
+        let world = |i: isize, j: isize, k: isize| -> [f64; 3] {
             [
                 raster.x_min + (i as f64 + 0.5) * cx,
                 y_max - (j as f64 + 0.5) * cy,
@@ -191,7 +240,16 @@ impl Tool for VoxelIsosurfaceTool {
         out.add_field(FieldDef::new("iso_value", FieldType::Float));
         out.add_field(FieldDef::new("triangle_count", FieldType::Integer));
         out.add_field(FieldDef::new("vertex_count", FieldType::Integer));
-        out.crs = None;
+        // Carry the raster's CRS: the surfaces are in the raster's XY space, so
+        // dropping it would leave them unreferenced.
+        out.crs = if raster.crs.epsg.is_some() || raster.crs.wkt.is_some() {
+            Some(wbvector::Crs {
+                epsg: raster.crs.epsg,
+                wkt: raster.crs.wkt.clone(),
+            })
+        } else {
+            None
+        };
         out.geom_type = Some(GeometryType::MultiPolygon);
 
         let mut total_tris = 0_u64;
@@ -206,20 +264,34 @@ impl Tool for VoxelIsosurfaceTool {
             let mut index: HashMap<(u64, u64), u32> = HashMap::new();
             let mut tris: Vec<[u32; 3]> = Vec::new();
 
-            for k in 0..(nz - 1) {
-                for j in 0..(ny - 1) {
-                    for i in 0..(nx - 1) {
+            // With capping the sweep starts one cell earlier on each axis so the
+            // shell cells are marched too.
+            // With capping the sweep runs from -1 to n-1 inclusive so BOTH the
+            // low and the high shell layer are marched; stopping at n-2 would
+            // leave the far faces uncapped.
+            let lo: isize = if shell { -1 } else { 0 };
+            let hi = |n: usize| if shell { n as isize } else { n as isize - 1 };
+            let outside = *iso - 1.0;
+            for k in lo..hi(nz) {
+                for j in lo..hi(ny) {
+                    for i in lo..hi(nx) {
                         // Sample the eight corners; skip cells touching no-data
                         // since their classification is undefined.
                         let mut val = [0.0_f64; 8];
                         let mut ok = true;
                         for (c, d) in CORNER.iter().enumerate() {
-                            let v = at(i + d[0], j + d[1], k + d[2]);
-                            if !v.is_finite() {
-                                ok = false;
-                                break;
+                            match sample(
+                                i + d[0] as isize,
+                                j + d[1] as isize,
+                                k + d[2] as isize,
+                                outside,
+                            ) {
+                                Some(v) => val[c] = v,
+                                None => {
+                                    ok = false;
+                                    break;
+                                }
                             }
-                            val[c] = v;
                         }
                         if !ok {
                             continue;
@@ -243,8 +315,16 @@ impl Tool for VoxelIsosurfaceTool {
                                        index: &mut HashMap<(u64, u64), u32>|
                              -> u32 {
                                 let (la, lb) = (tet[a], tet[b]);
-                                let ga = (i + CORNER[la][0], j + CORNER[la][1], k + CORNER[la][2]);
-                                let gb = (i + CORNER[lb][0], j + CORNER[lb][1], k + CORNER[lb][2]);
+                                let ga = (
+                                    i + CORNER[la][0] as isize,
+                                    j + CORNER[la][1] as isize,
+                                    k + CORNER[la][2] as isize,
+                                );
+                                let gb = (
+                                    i + CORNER[lb][0] as isize,
+                                    j + CORNER[lb][1] as isize,
+                                    k + CORNER[lb][2] as isize,
+                                );
                                 let key = edge_key(ga, gb, nx, ny);
                                 if let Some(v) = index.get(&key) {
                                     return *v;
@@ -316,12 +396,9 @@ impl Tool for VoxelIsosurfaceTool {
                     }
                 }
                 ctx.progress.progress(
-                    (vi as f64 + (k as f64 + 1.0) / (nz - 1) as f64) / values.len() as f64,
+                    (vi as f64 + (k - lo + 1) as f64 / (hi(nz) - lo).max(1) as f64)
+                        / values.len() as f64,
                 );
-            }
-
-            if prm.close_boundaries {
-                cap_boundaries(&field, nx, ny, nz, *iso, &world, &mut verts, &mut tris);
             }
 
             if prm.smooth > 0 {
@@ -408,12 +485,15 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
 
 /// Canonical, order-independent key for a grid edge.
 fn edge_key(
-    a: (usize, usize, usize),
-    b: (usize, usize, usize),
+    a: (isize, isize, isize),
+    b: (isize, isize, isize),
     nx: usize,
     ny: usize,
 ) -> (u64, u64) {
-    let lin = |p: (usize, usize, usize)| ((p.2 * ny + p.1) * nx + p.0) as u64;
+    let lin = |p: (isize, isize, isize)| {
+        let (i, j, k) = (p.0 + 1, p.1 + 1, p.2 + 1);
+        (((k as u64) * (ny as u64 + 2) + j as u64) * (nx as u64 + 2)) + i as u64
+    };
     let (ka, kb) = (lin(a), lin(b));
     if ka <= kb {
         (ka, kb)
@@ -422,124 +502,14 @@ fn edge_key(
     }
 }
 
-/// Caps the surface where it runs into the volume boundary, so the mesh bounds
-/// a closed solid instead of leaking. Each boundary face is walked as a 2D
-/// marching-squares problem and the inside region is triangulated as a fan.
-#[allow(clippy::too_many_arguments)]
-fn cap_boundaries(
-    field: &[f64],
-    nx: usize,
-    ny: usize,
-    nz: usize,
-    iso: f64,
-    world: &dyn Fn(usize, usize, usize) -> [f64; 3],
-    verts: &mut Vec<[f64; 3]>,
-    tris: &mut Vec<[u32; 3]>,
-) {
-    let at = |i: usize, j: usize, k: usize| field[(k * ny + j) * nx + i];
-    let push = |p: [f64; 3], verts: &mut Vec<[f64; 3]>| -> u32 {
-        verts.push(p);
-        (verts.len() - 1) as u32
-    };
-
-    // For each of the six boundary planes, emit a quad (as two triangles) for
-    // every cell whose four in-plane corners are all inside the iso surface.
-    // This is a conservative cap: it seals the common case (a blob running off
-    // the edge of the volume) without inventing geometry where the surface only
-    // clips a corner.
-    let quad = |p0: [f64; 3],
-                p1: [f64; 3],
-                p2: [f64; 3],
-                p3: [f64; 3],
-                verts: &mut Vec<[f64; 3]>,
-                tris: &mut Vec<[u32; 3]>| {
-        let a = push(p0, verts);
-        let b = push(p1, verts);
-        let c = push(p2, verts);
-        let d = push(p3, verts);
-        tris.push([a, b, c]);
-        tris.push([a, c, d]);
-    };
-
-    let inside = |v: f64| v.is_finite() && v >= iso;
-
-    // Z = 0 and Z = nz-1 faces.
-    for &(k, flip) in &[(0_usize, false), (nz - 1, true)] {
-        for j in 0..(ny - 1) {
-            for i in 0..(nx - 1) {
-                if inside(at(i, j, k))
-                    && inside(at(i + 1, j, k))
-                    && inside(at(i + 1, j + 1, k))
-                    && inside(at(i, j + 1, k))
-                {
-                    let (a, b, c, d) = (
-                        world(i, j, k),
-                        world(i + 1, j, k),
-                        world(i + 1, j + 1, k),
-                        world(i, j + 1, k),
-                    );
-                    if flip {
-                        quad(a, d, c, b, verts, tris);
-                    } else {
-                        quad(a, b, c, d, verts, tris);
-                    }
-                }
-            }
-        }
-    }
-
-    // Y = 0 and Y = ny-1 faces.
-    for &(j, flip) in &[(0_usize, false), (ny - 1, true)] {
-        for k in 0..(nz - 1) {
-            for i in 0..(nx - 1) {
-                if inside(at(i, j, k))
-                    && inside(at(i + 1, j, k))
-                    && inside(at(i + 1, j, k + 1))
-                    && inside(at(i, j, k + 1))
-                {
-                    let (a, b, c, d) = (
-                        world(i, j, k),
-                        world(i + 1, j, k),
-                        world(i + 1, j, k + 1),
-                        world(i, j, k + 1),
-                    );
-                    if flip {
-                        quad(a, d, c, b, verts, tris);
-                    } else {
-                        quad(a, b, c, d, verts, tris);
-                    }
-                }
-            }
-        }
-    }
-
-    // X = 0 and X = nx-1 faces.
-    for &(i, flip) in &[(0_usize, false), (nx - 1, true)] {
-        for k in 0..(nz - 1) {
-            for j in 0..(ny - 1) {
-                if inside(at(i, j, k))
-                    && inside(at(i, j + 1, k))
-                    && inside(at(i, j + 1, k + 1))
-                    && inside(at(i, j, k + 1))
-                {
-                    let (a, b, c, d) = (
-                        world(i, j, k),
-                        world(i, j + 1, k),
-                        world(i, j + 1, k + 1),
-                        world(i, j, k + 1),
-                    );
-                    if flip {
-                        quad(a, d, c, b, verts, tris);
-                    } else {
-                        quad(a, b, c, d, verts, tris);
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Umbrella-operator Laplacian smoothing over the welded mesh topology.
+///
+/// Uses a relaxation factor of 0.5 rather than replacing each vertex outright
+/// with its neighbour centroid. The unrelaxed form is the maximally shrinking
+/// umbrella operator and visibly deflates a closed surface away from the iso
+/// value the tool just solved for.
+const SMOOTH_LAMBDA: f64 = 0.5;
+
 fn laplacian_smooth(verts: &mut [[f64; 3]], tris: &[[u32; 3]], iterations: usize) {
     if verts.is_empty() || tris.is_empty() {
         return;
@@ -573,7 +543,8 @@ fn laplacian_smooth(verts: &mut [[f64; 3]], tris: &[[u32; 3]], iterations: usize
                 }
             }
             for k in 0..3 {
-                verts[i][k] = acc[k] / nbrs.len() as f64;
+                let centroid = acc[k] / nbrs.len() as f64;
+                verts[i][k] += SMOOTH_LAMBDA * (centroid - verts[i][k]);
             }
         }
     }
@@ -610,6 +581,40 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
 }
 
 fn parse_values(args: &ToolArgs) -> Result<Vec<f64>, ToolError> {
+    // A single threshold is naturally posted as a number, and a list as a JSON
+    // array; accept both alongside the comma-separated string form.
+    match args.get("values") {
+        Some(Value::Number(n)) => {
+            let v = n.as_f64().filter(|v| v.is_finite()).ok_or_else(|| {
+                ToolError::Validation("parameter 'values' must be finite".to_string())
+            })?;
+            return Ok(vec![v]);
+        }
+        Some(Value::Array(items)) => {
+            let mut out = Vec::new();
+            for it in items {
+                let v = match it {
+                    Value::Number(n) => n.as_f64(),
+                    Value::String(t) => t.trim().parse::<f64>().ok(),
+                    _ => None,
+                }
+                .filter(|v| v.is_finite())
+                .ok_or_else(|| {
+                    ToolError::Validation(format!(
+                        "parameter 'values' has a non-numeric entry {it}"
+                    ))
+                })?;
+                out.push(v);
+            }
+            if out.is_empty() {
+                return Err(ToolError::Validation(
+                    "'values' must list at least one threshold".to_string(),
+                ));
+            }
+            return Ok(out);
+        }
+        _ => {}
+    }
     let s = required_str(args, "values")?;
     let mut out = Vec::new();
     for part in s.split(',') {
@@ -825,6 +830,46 @@ mod tests {
         );
     }
 
+    /// The capped path must also be watertight — this is what `close_boundaries`
+    /// claims and what the separate cap-quad approach could not deliver. A blob
+    /// running off the edge of the volume is the case that exercises it.
+    #[test]
+    fn capped_surface_is_closed_when_the_blob_meets_the_boundary() {
+        // Sphere centred on the volume corner, so the surface is cut by three
+        // boundary faces and must be sealed against them.
+        let n = 16;
+        let path = voxel_field(n, |x, y, z| {
+            -(((x - 2.0).powi(2) + (y - 2.0).powi(2) + (z - 2.0).powi(2)).sqrt())
+        });
+        let (layer, res) = run(json!({
+            "input": path, "values": "-6", "close_boundaries": true
+        }));
+        let tris = triangles(&layer);
+        assert!(!tris.is_empty(), "expected a capped surface");
+        assert!(res.outputs["triangle_count"].as_u64().unwrap() > 0);
+
+        type Key = (i64, i64, i64);
+        let q = |v: f64| (v / 1e-7).round() as i64;
+        let mut edges: HashMap<(Key, Key), usize> = HashMap::new();
+        for t in &tris {
+            for k in 0..3 {
+                let a = (q(t[k][0]), q(t[k][1]), q(t[k][2]));
+                let b = (
+                    q(t[(k + 1) % 3][0]),
+                    q(t[(k + 1) % 3][1]),
+                    q(t[(k + 1) % 3][2]),
+                );
+                let key = if a <= b { (a, b) } else { (b, a) };
+                *edges.entry(key).or_insert(0) += 1;
+            }
+        }
+        let unpaired = edges.values().filter(|c| **c != 2).count();
+        assert_eq!(
+            unpaired, 0,
+            "close_boundaries must seal the surface; {unpaired} edge(s) are not shared by exactly two triangles"
+        );
+    }
+
     /// A field entirely below the threshold produces nothing at all.
     #[test]
     fn field_below_threshold_yields_no_surface() {
@@ -917,6 +962,25 @@ mod tests {
         assert!(tris.iter().flatten().flatten().all(|v| v.is_finite()));
     }
 
+    /// `values` accepts a bare number and a JSON array, not just a string.
+    #[test]
+    fn values_accepts_number_and_array() {
+        let n = 14;
+        let c = 7.0;
+        let field = move |x: f64, y: f64, z: f64| {
+            -(((x - c).powi(2) + (y - c).powi(2) + (z - c).powi(2)).sqrt())
+        };
+        let (_, num) = run(json!({
+            "input": voxel_field(n, field), "values": -4.0, "close_boundaries": false
+        }));
+        assert_eq!(num.outputs["surface_count"], json!(1));
+
+        let (_, arr) = run(json!({
+            "input": voxel_field(n, field), "values": [-5.0, -3.0], "close_boundaries": false
+        }));
+        assert_eq!(arr.outputs["surface_count"], json!(2));
+    }
+
     #[test]
     fn rejects_bad_parameters() {
         let args: ToolArgs = serde_json::from_value(json!({})).unwrap();
@@ -928,6 +992,8 @@ mod tests {
             json!({ "input": path.clone(), "values": "" }),
             json!({ "input": path.clone(), "values": "1", "z_spacing": 0 }),
             json!({ "input": path.clone(), "values": "1", "smooth": -1 }),
+            json!({ "input": path.clone(), "values": [] }),
+            json!({ "input": path.clone(), "values": ["x"] }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();
             assert!(VoxelIsosurfaceTool.validate(&args).is_err());

@@ -192,26 +192,33 @@ impl Tool for GenerateSubsetPolygonsTool {
         out.crs = layer.crs.clone();
         out.geom_type = Some(GeometryType::Polygon);
 
-        // subset id per flattened point, for the tagged-point output.
-        let mut assignment = vec![0_i64; pts.len()];
+        // Subset id per flattened point. Points belonging to a leaf whose
+        // clipped geometry turns out empty are tagged -1 rather than left
+        // pointing at a polygon that was never written, which would be a silent
+        // broken join downstream.
+        let mut assignment = vec![-1_i64; pts.len()];
         let mut emitted = 0_usize;
+        let mut dropped_points = 0_u64;
 
         for (sid, leaf) in leaves.iter().enumerate() {
-            for i in &leaf.indices {
-                assignment[*i] = sid as i64;
-            }
             let rect_poly = leaf.rect.to_geo();
             let clipped = match &hull {
                 Some(h) => MultiPolygon(vec![rect_poly]).intersection(h),
                 None => MultiPolygon(vec![rect_poly]),
             };
             if clipped.0.is_empty() {
+                dropped_points += leaf.indices.len() as u64;
                 continue;
             }
             let area = clipped.unsigned_area();
             let Some(geom) = multipolygon_to_wb(&clipped) else {
+                dropped_points += leaf.indices.len() as u64;
                 continue;
             };
+            // Only tag points once the polygon is certain to be written.
+            for i in &leaf.indices {
+                assignment[*i] = sid as i64;
+            }
             out.add_feature(
                 Some(geom),
                 &[
@@ -233,8 +240,12 @@ impl Tool for GenerateSubsetPolygonsTool {
         pt_layer.crs = layer.crs.clone();
         pt_layer.geom_type = Some(GeometryType::Point);
 
+        // Materialised once: `layer.iter().nth(fid)` inside the loop would make
+        // the tagged-point write O(points x features), on the very path that
+        // exists for large point sets.
+        let src_features: Vec<&wbvector::Feature> = layer.iter().collect();
         for (idx, (x, y, fid)) in pts.iter().enumerate() {
-            let src = layer.iter().nth(*fid);
+            let src = src_features.get(*fid).copied();
             let mut attrs: Vec<(&str, wbvector::FieldValue)> = layer
                 .schema
                 .fields()
@@ -268,6 +279,8 @@ impl Tool for GenerateSubsetPolygonsTool {
         // Where min and max genuinely cannot both hold, say so rather than
         // silently violating the minimum.
         outputs.insert("undersized_subset_count".to_string(), json!(undersized));
+        // Points whose subset polygon was dropped carry subset_id = -1.
+        outputs.insert("dropped_point_count".to_string(), json!(dropped_points));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -375,10 +388,13 @@ fn split(
     });
 
     let mid = idx.len() / 2;
-    // Both halves must still clear the minimum, which is what stops the two
-    // bounds from conflicting.
-    let (left_len, right_len) = (mid, idx.len() - mid);
-    if left_len < prm.min_points || right_len < prm.min_points {
+    // Both halves must still clear the minimum, measured with the SAME metric
+    // the maximum uses — comparing a raw count against a coincidence-collapsed
+    // maximum would let a split proceed that is known in advance to leave an
+    // undersized child.
+    let left_eff = effective_count(pts, &idx[..mid], prm.coincident_single);
+    let right_eff = effective_count(pts, &idx[mid..], prm.coincident_single);
+    if left_eff < prm.min_points || right_eff < prm.min_points {
         out.push(Leaf {
             rect,
             indices: idx.to_vec(),

@@ -30,10 +30,14 @@
 //! ## Output representation
 //!
 //! The repo's vector model has no native arc primitive, so fitted arcs are
-//! re-densified to a chord tolerance on write (`densify_output`, default true)
-//! while the arc parameters (centre, radius, sweep) are carried as attributes.
-//! Set `densify_output=false` to emit only the arc endpoints plus those
-//! attributes, for a consumer that can render true curves.
+//! re-densified to a chord tolerance on write (`densify_output`, default true).
+//!
+//! A per-feature attribute cannot hold several arcs, so the arc parameters go to
+//! a separate `output_arcs` table instead — one row per fitted arc with its
+//! feature id, endpoints, centre, radius and signed sweep. That table is what
+//! makes `densify_output=false` usable: without it the endpoints-only geometry
+//! collapses each arc to an unrecoverable straight chord (deviation up to
+//! `r * (1 - cos(sweep / 2))`).
 //!
 //! Scope note: features are simplified independently, so a shared boundary
 //! between two polygons can crack. Use the bundled `simplify_shared_edges` when
@@ -52,6 +56,15 @@ use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_
 
 /// Replaces runs of vertices with straight segments and circular arcs.
 pub struct SimplifyByCircularArcsTool;
+
+/// One accepted arc, recorded so its parameters can be written to `output_arcs`.
+/// A per-feature attribute cannot hold several arcs, hence a side table.
+struct FittedArc {
+    start: Coord,
+    end: Coord,
+    circle: Circle,
+    sweep_deg: f64,
+}
 
 impl Tool for SimplifyByCircularArcsTool {
     fn metadata(&self) -> ToolMetadata {
@@ -94,7 +107,12 @@ impl Tool for SimplifyByCircularArcsTool {
                 },
                 ToolParamSpec {
                     name: "densify_output",
-                    description: "Re-densify fitted arcs to a chord tolerance on write (default true). When false, only arc endpoints are emitted.",
+                    description: "Re-densify fitted arcs to a chord tolerance on write (default true). When false only the arc endpoints are emitted, so the geometry alone loses the curve — read 'output_arcs' to recover it.",
+                    required: false,
+                },
+                ToolParamSpec {
+                    name: "output_arcs",
+                    description: "Optional path for the fitted-arc table (feature id, endpoints, centre, radius, signed sweep in degrees). If omitted, stored in memory (still returned).",
                     required: false,
                 },
             ],
@@ -135,6 +153,24 @@ impl Tool for SimplifyByCircularArcsTool {
         out.crs = layer.crs.clone();
         out.geom_type = layer.geom_type;
 
+        // Companion table of fitted arc parameters — the only place the curve
+        // survives when densify_output is off.
+        let mut arc_layer = Layer::new("fitted_arcs");
+        arc_layer.add_field(FieldDef::new("feature_fid", FieldType::Integer));
+        for f in [
+            "start_x",
+            "start_y",
+            "end_x",
+            "end_y",
+            "center_x",
+            "center_y",
+            "radius",
+            "sweep_deg",
+        ] {
+            arc_layer.add_field(FieldDef::new(f, FieldType::Float));
+        }
+        arc_layer.crs = layer.crs.clone();
+
         let mut total_in = 0_u64;
         let mut total_out = 0_u64;
         let mut total_arcs = 0_u64;
@@ -147,7 +183,28 @@ impl Tool for SimplifyByCircularArcsTool {
             let mut vin = 0_u64;
             let mut vout = 0_u64;
 
-            let simplified = simplify_geometry(geom, &prm, &mut arcs, &mut vin, &mut vout);
+            let mut fitted: Vec<FittedArc> = Vec::new();
+            let simplified =
+                simplify_geometry(geom, &prm, &mut arcs, &mut vin, &mut vout, &mut fitted);
+
+            for a in &fitted {
+                arc_layer
+                    .add_feature(
+                        None,
+                        &[
+                            ("feature_fid", (fid as i64).into()),
+                            ("start_x", a.start.x.into()),
+                            ("start_y", a.start.y.into()),
+                            ("end_x", a.end.x.into()),
+                            ("end_y", a.end.y.into()),
+                            ("center_x", a.circle.cx.into()),
+                            ("center_y", a.circle.cy.into()),
+                            ("radius", a.circle.radius.into()),
+                            ("sweep_deg", a.sweep_deg.into()),
+                        ],
+                    )
+                    .map_err(|e| ToolError::Execution(format!("failed adding arc row: {e}")))?;
+            }
 
             total_in += vin;
             total_out += vout;
@@ -172,8 +229,10 @@ impl Tool for SimplifyByCircularArcsTool {
         }
 
         let out_path = write_or_store_layer(out, output)?;
+        let arcs_path = write_or_store_layer(arc_layer, parse_optional_str(args, "output_arcs")?)?;
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));
+        outputs.insert("output_arcs".to_string(), json!(arcs_path));
         outputs.insert("arc_count".to_string(), json!(total_arcs));
         outputs.insert("input_vertex_count".to_string(), json!(total_in));
         outputs.insert("output_vertex_count".to_string(), json!(total_out));
@@ -195,11 +254,12 @@ fn simplify_geometry(
     arcs: &mut u64,
     vin: &mut u64,
     vout: &mut u64,
+    fitted: &mut Vec<FittedArc>,
 ) -> Option<Geometry> {
     match geom {
         Geometry::LineString(cs) => {
             *vin += cs.len() as u64;
-            let s = simplify_run(cs, prm, false, arcs);
+            let s = simplify_run(cs, prm, false, arcs, fitted);
             *vout += s.len() as u64;
             Some(Geometry::LineString(s))
         }
@@ -207,7 +267,7 @@ fn simplify_geometry(
             let mut outp = Vec::new();
             for cs in parts {
                 *vin += cs.len() as u64;
-                let s = simplify_run(cs, prm, false, arcs);
+                let s = simplify_run(cs, prm, false, arcs, fitted);
                 *vout += s.len() as u64;
                 outp.push(s);
             }
@@ -218,12 +278,12 @@ fn simplify_geometry(
             interiors,
         } => {
             *vin += exterior.0.len() as u64;
-            let ext = simplify_run(&exterior.0, prm, true, arcs);
+            let ext = simplify_run(&exterior.0, prm, true, arcs, fitted);
             *vout += ext.len() as u64;
             let mut holes = Vec::new();
             for h in interiors {
                 *vin += h.0.len() as u64;
-                let s = simplify_run(&h.0, prm, true, arcs);
+                let s = simplify_run(&h.0, prm, true, arcs, fitted);
                 *vout += s.len() as u64;
                 if s.len() >= 3 {
                     holes.push(Ring::new(s));
@@ -241,7 +301,7 @@ fn simplify_geometry(
             let mut outp = Vec::new();
             for (e, hs) in parts {
                 *vin += e.0.len() as u64;
-                let ext = simplify_run(&e.0, prm, true, arcs);
+                let ext = simplify_run(&e.0, prm, true, arcs, fitted);
                 *vout += ext.len() as u64;
                 if ext.len() < 3 {
                     outp.push((e.clone(), hs.clone()));
@@ -250,7 +310,7 @@ fn simplify_geometry(
                 let mut holes = Vec::new();
                 for h in hs {
                     *vin += h.0.len() as u64;
-                    let s = simplify_run(&h.0, prm, true, arcs);
+                    let s = simplify_run(&h.0, prm, true, arcs, fitted);
                     *vout += s.len() as u64;
                     if s.len() >= 3 {
                         holes.push(Ring::new(s));
@@ -271,7 +331,13 @@ fn simplify_geometry(
 /// where no arc qualifies, the longest straight segment is used. Growing each
 /// primitive as far as tolerance allows is what produces large vertex
 /// reductions rather than many short arcs.
-fn simplify_run(coords: &[Coord], prm: &Params, closed: bool, arcs: &mut u64) -> Vec<Coord> {
+fn simplify_run(
+    coords: &[Coord],
+    prm: &Params,
+    closed: bool,
+    arcs: &mut u64,
+    fitted: &mut Vec<FittedArc>,
+) -> Vec<Coord> {
     let n = coords.len();
     if n < 3 {
         return coords.to_vec();
@@ -333,6 +399,12 @@ fn simplify_run(coords: &[Coord], prm: &Params, closed: bool, arcs: &mut u64) ->
         match best_arc {
             Some((arc_end, circle)) if arc_end > best_line => {
                 *arcs += 1;
+                fitted.push(FittedArc {
+                    start: pts[i].clone(),
+                    end: pts[arc_end].clone(),
+                    circle,
+                    sweep_deg: sweep_signed(&pts[i..=arc_end], &circle).to_degrees(),
+                });
                 if prm.densify_output {
                     let dens = densify_arc(&pts[i], &pts[arc_end], &circle, &pts[i..=arc_end], prm);
                     // Skip the first point: it is already in `out`.
@@ -470,8 +542,13 @@ fn sweep_degrees(pts: &[Coord], c: &Circle) -> f64 {
         while d < -std::f64::consts::PI {
             d += std::f64::consts::TAU;
         }
+        // `f64::signum()` yields +1.0 for +0.0, so seeding from a zero-length
+        // step (a duplicated vertex) would fix the direction as positive and
+        // then reject the clockwise arc that follows as a reversal.
         if sign == 0.0 {
-            sign = d.signum();
+            if d != 0.0 {
+                sign = d.signum();
+            }
         } else if d != 0.0 && d.signum() != sign {
             // Direction reversal: not a single circular arc.
             return 0.0;
@@ -516,11 +593,21 @@ fn densify_arc(
     // Chord error for a step t is r * (1 - cos(t/2)); invert for the tolerance.
     let ratio = (1.0 - prm.tolerance / c.radius).clamp(-1.0, 1.0);
     let max_step = 2.0 * ratio.acos();
-    let steps = if max_step > 1e-9 {
-        ((sweep.abs() / max_step).ceil() as usize).clamp(1, 512)
+    const MAX_STEPS: usize = 4096;
+    let needed = if max_step > 1e-9 {
+        (sweep.abs() / max_step).ceil()
     } else {
-        1
+        f64::INFINITY
     };
+    // Densifying with fewer steps than the chord-error inversion demands would
+    // reintroduce a deviation larger than `tolerance` — a violation created
+    // purely by the write-out, after the arc already passed acceptance. Fall
+    // back to the caller's own vertices in that case rather than emit geometry
+    // that breaks the tool's guarantee.
+    if !needed.is_finite() || needed > MAX_STEPS as f64 {
+        return original.to_vec();
+    }
+    let steps = (needed as usize).clamp(1, MAX_STEPS);
 
     let mut out = Vec::with_capacity(steps + 1);
     for k in 0..=steps {
@@ -736,8 +823,8 @@ mod tests {
             worst = worst.max(best);
         }
         assert!(
-            worst <= tol * 1.5,
-            "every input vertex must stay near the simplified line; worst {worst} vs tolerance {tol}"
+            worst <= tol,
+            "every input vertex must stay within tolerance of the simplified geometry; worst {worst} vs tolerance {tol}"
         );
     }
 
@@ -752,10 +839,9 @@ mod tests {
             })
             .collect();
         let path = line_layer(pts);
-        let (_, arcs) = run(
-            path.clone(),
-            json!({ "tolerance": 0.2, "densify_output": false }),
-        );
+        // Both runs densify, so the difference comes from arc fitting rather
+        // than from the densify_output flag.
+        let (_, arcs) = run(path.clone(), json!({ "tolerance": 0.2 }));
         let (_, tangent) = run(path, json!({ "tolerance": 0.2, "mode": "tangent" }));
 
         let a = arcs.outputs["output_vertex_count"].as_u64().unwrap();
@@ -882,6 +968,44 @@ mod tests {
                 "densified vertices should lie on the fitted circle, got r={r}"
             );
         }
+    }
+
+    /// The fitted-arc table carries the parameters the geometry alone loses when
+    /// densify_output is off.
+    #[test]
+    fn arc_table_records_fitted_parameters() {
+        let pts: Vec<(f64, f64)> = (0..=60)
+            .map(|i| {
+                let t = std::f64::consts::PI * i as f64 / 60.0;
+                (100.0 * t.cos(), 100.0 * t.sin())
+            })
+            .collect();
+        let path = line_layer(pts);
+        let args: ToolArgs = serde_json::from_value(
+            json!({ "input": path, "tolerance": 0.5, "densify_output": false }),
+        )
+        .unwrap();
+        let res = SimplifyByCircularArcsTool.run(&args, &ctx()).unwrap();
+        assert_eq!(res.outputs["arc_count"], json!(1));
+
+        let table = load_input_layer(res.outputs["output_arcs"].as_str().unwrap()).unwrap();
+        assert_eq!(table.len(), 1, "one fitted arc -> one row");
+        let f = table.iter().next().unwrap();
+        let get = |k: &str| match table.schema.field_index(k).map(|i| f.attributes[i].clone()) {
+            Some(wbvector::FieldValue::Float(v)) => v,
+            other => panic!("expected float for {k}, got {other:?}"),
+        };
+        assert!(
+            (get("radius") - 100.0).abs() < 0.5,
+            "radius {}",
+            get("radius")
+        );
+        assert!(get("center_x").abs() < 0.5 && get("center_y").abs() < 0.5);
+        assert!(
+            (get("sweep_deg").abs() - 180.0).abs() < 2.0,
+            "semicircle sweep {}",
+            get("sweep_deg")
+        );
     }
 
     fn point_segment_distance(px: f64, py: f64, a: &Coord, b: &Coord) -> f64 {

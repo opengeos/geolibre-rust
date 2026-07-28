@@ -63,12 +63,17 @@ impl Tool for MultilookTool {
             params: vec![
                 ToolParamSpec {
                     name: "input",
-                    description: "Input SAR raster: a two-band I/Q pair for complex (SLC) data, or a single band of already-detected intensity/amplitude.",
+                    description: "Input SAR raster: a two-band I/Q pair for complex (SLC) data, or a single band of already-detected data (see 'input_domain').",
                     required: true,
                 },
                 ToolParamSpec {
                     name: "output",
                     description: "Optional output raster path. If omitted, the result is stored in memory.",
+                    required: false,
+                },
+                ToolParamSpec {
+                    name: "input_domain",
+                    description: "For non-complex input, what band 1 already holds: 'intensity' (default) or 'amplitude'. Amplitude is squared to intensity before averaging, since incoherent averaging is only correct in the intensity domain.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -113,6 +118,7 @@ impl Tool for MultilookTool {
         }
         parse_units(args)?;
         parse_stat(args)?;
+        parse_input_domain(args)?;
         for k in ["range_looks", "azimuth_looks"] {
             if let Some(v) = opt_u64(args, k)? {
                 if v == 0 {
@@ -134,6 +140,7 @@ impl Tool for MultilookTool {
         let output = parse_optional_output(args, "output")?;
         let units = parse_units(args)?;
         let stat = parse_stat(args)?;
+        let amplitude_input = parse_input_domain(args)?;
 
         let raster = load_input_raster(input)?;
         let complex = opt_bool(args, "complex")?.unwrap_or(raster.bands >= 2);
@@ -191,8 +198,12 @@ impl Tool for MultilookTool {
                         continue;
                     }
                     i_val * i_val + q_val * q_val
+                } else if amplitude_input {
+                    // Amplitude must be squared first: averaging amplitudes is
+                    // the wrong domain, and the dB conversion below assumes
+                    // intensity (10*log10(I), not 20*log10(A)).
+                    i_val * i_val
                 } else {
-                    // Already-detected input is taken as intensity as-is.
                     i_val
                 };
                 intensity[row * cols + col] = v;
@@ -252,12 +263,16 @@ impl Tool for MultilookTool {
         }
 
         // Output cell size scales by the look counts; georeferencing is kept.
+        // div_ceil pads the southern edge when the look window does not divide
+        // the row count, so drop the origin by the remainder — otherwise y_max
+        // would drift north of the input extent.
+        let y_pad = (out_rows * azimuth_looks - rows) as f64 * cy;
         let mut out = Raster::new(RasterConfig {
             cols: out_cols,
             rows: out_rows,
             bands: 1,
             x_min: raster.x_min,
-            y_min: raster.y_min,
+            y_min: raster.y_min - y_pad,
             cell_size: cx * range_looks as f64,
             cell_size_y: Some(cy * azimuth_looks as f64),
             nodata: out_nodata,
@@ -321,6 +336,20 @@ fn parse_units(args: &ToolArgs) -> Result<Units, ToolError> {
             "db" => Ok(Units::Db),
             other => Err(ToolError::Validation(format!(
                 "unknown output_units '{other}' (expected amplitude, intensity or db)"
+            ))),
+        },
+    }
+}
+
+/// Returns `true` when a non-complex input holds amplitude rather than intensity.
+fn parse_input_domain(args: &ToolArgs) -> Result<bool, ToolError> {
+    match opt_str(args, "input_domain")? {
+        None => Ok(false),
+        Some(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "intensity" => Ok(false),
+            "amplitude" => Ok(true),
+            other => Err(ToolError::Validation(format!(
+                "unknown input_domain '{other}' (expected intensity or amplitude)"
             ))),
         },
     }
@@ -528,6 +557,56 @@ mod tests {
         v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / v.len() as f64
     }
 
+    /// The median statistic is exercised, including the even-count average.
+    #[test]
+    fn median_statistic_differs_from_mean() {
+        // One 3-cell window with an outlier: mean 34.33, median 2.
+        let path = raster(3, 1, 1, &[1.0, 2.0, 100.0]);
+        let (mean, _) = run_with(
+            json!({ "input": path.clone(), "complex": false, "range_looks": 3, "azimuth_looks": 1 }),
+        );
+        let (median, _) = run_with(
+            json!({ "input": path, "complex": false, "range_looks": 3, "azimuth_looks": 1, "statistic": "median" }),
+        );
+        assert!(
+            (mean.get(0, 0, 0) - 103.0 / 3.0).abs() < 1e-4,
+            "got {}",
+            mean.get(0, 0, 0)
+        );
+        assert!(
+            (median.get(0, 0, 0) - 2.0).abs() < 1e-6,
+            "got {}",
+            median.get(0, 0, 0)
+        );
+
+        // Even count takes the average of the middle pair: (2 + 100) / 2 = 51.
+        let even = raster(2, 1, 1, &[2.0, 100.0]);
+        let (m, _) = run_with(
+            json!({ "input": even, "complex": false, "range_looks": 2, "azimuth_looks": 1, "statistic": "median" }),
+        );
+        assert!(
+            (m.get(0, 0, 0) - 51.0).abs() < 1e-6,
+            "got {}",
+            m.get(0, 0, 0)
+        );
+    }
+
+    /// Amplitude input is squared to intensity before averaging.
+    #[test]
+    fn amplitude_input_is_squared_before_averaging() {
+        // Amplitudes 3 and 4 -> intensities 9 and 16 -> mean 12.5.
+        let path = raster(2, 1, 1, &[3.0, 4.0]);
+        let (out, _) = run_with(json!({
+            "input": path, "complex": false, "input_domain": "amplitude",
+            "range_looks": 2, "azimuth_looks": 1
+        }));
+        assert!(
+            (out.get(0, 0, 0) - 12.5).abs() < 1e-5,
+            "amplitudes must be squared before averaging, got {}",
+            out.get(0, 0, 0)
+        );
+    }
+
     /// auto_looks squares the ground pixel from the spacing ratio.
     #[test]
     fn auto_looks_squares_the_ground_pixel() {
@@ -565,6 +644,7 @@ mod tests {
             json!({ "input": path.clone(), "output_units": "watts" }),
             json!({ "input": path.clone(), "statistic": "mode" }),
             json!({ "input": path.clone(), "range_looks": 0 }),
+            json!({ "input": path.clone(), "input_domain": "power" }),
         ] {
             let args: ToolArgs = serde_json::from_value(bad).unwrap();
             assert!(MultilookTool.validate(&args).is_err());

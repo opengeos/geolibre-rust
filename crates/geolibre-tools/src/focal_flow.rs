@@ -325,7 +325,19 @@ mod tests {
 
         let path = raster(2, 2, &[1.0, 2.0, 3.0, 4.0]);
         let args: ToolArgs =
-            serde_json::from_value(json!({ "input": path, "threshold": "not-a-number" })).unwrap();
+            serde_json::from_value(json!({ "input": path.clone(), "threshold": "not-a-number" }))
+                .unwrap();
         assert!(FocalFlowTool.validate(&args).is_err());
+
+        // An out-of-range band is caught at run time, before the `band - 1`
+        // subtraction that would otherwise underflow.
+        for bad_band in [0, 2] {
+            let args: ToolArgs =
+                serde_json::from_value(json!({ "input": path.clone(), "band": bad_band })).unwrap();
+            assert!(
+                FocalFlowTool.run(&args, &ctx()).is_err(),
+                "band {bad_band} on a single-band raster must be rejected"
+            );
+        }
     }
 }

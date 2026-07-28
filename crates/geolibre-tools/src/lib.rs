@@ -978,6 +978,10 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", raster_in()),
             ("output", raster_out()),
             ("complex", ToolParamSchema::bool()),
+            (
+                "input_domain",
+                ToolParamSchema::enum_values(&["intensity", "amplitude"]),
+            ),
             ("range_looks", int()),
             ("azimuth_looks", int()),
             ("auto_looks", ToolParamSchema::bool()),
@@ -1770,6 +1774,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_arc_angle", float()),
             ("max_radius", float()),
             ("densify_output", ToolParamSchema::bool()),
+            ("output_arcs", table_out()),
         ]),
         "simplify_building" => schemas(&[
             ("input", vector_in()),

@@ -35,10 +35,12 @@
 //! still holds once `close_boundaries` seals a surface against the volume edge.
 //!
 //! **One documented exception:** cells touching *interior* no-data are skipped,
-//! because their classification is undefined. A no-data pocket inside the volume
-//! therefore leaves an unsealed rim — `close_boundaries` shells only the outer
-//! faces, and inventing a value for unknown cells would fabricate geometry. Fill
-//! the field first (or mask the region out) when a closed solid is required.
+//! because their classification is undefined. Where such a pocket **intersects
+//! the extracted surface** the mesh is left with an unsealed rim —
+//! `close_boundaries` shells only the outer faces, and inventing a value for
+//! unknown cells would fabricate geometry. A pocket lying wholly inside or
+//! wholly outside the contour never meets the mesh and is harmless. Fill the
+//! field first (or mask the region out) when a closed solid is required.
 //! `interior_nodata_leaves_an_open_rim` pins this behaviour.
 //! The cost is more triangles for the same surface, which `smooth` and
 //! downstream decimation can absorb.
@@ -121,7 +123,7 @@ impl Tool for VoxelIsosurfaceTool {
                 },
                 ToolParamSpec {
                     name: "close_boundaries",
-                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true). Implemented by marching an extra below-iso shell, so the cap is welded to the surface; it lies between the boundary plane and one cell beyond it. This seals the OUTER faces only: cells touching interior no-data are skipped, so a no-data pocket inside the volume still leaves an open rim.",
+                    description: "Cap surfaces where they meet the volume edge so the result bounds a closed solid (default true). Implemented by marching an extra below-iso shell, so the cap is welded to the surface; it lies between the boundary plane and one cell beyond it. This seals the OUTER faces only: cells touching interior no-data are skipped, so a no-data pocket that intersects the extracted surface still leaves an open rim (one lying wholly inside or outside the contour never meets the mesh).",
                     required: false,
                 },
                 ToolParamSpec {

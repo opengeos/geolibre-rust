@@ -991,8 +991,15 @@ mod tests {
         let b = walled.get(0, row, col);
         assert!(a.is_finite() && b.is_finite());
         assert!(
-            b < a - 1.0,
-            "a diagonal wall must block influence: unblocked {a}, walled {b}"
+            a > 1.0,
+            "without the wall the 100-valued observation should reach this cell, got {a}"
+        );
+        // A merely-reduced value would still pass if the 100 leaked across with
+        // a longer detour, so require the far observation to be shut out
+        // entirely: only the 0-valued side remains reachable.
+        assert!(
+            b.abs() < 1e-6,
+            "the diagonal wall must be impermeable, so this cell sees only the 0-valued observation; got {b}"
         );
     }
 

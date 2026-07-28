@@ -150,6 +150,7 @@ impl Tool for GenerateSubsetPolygonsTool {
         let mut indices: Vec<usize> = (0..pts.len()).collect();
         let mut leaves: Vec<Leaf> = Vec::new();
         let mut undersized = 0_u64;
+        let mut oversized = 0_u64;
         split(
             &pts,
             &mut indices[..],
@@ -157,6 +158,7 @@ impl Tool for GenerateSubsetPolygonsTool {
             &prm,
             &mut leaves,
             &mut undersized,
+            &mut oversized,
             0,
         );
 
@@ -281,6 +283,10 @@ impl Tool for GenerateSubsetPolygonsTool {
         outputs.insert("undersized_subset_count".to_string(), json!(undersized));
         // Points whose subset polygon was dropped carry subset_id = -1.
         outputs.insert("dropped_point_count".to_string(), json!(dropped_points));
+        // Subsets left above max_points_per_subset because no axis-aligned cut
+        // could separate them (typically a coincident stack larger than the
+        // maximum), reported rather than silently exceeding the bound.
+        outputs.insert("oversized_subset_count".to_string(), json!(oversized));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -349,6 +355,7 @@ fn effective_count(pts: &[(f64, f64, usize)], idx: &[usize], coincident_single: 
 /// Recursive median split. Splits along the longer axis at the median point
 /// coordinate; stops when a further split would push either child below
 /// `min_points`.
+#[allow(clippy::too_many_arguments)]
 fn split(
     pts: &[(f64, f64, usize)],
     idx: &mut [usize],
@@ -356,6 +363,7 @@ fn split(
     prm: &Params,
     out: &mut Vec<Leaf>,
     undersized: &mut u64,
+    oversized: &mut u64,
     depth: usize,
 ) {
     let n_eff = effective_count(pts, idx, prm.coincident_single);
@@ -387,14 +395,18 @@ fn split(
             .then_with(|| a.cmp(b))
     });
 
-    // The split must fall on a distinct-coordinate boundary. A run of
-    // coincident points straddling the midpoint would otherwise be cut in two,
-    // and each half would then count that one location independently — so a
-    // single stack could end up with several `subset_id`s, contradicting the
-    // collapse that `coincident_points = "single"` promises.
+    // Under `coincident_points = "single"` the split must fall on a
+    // distinct-coordinate boundary: a run of coincident points straddling the
+    // midpoint would otherwise be cut in two, each half would count that one
+    // location independently, and a single stack could end up with several
+    // `subset_id`s — contradicting the collapse that mode promises.
+    //
+    // Under `"all"` each duplicate counts on its own, so a stack is legitimately
+    // divisible; forcing it whole into one leaf there would strand runs above
+    // `max_points_per_subset`. Hence the plain midpoint in that mode.
     let boundary = |b: usize| b > 0 && b < idx.len() && key(idx[b - 1]) != key(idx[b]);
     let target = idx.len() / 2;
-    let mid = if boundary(target) {
+    let mid = if !prm.coincident_single || boundary(target) {
         target
     } else {
         // Nearest distinct-coordinate boundary either side of the midpoint.
@@ -412,6 +424,7 @@ fn split(
             (None, Some(d)) => d,
             // Every point shares this coordinate: no split can separate them.
             (None, None) => {
+                *oversized += 1;
                 out.push(Leaf {
                     rect,
                     indices: idx.to_vec(),
@@ -428,6 +441,9 @@ fn split(
     let left_eff = effective_count(pts, &idx[..mid], prm.coincident_single);
     let right_eff = effective_count(pts, &idx[mid..], prm.coincident_single);
     if left_eff < prm.min_points || right_eff < prm.min_points {
+        // The minimum wins over the maximum here: splitting would strand a child
+        // below the floor.
+        *oversized += 1;
         out.push(Leaf {
             rect,
             indices: idx.to_vec(),
@@ -441,6 +457,11 @@ fn split(
     let lo = if horizontal { rect.min_x } else { rect.min_y };
     let hi = if horizontal { rect.max_x } else { rect.max_y };
     if !(cut > lo && cut < hi) {
+        // A run of identical coordinates cannot be separated by ANY axis-aligned
+        // cut without producing two overlapping rectangles, which would break
+        // the non-overlap guarantee. Such a subset stays above the maximum and
+        // is reported rather than silently exceeding it.
+        *oversized += 1;
         out.push(Leaf {
             rect,
             indices: idx.to_vec(),
@@ -455,8 +476,26 @@ fn split(
     };
 
     let (left, right) = idx.split_at_mut(mid);
-    split(pts, left, left_rect, prm, out, undersized, depth + 1);
-    split(pts, right, right_rect, prm, out, undersized, depth + 1);
+    split(
+        pts,
+        left,
+        left_rect,
+        prm,
+        out,
+        undersized,
+        oversized,
+        depth + 1,
+    );
+    split(
+        pts,
+        right,
+        right_rect,
+        prm,
+        out,
+        undersized,
+        oversized,
+        depth + 1,
+    );
 }
 
 fn collect_points(geom: &Geometry, fid: usize, out: &mut Vec<(f64, f64, usize)>) {
@@ -836,6 +875,49 @@ mod tests {
             ids.len(),
             1,
             "the coincident stack must sit in exactly one subset, got ids {ids:?}"
+        );
+    }
+
+    /// The distinct-boundary rule applies only to `single` mode: in `all` mode
+    /// the plain midpoint is used, so the partition is cut more finely.
+    ///
+    /// Neither mode can drive an oversized coincident stack under the maximum —
+    /// a run of identical coordinates cannot be separated by any axis-aligned
+    /// cut without producing two overlapping rectangles, which would break the
+    /// non-overlap guarantee. What matters is that this is reported.
+    #[test]
+    fn all_mode_splits_further_and_oversized_subsets_are_reported() {
+        let mut pts: Vec<(f64, f64)> = (0..30).map(|i| (i as f64, 0.0)).collect();
+        pts.extend(std::iter::repeat_n((15.0, 0.0), 40));
+        let path = point_layer(&pts);
+        let opts = |mode: &str| {
+            json!({
+                "min_points_per_subset": 2,
+                "max_points_per_subset": 30,
+                "coincident_points": mode,
+                "clip_to_hull": false
+            })
+        };
+        let (all_polys, _, all_res) = run(path.clone(), opts("all"));
+        let (single_polys, _, _) = run(path, opts("single"));
+
+        let biggest = |l: &Layer| {
+            l.iter()
+                .map(|f| count_field(l, f, "point_count"))
+                .max()
+                .unwrap_or(0)
+        };
+        assert!(
+            biggest(&all_polys) < biggest(&single_polys),
+            "'all' mode should cut more finely than 'single': {} vs {}",
+            biggest(&all_polys),
+            biggest(&single_polys)
+        );
+        // The stack of 40 exceeds the maximum of 30 and cannot be divided, so
+        // the overrun must be surfaced rather than passed off as compliant.
+        assert!(
+            all_res.outputs["oversized_subset_count"].as_u64().unwrap() > 0,
+            "an unsplittable over-maximum subset must be reported"
         );
     }
 

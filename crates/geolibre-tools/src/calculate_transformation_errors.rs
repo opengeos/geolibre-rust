@@ -103,14 +103,17 @@ impl Tool for CalculateTransformationErrorsTool {
         let coeffs = fit(method, &links)?;
 
         // Residuals: where each source lands under the fitted model vs its target.
-        let mut residuals = vec![(0.0_f64, 0.0_f64, 0.0_f64); layer.features.len()];
+        // `None` marks a feature that yielded no usable link — it must stay null
+        // rather than defaulting to 0, or a silently skipped feature would read
+        // as the best control point in a tool built to find the worst.
+        let mut residuals: Vec<Option<(f64, f64, f64)>> = vec![None; layer.features.len()];
         let mut sum_sq = 0.0;
         let mut max_res = 0.0_f64;
         for &(i, src, dst) in &links {
             let p = apply(method, &coeffs, src);
             let (dx, dy) = (p[0] - dst[0], p[1] - dst[1]);
             let r = dx.hypot(dy);
-            residuals[i] = (dx, dy, r);
+            residuals[i] = Some((dx, dy, r));
             sum_sq += r * r;
             max_res = max_res.max(r);
         }
@@ -141,15 +144,34 @@ impl Tool for CalculateTransformationErrorsTool {
             .map(|f| f.name.clone())
             .collect();
         let mut outliers = 0usize;
+        let mut unusable = 0usize;
         // A link is flagged when its residual exceeds 3x the RMSE — the usual
         // "this control point is wrong" threshold.
         let outlier_cut = 3.0 * rmse;
         for (i, feat) in layer.features.iter().enumerate() {
-            let (dx, dy, r) = residuals[i];
-            if rmse > 0.0 && r > outlier_cut {
-                outliers += 1;
-            }
-            let share = if sum_sq > 0.0 { r * r / sum_sq } else { 0.0 };
+            let (dx, dy, r, share) = match residuals[i] {
+                Some((dx, dy, r)) => {
+                    if rmse > 0.0 && r > outlier_cut {
+                        outliers += 1;
+                    }
+                    let share = if sum_sq > 0.0 { r * r / sum_sq } else { 0.0 };
+                    (
+                        FieldValue::Float(dx),
+                        FieldValue::Float(dy),
+                        FieldValue::Float(r),
+                        FieldValue::Float(share),
+                    )
+                }
+                None => {
+                    unusable += 1;
+                    (
+                        FieldValue::Null,
+                        FieldValue::Null,
+                        FieldValue::Null,
+                        FieldValue::Null,
+                    )
+                }
+            };
             let mut attrs: Vec<(&str, FieldValue)> = names
                 .iter()
                 .enumerate()
@@ -160,10 +182,10 @@ impl Tool for CalculateTransformationErrorsTool {
                     )
                 })
                 .collect();
-            attrs.push(("RESIDUAL_X", FieldValue::Float(dx)));
-            attrs.push(("RESIDUAL_Y", FieldValue::Float(dy)));
-            attrs.push(("RESIDUAL", FieldValue::Float(r)));
-            attrs.push(("ERR_SHARE", FieldValue::Float(share)));
+            attrs.push(("RESIDUAL_X", dx));
+            attrs.push(("RESIDUAL_Y", dy));
+            attrs.push(("RESIDUAL", r));
+            attrs.push(("ERR_SHARE", share));
             let geom = if keep_geom { feat.geometry.clone() } else { None };
             out.add_feature(geom, &attrs)
                 .map_err(|e| ToolError::Execution(format!("failed adding feature: {e}")))?;
@@ -177,6 +199,7 @@ impl Tool for CalculateTransformationErrorsTool {
         outputs.insert("rmse".to_string(), json!(rmse));
         outputs.insert("max_residual".to_string(), json!(max_res));
         outputs.insert("outlier_count".to_string(), json!(outliers));
+        outputs.insert("unusable_feature_count".to_string(), json!(unusable));
         outputs.insert("coefficients".to_string(), json!(coeffs));
         Ok(ToolRunResult { outputs })
     }
@@ -287,7 +310,15 @@ fn accumulate(ata: &mut [f64], atb: &mut [f64], row: &[f64], rhs: f64) {
 }
 
 /// Gaussian elimination with partial pivoting on an `n x n` system.
+///
+/// The singularity threshold is scaled by the matrix magnitude. An absolute
+/// cutoff cannot work here: normal equations built from UTM metres have entries
+/// around 1e12-1e18, so a genuinely degenerate configuration still clears any
+/// fixed 1e-12 and returns meaningless coefficients, while a sub-metre local
+/// grid trips the same constant on a perfectly good fit.
 fn solve(a: &mut [f64], b: &mut [f64], n: usize) -> Result<Vec<f64>, ToolError> {
+    let scale = a.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+    let eps = if scale > 0.0 { 1e-12 * scale } else { 1e-12 };
     for col in 0..n {
         let mut piv = col;
         for r in (col + 1)..n {
@@ -295,7 +326,7 @@ fn solve(a: &mut [f64], b: &mut [f64], n: usize) -> Result<Vec<f64>, ToolError> 
                 piv = r;
             }
         }
-        if a[piv * n + col].abs() < 1e-12 {
+        if a[piv * n + col].abs() < eps {
             return Err(ToolError::Execution(
                 "displacement links are degenerate (collinear or coincident); \
                  the transformation is not determined"

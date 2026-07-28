@@ -514,6 +514,11 @@ fn trace_d8(
 }
 
 /// Least-cost route preferring high-accumulation (channelised) cells.
+///
+/// The search is confined to the bounding box of `a` and `b` inflated by a
+/// margin, and the buffers are sized to that window. This runs once per failed
+/// D8 trace, so allocating and sweeping the whole raster each time would
+/// multiply the cost of a mismatched network by the number of fallbacks.
 fn least_cost(
     dem: &Raster,
     accum: &[f64],
@@ -522,17 +527,31 @@ fn least_cost(
 ) -> Option<Vec<(usize, usize)>> {
     let rows = dem.rows;
     let cols = dem.cols;
-    let n = rows * cols;
     let nodata = dem.nodata;
     let diag = dem.cell_size_x.hypot(dem.cell_size_y);
-    let straight = dem.cell_size_x.min(dem.cell_size_y);
+
+    // Window: the a/b bbox, inflated by its own size (min 8 cells) so the route
+    // has room to bend around obstacles without covering the whole DEM.
+    let (r_lo, r_hi) = (a.0.min(b.0), a.0.max(b.0));
+    let (c_lo, c_hi) = (a.1.min(b.1), a.1.max(b.1));
+    let pad_r = (r_hi - r_lo).max(8);
+    let pad_c = (c_hi - c_lo).max(8);
+    let wr0 = r_lo.saturating_sub(pad_r);
+    let wc0 = c_lo.saturating_sub(pad_c);
+    let wr1 = (r_hi + pad_r).min(rows - 1);
+    let wc1 = (c_hi + pad_c).min(cols - 1);
+    let (wrows, wcols) = (wr1 - wr0 + 1, wc1 - wc0 + 1);
+    let n = wrows * wcols;
+    // Window-local <-> raster index.
+    let local = |r: usize, c: usize| (r - wr0) * wcols + (c - wc0);
+    let global = |i: usize| (wr0 + i / wcols, wc0 + i % wcols);
 
     let mut dist = vec![f64::INFINITY; n];
     let mut back = vec![usize::MAX; n];
     let mut done = vec![false; n];
     let mut heap: BinaryHeap<Node> = BinaryHeap::new();
-    let start = a.0 * cols + a.1;
-    let goal = b.0 * cols + b.1;
+    let start = local(a.0, a.1);
+    let goal = local(b.0, b.1);
     dist[start] = 0.0;
     heap.push(Node {
         cost: 0.0,
@@ -545,32 +564,39 @@ fn least_cost(
         }
         done[idx] = true;
         if idx == goal {
-            let mut path = vec![(idx / cols, idx % cols)];
+            let mut path = vec![global(idx)];
             let mut cur = idx;
             while back[cur] != usize::MAX {
                 cur = back[cur];
-                path.push((cur / cols, cur % cols));
+                path.push(global(cur));
             }
             path.reverse();
             return Some(path);
         }
-        let (r, c) = (idx / cols, idx % cols);
+        let (r, c) = global(idx);
         for (dr, dc) in D8 {
             let (nr, nc) = (r as isize + dr, c as isize + dc);
-            if nr < 0 || nc < 0 || nr >= rows as isize || nc >= cols as isize {
+            if nr < wr0 as isize || nc < wc0 as isize || nr > wr1 as isize || nc > wc1 as isize {
                 continue;
             }
-            let nidx = nr as usize * cols + nc as usize;
+            let (nr, nc) = (nr as usize, nc as usize);
+            let nidx = local(nr, nc);
             if done[nidx] {
                 continue;
             }
-            let nz = dem.get(0, nr, nc);
+            let nz = dem.get(0, nr as isize, nc as isize);
             if nz == nodata || !nz.is_finite() {
                 continue;
             }
-            let step = if dr != 0 && dc != 0 { diag } else { straight };
+            // Per-axis step length, so anisotropic cells are costed correctly.
+            let step = match (dr != 0, dc != 0) {
+                (true, true) => diag,
+                (true, false) => dem.cell_size_y,
+                (false, true) => dem.cell_size_x,
+                (false, false) => continue,
+            };
             // Cheap where flow concentrates, expensive on hillslopes.
-            let nd = cost + step / (1.0 + accum[nidx]);
+            let nd = cost + step / (1.0 + accum[nr * cols + nc]);
             if nd < dist[nidx] {
                 dist[nidx] = nd;
                 back[nidx] = idx;

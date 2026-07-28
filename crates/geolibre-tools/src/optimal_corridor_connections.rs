@@ -39,6 +39,10 @@ use crate::vector_common::{
 /// Segments per quarter turn when rounding a corridor end/joint.
 const ARC_STEPS: usize = 8;
 
+/// Cap on the derived analysis grid. One cost field plus one back-link field is
+/// allocated *per region*, so an unbounded grid OOMs before any progress shows.
+const MAX_GRID_CELLS: usize = 40_000_000;
+
 pub struct OptimalCorridorConnectionsTool;
 
 impl Tool for OptimalCorridorConnectionsTool {
@@ -99,8 +103,12 @@ impl Tool for OptimalCorridorConnectionsTool {
         parse_neighbor_option(args)?;
         for key in ["corridor_width", "cell_size"] {
             if let Some(v) = parse_optional_f64(args, key)? {
-                if v <= 0.0 {
-                    return Err(ToolError::Validation(format!("'{key}' must be positive")));
+                // The finite check comes first: `NaN <= 0.0` is false, so a NaN
+                // would otherwise pass and then saturate the `as usize` casts.
+                if !v.is_finite() || v <= 0.0 {
+                    return Err(ToolError::Validation(format!(
+                        "'{key}' must be a finite, positive number"
+                    )));
                 }
             }
         }
@@ -162,8 +170,20 @@ impl Tool for OptimalCorridorConnectionsTool {
                 let pad = cell * 5.0;
                 let (min_x, min_y) = (min_x - pad, min_y - pad);
                 let (max_x, max_y) = (max_x + pad, max_y + pad);
-                let cols = (((max_x - min_x) / cell).ceil() as usize).max(2);
-                let rows = (((max_y - min_y) / cell).ceil() as usize).max(2);
+                let fcols = ((max_x - min_x) / cell).ceil();
+                let frows = ((max_y - min_y) / cell).ceil();
+                // Checked before the `as usize` casts, which saturate rather
+                // than error: a tiny cell_size over a multi-km extent would
+                // otherwise allocate a grid in the billions per region.
+                if !fcols.is_finite() || !frows.is_finite() || fcols * frows > MAX_GRID_CELLS as f64
+                {
+                    return Err(ToolError::Execution(format!(
+                        "cell_size {cell} would produce a {frows}x{fcols} analysis grid \
+                         (limit {MAX_GRID_CELLS} cells); use a larger 'cell_size'"
+                    )));
+                }
+                let cols = (fcols as usize).max(2);
+                let rows = (frows as usize).max(2);
                 let mut crs = CrsInfo::default();
                 if let Some(e) = regions.crs_epsg() {
                     crs = CrsInfo::from_epsg(e);
@@ -240,25 +260,33 @@ impl Tool for OptimalCorridorConnectionsTool {
 
         // Pair costs: the cheapest cell where the two cost fields meet.
         let n = seeds.len();
+        // Single pass over the grid, updating every pair at each cell: scanning
+        // the whole grid once per pair is O(n^2 * cells) and far less
+        // cache-friendly.
         let mut pair_best: Vec<Vec<Option<(f64, usize)>>> = vec![vec![None; n]; n];
-        for a in 0..n {
-            for b in (a + 1)..n {
-                if seeds[a].is_empty() || seeds[b].is_empty() {
+        for i in 0..(rows * cols) {
+            for a in 0..n {
+                if seeds[a].is_empty() {
                     continue;
                 }
-                let mut best: Option<(f64, usize)> = None;
-                for i in 0..(rows * cols) {
-                    let (da, db) = (fields[a].0[i], fields[b].0[i]);
-                    if !da.is_finite() || !db.is_finite() {
+                let da = fields[a].0[i];
+                if !da.is_finite() {
+                    continue;
+                }
+                for b in (a + 1)..n {
+                    if seeds[b].is_empty() {
+                        continue;
+                    }
+                    let db = fields[b].0[i];
+                    if !db.is_finite() {
                         continue;
                     }
                     let total = da + db;
-                    if best.is_none_or(|(bc, _)| total < bc) {
-                        best = Some((total, i));
+                    if pair_best[a][b].is_none_or(|(bc, _)| total < bc) {
+                        pair_best[a][b] = Some((total, i));
+                        pair_best[b][a] = pair_best[a][b];
                     }
                 }
-                pair_best[a][b] = best;
-                pair_best[b][a] = best;
             }
         }
 
@@ -362,10 +390,14 @@ impl Tool for OptimalCorridorConnectionsTool {
         outputs.insert("corridor_width".to_string(), json!(width));
         outputs.insert("total_corridor_area".to_string(), json!(total_area));
         outputs.insert("total_centerline_length".to_string(), json!(total_length));
-        if matches!(args.get("output_lines"), Some(v) if !v.is_null()) {
-            let p = parse_optional_str(args, "output_lines")?;
-            outputs.insert("output_lines".to_string(), json!(write_or_store_layer(lines, p)?));
-        }
+        // The centerlines are built either way, so always hand them back —
+        // omitting the parameter used to discard an already-computed layer that
+        // the tool summary advertises.
+        let lines_path = parse_optional_str(args, "output_lines")?;
+        outputs.insert(
+            "output_lines".to_string(),
+            json!(write_or_store_layer(lines, lines_path)?),
+        );
         Ok(ToolRunResult { outputs })
     }
 }
@@ -379,7 +411,6 @@ fn cost_distance(grid: &Raster, blocked: &[bool], seeds: &[usize]) -> (Vec<f64>,
     let cols = grid.cols;
     let n = rows * cols;
     let diag = grid.cell_size_x.hypot(grid.cell_size_y);
-    let straight = grid.cell_size_x.min(grid.cell_size_y);
 
     let mut dist = vec![f64::INFINITY; n];
     let mut back = vec![usize::MAX; n];
@@ -411,7 +442,15 @@ fn cost_distance(grid: &Raster, blocked: &[bool], seeds: &[usize]) -> (Vec<f64>,
                 continue;
             }
             let there = grid.get(0, nr, nc).max(0.0);
-            let step = if dr != 0 && dc != 0 { diag } else { straight };
+            // Step length per axis: using min(cell_x, cell_y) for both would
+            // under-cost every move along the longer axis on an anisotropic
+            // raster, biasing the path and the reported LENGTH/ACCUM_COST.
+            let step = match (dr != 0, dc != 0) {
+                (true, true) => diag,
+                (true, false) => grid.cell_size_y,
+                (false, true) => grid.cell_size_x,
+                (false, false) => continue,
+            };
             // Mean cost across the step, the standard cost-distance accrual.
             let nd = cost + (here + there) / 2.0 * step;
             if nd < dist[nidx] {
@@ -437,39 +476,46 @@ fn trace_back(back: &[usize], from: usize) -> Vec<usize> {
     path
 }
 
-/// Minimum spanning tree over the region graph (Prim), returning the retained
-/// edges as `(a, b, cost, meeting_cell)`.
+/// Minimum spanning *forest* over the region graph (Prim per component),
+/// returning the retained edges as `(a, b, cost, meeting_cell)`.
+///
+/// Seeding once at region 0 would lose the entire network whenever region 0 is
+/// isolated — `run` only guarantees that *two* regions are passable, so region 0
+/// may have no passable cells or be fully walled off. The first iteration would
+/// then find no candidate, break immediately, and the tool would report "no
+/// region pair could be connected" even though the rest connect fine.
 fn minimum_spanning_tree(
     pair: &[Vec<Option<(f64, usize)>>],
     n: usize,
 ) -> Vec<(usize, usize, f64, usize)> {
     let mut in_tree = vec![false; n];
     let mut edges = Vec::new();
-    in_tree[0] = true;
-    for _ in 1..n {
-        let mut best: Option<(usize, usize, f64, usize)> = None;
-        for a in 0..n {
-            if !in_tree[a] {
-                continue;
-            }
-            for b in 0..n {
-                if in_tree[b] {
+    for seed in 0..n {
+        if in_tree[seed] {
+            continue;
+        }
+        in_tree[seed] = true;
+        loop {
+            let mut best: Option<(usize, usize, f64, usize)> = None;
+            for a in 0..n {
+                if !in_tree[a] {
                     continue;
                 }
-                if let Some((c, cell)) = pair[a][b] {
-                    if best.is_none_or(|(_, _, bc, _)| c < bc) {
-                        best = Some((a, b, c, cell));
+                for b in 0..n {
+                    if in_tree[b] {
+                        continue;
+                    }
+                    if let Some((c, cell)) = pair[a][b] {
+                        if best.is_none_or(|(_, _, bc, _)| c < bc) {
+                            best = Some((a, b, c, cell));
+                        }
                     }
                 }
             }
-        }
-        match best {
-            // Disconnected graph: stop rather than inventing an edge.
-            None => break,
-            Some(e) => {
-                in_tree[e.1] = true;
-                edges.push(e);
-            }
+            // This component is exhausted; move on to the next unvisited seed.
+            let Some(e) = best else { break };
+            in_tree[e.1] = true;
+            edges.push(e);
         }
     }
     edges
@@ -481,16 +527,18 @@ fn minimum_spanning_tree(
 /// unioning a capsule per segment. `BooleanOps` merges them into one clean
 /// outline, which is exactly what a round-joined buffer is.
 fn thicken(pts: &[(f64, f64)], hw: f64) -> MultiPolygon {
-    let mut acc = MultiPolygon(Vec::new());
-    for w in pts.windows(2) {
+    let mut parts: Vec<Polygon> = Vec::new();
+    let mut dirs: Vec<Option<(f64, f64)>> = vec![None; pts.len()];
+    for (i, w) in pts.windows(2).enumerate() {
         let (a, b) = (w[0], w[1]);
         let (dx, dy) = (b.0 - a.0, b.1 - a.1);
         let len = dx.hypot(dy);
         if len <= 0.0 {
             continue;
         }
+        dirs[i] = Some((dx / len, dy / len));
         let (nx, ny) = (-dy / len * hw, dx / len * hw);
-        let rect = Polygon::new(
+        parts.push(Polygon::new(
             LineString::new(vec![
                 GeoCoord { x: a.0 + nx, y: a.1 + ny },
                 GeoCoord { x: b.0 + nx, y: b.1 + ny },
@@ -499,14 +547,42 @@ fn thicken(pts: &[(f64, f64)], hw: f64) -> MultiPolygon {
                 GeoCoord { x: a.0 + nx, y: a.1 + ny },
             ]),
             vec![],
-        );
-        acc = acc.union(&MultiPolygon(vec![rect]));
+        ));
     }
-    // Round the joints and the two ends so the corridor has no notches.
-    for &(x, y) in pts {
-        acc = acc.union(&MultiPolygon(vec![circle(x, y, hw)]));
+    // Round only the two ends and the vertices where the direction actually
+    // changes; a collinear run needs no joint circle, and a traced centerline
+    // has one point per grid cell, so this removes most of them.
+    for (i, &(x, y)) in pts.iter().enumerate() {
+        let turns = match (i.checked_sub(1).and_then(|k| dirs[k]), dirs[i]) {
+            (Some(p), Some(q)) => (p.0 * q.0 + p.1 * q.1) < 0.999_999,
+            _ => true, // the first and last vertices are the caps
+        };
+        if turns {
+            parts.push(circle(x, y, hw));
+        }
     }
-    acc
+    union_all(parts)
+}
+
+/// Balanced pairwise union. Folding left-to-right into one accumulator makes
+/// every operand the full running result, which scales super-linearly.
+fn union_all(parts: Vec<Polygon>) -> MultiPolygon {
+    if parts.is_empty() {
+        return MultiPolygon(Vec::new());
+    }
+    let mut level: Vec<MultiPolygon> = parts.into_iter().map(|p| MultiPolygon(vec![p])).collect();
+    while level.len() > 1 {
+        let mut next: Vec<MultiPolygon> = Vec::with_capacity(level.len().div_ceil(2));
+        let mut it = level.into_iter();
+        while let Some(a) = it.next() {
+            match it.next() {
+                Some(b) => next.push(a.union(&b)),
+                None => next.push(a),
+            }
+        }
+        level = next;
+    }
+    level.into_iter().next().unwrap_or(MultiPolygon(Vec::new()))
 }
 
 fn circle(cx: f64, cy: f64, r: f64) -> Polygon {
@@ -838,6 +914,132 @@ mod tests {
             }
         }
         assert!(min_y < 30.0, "corridor stayed at y >= {min_y}, ignoring cost");
+    }
+
+    #[test]
+    fn anisotropic_cells_are_costed_per_axis() {
+        // A cost raster whose cells are 5x taller than they are wide. A purely
+        // vertical corridor must be costed by cell_size_y, not by
+        // min(cell_x, cell_y) — the latter under-costs every vertical step.
+        let mut r = Raster::new(RasterConfig {
+            cols: 40,
+            rows: 40,
+            bands: 1,
+            x_min: 0.0,
+            y_min: 0.0,
+            cell_size: 2.0,
+            cell_size_y: Some(10.0),
+            nodata: -9999.0,
+            data_type: DataType::F32,
+            crs: CrsInfo::from_epsg(3857),
+            metadata: Default::default(),
+        });
+        for row in 0..40 {
+            for col in 0..40 {
+                r.set(0, row as isize, col as isize, 1.0).unwrap();
+            }
+        }
+        let id = wbraster::memory_store::put_raster(r);
+        let cost = wbraster::memory_store::make_raster_memory_path(&id);
+
+        // Two regions separated vertically by ~200 map units (20 rows x 10).
+        let mut l = Layer::new("r")
+            .with_geom_type(GeometryType::Polygon)
+            .with_crs_epsg(3857);
+        l.add_field(FieldDef::new("name", FieldType::Text));
+        for cy in [60.0, 340.0] {
+            l.add_feature(
+                Some(square(40.0, cy, 15.0)),
+                &[("name", FieldValue::Text(format!("r{cy}")))],
+            )
+            .unwrap();
+        }
+        let id = wbvector::memory_store::put_vector(l);
+        let regions = wbvector::memory_store::make_vector_memory_path(&id);
+
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": regions, "cost_raster": cost, "corridor_width": 8.0,
+            "output_lines": ""
+        }))
+        .unwrap();
+        let out = OptimalCorridorConnectionsTool.run(&args, &ctx()).unwrap();
+        let lines = load_input_layer(out.outputs["output_lines"].as_str().unwrap()).unwrap();
+        let (ci, li) = (
+            lines.schema.field_index("ACCUM_COST").unwrap(),
+            lines.schema.field_index("LENGTH").unwrap(),
+        );
+        let accum = lines.features[0].attributes[ci].as_f64().unwrap();
+        let length = lines.features[0].attributes[li].as_f64().unwrap();
+
+        // With a uniform cost of 1.0 the mean-cost accrual makes ACCUM_COST
+        // equal the distance actually traversed. LENGTH is measured from map
+        // coordinates and is therefore correct either way; ACCUM_COST is what
+        // the per-axis step length fixes. Costing vertical moves at
+        // min(cell_x, cell_y) = 2 rather than cell_y = 10 reports roughly a
+        // fifth of the true distance.
+        assert!(
+            (accum - length).abs() < 0.25 * length,
+            "ACCUM_COST {accum} does not match traversed length {length} — \
+             vertical steps are being under-costed"
+        );
+    }
+
+    #[test]
+    fn an_isolated_first_region_does_not_lose_the_whole_network() {
+        // Region 0 is sealed inside a barrier ring; regions 1 and 2 are clear.
+        // Seeding Prim at region 0 would break on the first iteration and fail
+        // the entire run, even though the other two connect perfectly well.
+        let mut l = Layer::new("r")
+            .with_geom_type(GeometryType::Polygon)
+            .with_crs_epsg(3857);
+        l.add_field(FieldDef::new("name", FieldType::Text));
+        for (i, (x, y)) in [(10.0, 10.0), (10.0, 90.0), (90.0, 90.0)].iter().enumerate() {
+            l.add_feature(
+                Some(square(*x, *y, 3.0)),
+                &[("name", FieldValue::Text(format!("r{i}")))],
+            )
+            .unwrap();
+        }
+        let id = wbvector::memory_store::put_vector(l);
+        let regions = wbvector::memory_store::make_vector_memory_path(&id);
+
+        // A closed barrier ring around region 0 only.
+        let mut b = Layer::new("b")
+            .with_geom_type(GeometryType::Polygon)
+            .with_crs_epsg(3857);
+        let (o, i) = (8.0, 5.0);
+        b.add_feature(
+            Some(Geometry::polygon(
+                vec![
+                    Coord::xy(10.0 - o, 10.0 - o),
+                    Coord::xy(10.0 + o, 10.0 - o),
+                    Coord::xy(10.0 + o, 10.0 + o),
+                    Coord::xy(10.0 - o, 10.0 + o),
+                    Coord::xy(10.0 - o, 10.0 - o),
+                ],
+                vec![vec![
+                    Coord::xy(10.0 - i, 10.0 - i),
+                    Coord::xy(10.0 + i, 10.0 - i),
+                    Coord::xy(10.0 + i, 10.0 + i),
+                    Coord::xy(10.0 - i, 10.0 + i),
+                    Coord::xy(10.0 - i, 10.0 - i),
+                ]],
+            )),
+            &[],
+        )
+        .unwrap();
+        let id = wbvector::memory_store::put_vector(b);
+        let barriers = wbvector::memory_store::make_vector_memory_path(&id);
+
+        let (out, _l) = run(json!({
+            "input": regions, "barriers": barriers, "cell_size": 1.0,
+            "corridor_width": 4.0
+        }));
+        // Regions 1 and 2 must still be connected.
+        assert!(
+            out.outputs["corridor_count"].as_f64().unwrap() >= 1.0,
+            "an isolated region 0 wiped out the whole corridor network"
+        );
     }
 
     #[test]

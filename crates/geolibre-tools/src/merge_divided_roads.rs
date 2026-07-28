@@ -151,11 +151,13 @@ impl Tool for MergeDividedRoadsTool {
         // distinct paths is a junction that must survive the merge.
         let mut degree: HashMap<(i64, i64), usize> = HashMap::new();
         for (_, p) in &paths {
-            let mut seen: Vec<(i64, i64)> = Vec::new();
+            // A HashSet, not a Vec: densified road geometry has thousands of
+            // vertices per feature, and `contains` on a Vec makes this quadratic.
+            let mut seen: std::collections::HashSet<(i64, i64)> =
+                std::collections::HashSet::new();
             for c in p {
                 let k = node_key(c);
-                if !seen.contains(&k) {
-                    seen.push(k);
+                if seen.insert(k) {
                     *degree.entry(k).or_insert(0) += 1;
                 }
             }
@@ -175,9 +177,13 @@ impl Tool for MergeDividedRoadsTool {
                 }
             })
         };
-        let key_of_path = |i: usize| -> String {
-            key_str(layer.features[paths[i].0].attributes.get(m_idx))
-        };
+        // Merge keys and bboxes are loop-invariant: computing the key inside the
+        // inner loop re-allocated a String per comparison, and every surviving
+        // candidate then ran 25 samples x a full distance-to-path scan.
+        let keys: Vec<String> = (0..paths.len())
+            .map(|i| key_str(layer.features[paths[i].0].attributes.get(m_idx)))
+            .collect();
+        let bboxes: Vec<[f64; 4]> = paths.iter().map(|(_, p)| path_bbox(p)).collect();
 
         let mut partner: Vec<Option<usize>> = vec![None; paths.len()];
         for i in 0..paths.len() {
@@ -189,7 +195,11 @@ impl Tool for MergeDividedRoadsTool {
                 if partner[j].is_some() || protected(j) {
                     continue;
                 }
-                if key_of_path(i) != key_of_path(j) {
+                if keys[i] != keys[j] {
+                    continue;
+                }
+                // Cheap reject before the sampling test.
+                if bbox_gap(&bboxes[i], &bboxes[j]) > merge_distance {
                     continue;
                 }
                 let Some(sep) = carriageway_separation(&paths[i].1, &paths[j].1, merge_distance)
@@ -223,7 +233,10 @@ impl Tool for MergeDividedRoadsTool {
             .map(|f| f.name.clone())
             .collect();
 
-        let mut displacement = Layer::new("displacement").with_geom_type(GeometryType::Polygon);
+        // No declared geometry type: a self-intersecting sweep normalises into
+        // more than one part, so `multipolygon_to_geometry` can return a
+        // MultiPolygon, which a Polygon-typed layer would reject or coerce.
+        let mut displacement = Layer::new("displacement");
         if let Some(epsg) = layer.crs_epsg() {
             displacement = displacement.with_crs_epsg(epsg);
         }
@@ -492,6 +505,25 @@ fn line_paths(g: &Geometry) -> Vec<Vec<Coord>> {
         Geometry::GeometryCollection(gs) => gs.iter().flat_map(line_paths).collect(),
         _ => Vec::new(),
     }
+}
+
+/// Axis-aligned bbox of a path as `[min_x, min_y, max_x, max_y]`.
+fn path_bbox(p: &[Coord]) -> [f64; 4] {
+    let mut bb = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for c in p {
+        bb[0] = bb[0].min(c.x);
+        bb[1] = bb[1].min(c.y);
+        bb[2] = bb[2].max(c.x);
+        bb[3] = bb[3].max(c.y);
+    }
+    bb
+}
+
+/// Gap between two bboxes; 0 when they overlap.
+fn bbox_gap(a: &[f64; 4], b: &[f64; 4]) -> f64 {
+    let dx = (b[0] - a[2]).max(a[0] - b[2]).max(0.0);
+    let dy = (b[1] - a[3]).max(a[1] - b[3]).max(0.0);
+    dx.hypot(dy)
 }
 
 fn path_length(p: &[Coord]) -> f64 {

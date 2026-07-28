@@ -131,17 +131,20 @@ impl Tool for Idw3dTool {
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
         require_str(args, "input")?;
         require_str(args, "value_field")?;
-        for (key, min) in [
-            ("power", 0.0),
-            ("x_spacing", f64::MIN_POSITIVE),
-            ("y_spacing", f64::MIN_POSITIVE),
-            ("z_spacing", f64::MIN_POSITIVE),
-            ("search_radius", f64::MIN_POSITIVE),
-        ] {
+        // 'power' may be zero (uniform weighting); the spacings and the radius
+        // must be strictly positive and finite.
+        if let Some(v) = parse_optional_f64(args, "power")? {
+            if !v.is_finite() || v < 0.0 {
+                return Err(ToolError::Validation(
+                    "'power' must be a finite, non-negative number".to_string(),
+                ));
+            }
+        }
+        for key in ["x_spacing", "y_spacing", "z_spacing", "search_radius"] {
             if let Some(v) = parse_optional_f64(args, key)? {
-                if v < min {
+                if !v.is_finite() || v <= 0.0 {
                     return Err(ToolError::Validation(format!(
-                        "'{key}' must be greater than {min}"
+                        "'{key}' must be a finite, positive number"
                     )));
                 }
             }

@@ -151,6 +151,19 @@ impl Tool for BuildSeamlinesTool {
             rasters.push(load_input_raster(p)?);
         }
         let m = rasters.len();
+        // Validate the band up front against every raster: `sample` returns
+        // None for an out-of-range band, which would otherwise be silently read
+        // as "this image does not cover the cell" rather than a bad parameter.
+        for (i, r) in rasters.iter().enumerate() {
+            if band < 0 || band as usize >= r.bands {
+                return Err(ToolError::Validation(format!(
+                    "'band' {} is out of range for '{}', which has {} band(s)",
+                    band + 1,
+                    paths[i],
+                    r.bands
+                )));
+            }
+        }
 
         // Footprints: supplied, or each raster's valid-data rectangle.
         let supplied: Option<Vec<Geometry>> = match parse_optional_str(args, "footprints")? {

@@ -39,7 +39,12 @@ use wbvector::{FieldDef, FieldType, FieldValue, Geometry, Layer};
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
 
 /// Coordinate quantum for matching shared vertices between polygons.
-const SNAP: f64 = 1e-9;
+///
+/// 1e-6, matching `merge_divided_roads`. At 1e-9 the match is effectively
+/// exact, so two polygons sharing a boundary whose vertices differ by ordinary
+/// storage rounding (~1e-6) would not be neighbours; the graph would then split
+/// and the tool would silently report extra disconnected clusters.
+const SNAP: f64 = 1e-6;
 
 pub struct SpatiallyConstrainedMultivariateClusteringTool;
 
@@ -191,9 +196,24 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
         // Attribute matrix (rows = features, cols = analysis fields).
         let p = idx.len();
         let mut x = vec![0.0_f64; n * p];
+        // A substituted 0 is not neutral once the data is z-standardised — it
+        // becomes exactly the mean, so a feature with null attributes would be
+        // quietly clustered as "average". Substitute, but surface the count.
+        let mut unusable_values = 0usize;
+        let mut features_with_gaps = 0usize;
         for (i, f) in layer.iter().enumerate() {
+            let mut gap = false;
             for (j, &fi) in idx.iter().enumerate() {
-                x[i * p + j] = f.attributes.get(fi).and_then(FieldValue::as_f64).unwrap_or(0.0);
+                match f.attributes.get(fi).and_then(FieldValue::as_f64) {
+                    Some(v) if v.is_finite() => x[i * p + j] = v,
+                    _ => {
+                        unusable_values += 1;
+                        gap = true;
+                    }
+                }
+            }
+            if gap {
+                features_with_gaps += 1;
             }
         }
         if scale {
@@ -302,6 +322,11 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
         outputs.insert("feature_count".to_string(), json!(n));
         outputs.insert("cluster_count".to_string(), json!(n_clusters));
         outputs.insert("edge_count".to_string(), json!(edge_count));
+        outputs.insert("unusable_value_count".to_string(), json!(unusable_values));
+        outputs.insert(
+            "features_with_missing_values".to_string(),
+            json!(features_with_gaps),
+        );
         outputs.insert("mst_edge_count".to_string(), json!(mst.len()));
         outputs.insert("neighborhood".to_string(), json!(neighborhood.name()));
         outputs.insert("r_squared".to_string(), json!(r2));
@@ -390,11 +415,14 @@ fn build_graph(
             let mut by_vertex: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
             for (i, f) in layer.iter().enumerate() {
                 let Some(g) = &f.geometry else { continue };
-                let mut seen: Vec<(i64, i64)> = Vec::new();
+                let mut seen: std::collections::HashSet<(i64, i64)> =
+                    std::collections::HashSet::new();
                 for c in g.all_coords() {
-                    let key = ((c.x / SNAP).round() as i64, (c.y / SNAP).round() as i64);
-                    if !seen.contains(&key) {
-                        seen.push(key);
+                    // A HashSet, not a Vec: densified geometry has thousands of
+                    // vertices per feature, and `contains` on a Vec makes graph
+                    // construction quadratic.
+                    let Some(key) = snap_key(c.x, c.y) else { continue };
+                    if seen.insert(key) {
                         by_vertex.entry(key).or_default().push(i);
                     }
                 }
@@ -417,6 +445,21 @@ fn build_graph(
         }
     }
     Ok(adj)
+}
+
+/// Quantised vertex key, or `None` when the coordinate is non-finite or so
+/// large that `as i64` would saturate — at saturation unrelated features would
+/// appear to share a vertex.
+fn snap_key(x: f64, y: f64) -> Option<(i64, i64)> {
+    let (qx, qy) = (x / SNAP, y / SNAP);
+    if !qx.is_finite() || !qy.is_finite() {
+        return None;
+    }
+    const LIMIT: f64 = 9.0e18;
+    if qx.abs() >= LIMIT || qy.abs() >= LIMIT {
+        return None;
+    }
+    Some((qx.round() as i64, qy.round() as i64))
 }
 
 fn push_unique(adj: &mut [Vec<usize>], i: usize, j: usize) {
@@ -449,6 +492,10 @@ fn attr_dist(x: &[f64], p: usize, i: usize, j: usize) -> f64 {
 }
 
 /// Prim's algorithm per connected component, returning the retained edges.
+///
+/// The frontier is a binary heap with a lazy `in_tree` check on pop. A linearly
+/// scanned Vec that is also re-filtered after every accepted edge is O(E^2),
+/// which the default 8-neighbour graph reaches on a few thousand features.
 fn minimum_spanning_forest(
     adj: &[Vec<usize>],
     x: &[f64],
@@ -462,33 +509,58 @@ fn minimum_spanning_forest(
             continue;
         }
         in_tree[seed] = true;
-        let mut frontier: Vec<(f64, usize, usize)> = adj[seed]
+        let mut heap: std::collections::BinaryHeap<Candidate> = adj[seed]
             .iter()
-            .map(|&j| (attr_dist(x, p, seed, j), seed, j))
+            .map(|&j| Candidate {
+                dist: attr_dist(x, p, seed, j),
+                from: seed,
+                to: j,
+            })
             .collect();
-        while !frontier.is_empty() {
-            let (bi, _) = frontier
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| !in_tree[e.2])
-                .min_by(|a, b| a.1 .0.total_cmp(&b.1 .0))
-                .map(|(i, e)| (i, e.0))
-                .unwrap_or((usize::MAX, 0.0));
-            if bi == usize::MAX {
-                break;
+        while let Some(Candidate { from, to, .. }) = heap.pop() {
+            if in_tree[to] {
+                continue;
             }
-            let (_, a, b) = frontier[bi];
-            in_tree[b] = true;
-            edges.push((a, b));
-            frontier.retain(|e| !in_tree[e.2]);
-            for &j in &adj[b] {
+            in_tree[to] = true;
+            edges.push((from, to));
+            for &j in &adj[to] {
                 if !in_tree[j] {
-                    frontier.push((attr_dist(x, p, b, j), b, j));
+                    heap.push(Candidate {
+                        dist: attr_dist(x, p, to, j),
+                        from: to,
+                        to: j,
+                    });
                 }
             }
         }
     }
     edges
+}
+
+/// Min-heap entry for Prim (BinaryHeap is a max-heap, so ordering is reversed).
+struct Candidate {
+    dist: f64,
+    from: usize,
+    to: usize,
+}
+impl PartialEq for Candidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.dist == other.dist && self.to == other.to
+    }
+}
+impl Eq for Candidate {}
+impl Ord for Candidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other
+            .dist
+            .total_cmp(&self.dist)
+            .then_with(|| other.to.cmp(&self.to))
+    }
+}
+impl PartialOrd for Candidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 // ── SKATER ──────────────────────────────────────────────────────────────────
@@ -561,8 +633,12 @@ fn skater(
                 continue;
             }
             let base = sum_sq(&members[ci], x, p);
+            // Built once per cluster, then reused for every candidate edge:
+            // rebuilding it inside the edge loop made the cut search allocate a
+            // fresh adjacency map per candidate, per cluster, per cut.
+            let adj = cluster_adjacency(edges);
             for (ei, _) in edges.iter().enumerate() {
-                let (left, right) = split_components(&members[ci], edges, ei);
+                let (left, right) = split_components(&members[ci], edges, ei, &adj);
                 if left.is_empty() || right.is_empty() {
                     continue;
                 }
@@ -581,7 +657,8 @@ fn skater(
         }
         let Some((ci, ei, _)) = best else { break };
         let edges = active[ci].clone();
-        let (left, right) = split_components(&members[ci], &edges, ei);
+        let adj = cluster_adjacency(&edges);
+        let (left, right) = split_components(&members[ci], &edges, ei, &adj);
         let set_l: std::collections::HashSet<usize> = left.iter().copied().collect();
         let el: Vec<(usize, usize)> = edges
             .iter()
@@ -610,28 +687,35 @@ fn skater(
     labels
 }
 
+/// Adjacency for one cluster's spanning tree, as `node -> [(neighbour, edge)]`.
+///
+/// Built once per cluster and shared across every candidate cut, which skips an
+/// edge by index rather than by rebuilding the map without it.
+fn cluster_adjacency(edges: &[(usize, usize)]) -> HashMap<usize, Vec<(usize, usize)>> {
+    let mut adj: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    for (i, &(a, b)) in edges.iter().enumerate() {
+        adj.entry(a).or_default().push((b, i));
+        adj.entry(b).or_default().push((a, i));
+    }
+    adj
+}
+
 /// Splits a cluster's members by removing edge `skip` from its spanning tree.
 fn split_components(
     members: &[usize],
     edges: &[(usize, usize)],
     skip: usize,
+    adj: &HashMap<usize, Vec<(usize, usize)>>,
 ) -> (Vec<usize>, Vec<usize>) {
-    let mut adj: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (i, &(a, b)) in edges.iter().enumerate() {
-        if i == skip {
-            continue;
-        }
-        adj.entry(a).or_default().push(b);
-        adj.entry(b).or_default().push(a);
-    }
     let start = edges[skip].0;
     let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
     let mut stack = vec![start];
     seen.insert(start);
     while let Some(u) = stack.pop() {
         if let Some(ns) = adj.get(&u) {
-            for &v in ns {
-                if seen.insert(v) {
+            for &(v, ei) in ns {
+                // Skipping by edge index is what lets the adjacency be shared.
+                if ei != skip && seen.insert(v) {
                     stack.push(v);
                 }
             }

@@ -163,8 +163,9 @@ impl Tool for PivotTableTool {
             cells[r][c].push(feat.attributes.get(value_idx), agg);
         }
 
-        // Column naming: sanitize, then disambiguate collisions.
-        let col_names = column_names(&pivot_values);
+        // Column naming: sanitize, then disambiguate against each other and
+        // against the identity fields carried through.
+        let col_names = column_names(&pivot_values, &id_names);
 
         // Numeric aggregates always emit Float; 'count' emits Integer; 'first'
         // preserves the source field's type where it is representable.
@@ -331,9 +332,13 @@ fn value_key(v: Option<&FieldValue>) -> String {
     }
 }
 
-/// Turns pivot values into safe, unique column names.
-fn column_names(values: &[String]) -> Vec<String> {
-    let mut used: HashMap<String, usize> = HashMap::new();
+/// Turns pivot values into safe column names, unique among themselves *and*
+/// against `reserved` (the identity-field names already in the schema).
+///
+/// `used` records every emitted name, not just the sanitized base: keying on
+/// the base alone lets values like ["a", "a", "a_1"] emit `a_1` twice.
+fn column_names(values: &[String], reserved: &[String]) -> Vec<String> {
+    let mut used: std::collections::HashSet<String> = reserved.iter().cloned().collect();
     let mut out = Vec::with_capacity(values.len());
     for v in values {
         let mut base: String = v
@@ -346,16 +351,15 @@ fn column_names(values: &[String]) -> Vec<String> {
         if base.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             base.insert(0, '_');
         }
-        let name = match used.get_mut(&base) {
-            None => {
-                used.insert(base.clone(), 1);
-                base
-            }
-            Some(n) => {
-                let candidate = format!("{base}_{n}");
-                *n += 1;
-                candidate
-            }
+        let name = if used.insert(base.clone()) {
+            base
+        } else {
+            let candidate = (1..)
+                .map(|k| format!("{base}_{k}"))
+                .find(|c| !used.contains(c))
+                .expect("an unused suffix always exists");
+            used.insert(candidate.clone());
+            candidate
         };
         out.push(name);
     }

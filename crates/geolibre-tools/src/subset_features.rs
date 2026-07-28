@@ -160,7 +160,11 @@ impl Tool for SubsetFeaturesTool {
                 }
             };
             for k in 0..take {
-                let j = k + (rng.next_u64() as usize) % (bn - k);
+                // Modulo in u64: `as usize` first would keep only the low 32
+                // bits on wasm32, so the same seed would pick different indices
+                // in the browser than natively — exactly what this tool's
+                // reproducibility contract rules out.
+                let j = k + (rng.next_u64() % (bn - k) as u64) as usize;
                 bucket.swap(k, j);
                 is_training[bucket[k]] = true;
             }

@@ -180,6 +180,14 @@ impl Tool for ConstructSightLinesTool {
             }
             for (oi, o) in obs_pts.iter().enumerate() {
                 if let Some(ts) = by_key.get(o.2.as_str()) {
+                    // The cap applies here too: when every feature shares one
+                    // join value this branch reproduces the full cross product.
+                    if pairs.len().saturating_add(ts.len()) > MAX_SIGHT_LINES {
+                        return Err(ToolError::Execution(format!(
+                            "grouped pairing would produce more than {MAX_SIGHT_LINES} sight \
+                             lines; use a more selective 'join_field' or coarsen 'sample_distance'"
+                        )));
+                    }
                     for &ti in ts {
                         pairs.push((oi, ti));
                     }

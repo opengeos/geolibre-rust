@@ -730,7 +730,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("split_features", vector_in()),
             ("split_field", ToolParamSchema::string()),
-            ("output_dir", ToolParamSchema::string()),
+            ("output_dir", file_out()),
             ("output_format", ToolParamSchema::enum_values(&["geojson", "shp", "gpkg", "parquet", "csv"])),
         ]),
         "construct_sight_lines" => schemas(&[

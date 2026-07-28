@@ -64,7 +64,7 @@ impl Tool for SummarizePercentChangeTool {
                 },
                 ToolParamSpec {
                     name: "search_radius",
-                    description: "Optional distance in map units; incidents within this distance of an area also count, not only those inside it.",
+                    description: "Optional distance in map units; incidents within this distance of an area also count, not only those inside it. Note that a positive radius makes catchments overlap, so an incident can be counted by more than one area (the reported corpus totals stay deduplicated).",
                     required: false,
                 },
             ],
@@ -127,7 +127,13 @@ impl Tool for SummarizePercentChangeTool {
             .iter()
             .map(|f| f.name.clone())
             .collect();
-        let (mut tot_cur, mut tot_prev) = (0i64, 0i64);
+        // Per-area counts summed would double count any incident that falls in
+        // two overlapping catchments — guaranteed once `search_radius` > 0
+        // expands each area — and the overall percent change would then be
+        // computed from inflated denominators. Corpus totals therefore come from
+        // the deduplicated point lists, and the summed-per-area figures are
+        // reported separately.
+        let (mut sum_cur, mut sum_prev) = (0i64, 0i64);
         let mut class_counts: BTreeMap<&str, usize> = BTreeMap::new();
 
         for feat in areas.iter() {
@@ -138,8 +144,8 @@ impl Tool for SummarizePercentChangeTool {
                 ),
                 None => (0, 0),
             };
-            tot_cur += cur_n;
-            tot_prev += prev_n;
+            sum_cur += cur_n;
+            sum_prev += prev_n;
             let diff = cur_n - prev_n;
             let (pct, class) = classify(cur_n, prev_n);
             *class_counts.entry(class).or_default() += 1;
@@ -171,6 +177,8 @@ impl Tool for SummarizePercentChangeTool {
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("area_count".to_string(), json!(n_areas));
+        let tot_cur = current.len() as i64;
+        let tot_prev = previous.len() as i64;
         outputs.insert("current_total".to_string(), json!(tot_cur));
         outputs.insert("previous_total".to_string(), json!(tot_prev));
         outputs.insert("total_diff".to_string(), json!(tot_cur - tot_prev));
@@ -180,6 +188,10 @@ impl Tool for SummarizePercentChangeTool {
                 json!((tot_cur - tot_prev) as f64 / tot_prev as f64 * 100.0),
             );
         }
+        // Summed per-area counts: equal to the corpus totals only when the
+        // catchments do not overlap and every incident falls inside one.
+        outputs.insert("current_in_areas".to_string(), json!(sum_cur));
+        outputs.insert("previous_in_areas".to_string(), json!(sum_prev));
         for (k, v) in class_counts {
             outputs.insert(format!("class_{k}"), json!(v));
         }
@@ -470,18 +482,34 @@ mod tests {
 
     #[test]
     fn search_radius_captures_nearby_incidents() {
-        // A point 2 units outside area A's edge.
+        // A point 2 units outside area A's edge. 'current_total' is the corpus
+        // size (always 1 here); what the radius changes is how many areas
+        // actually count it, reported as 'current_in_areas'.
         let outside = pts(&[(12.0, 5.0)]);
         let (tight, _l) = run(json!({
             "input": areas(), "previous_features": outside.clone(),
             "current_features": outside.clone(),
         }));
-        assert_eq!(tight.outputs["current_total"], json!(0));
+        assert_eq!(tight.outputs["current_in_areas"], json!(0));
+        assert_eq!(tight.outputs["current_total"], json!(1));
         let (loose, _l) = run(json!({
             "input": areas(), "previous_features": outside.clone(),
             "current_features": outside, "search_radius": 3.0,
         }));
-        assert_eq!(loose.outputs["current_total"], json!(1));
+        assert_eq!(loose.outputs["current_in_areas"], json!(1));
+    }
+
+    #[test]
+    fn corpus_totals_do_not_double_count_overlapping_catchments() {
+        // With a radius wide enough that both areas claim the same incident,
+        // the per-area sum counts it twice but the corpus total must not.
+        let mid = pts(&[(15.0, 5.0)]);
+        let (out, _l) = run(json!({
+            "input": areas(), "previous_features": mid.clone(),
+            "current_features": mid, "search_radius": 6.0,
+        }));
+        assert_eq!(out.outputs["current_in_areas"], json!(2));
+        assert_eq!(out.outputs["current_total"], json!(1));
     }
 
     #[test]

@@ -31,6 +31,12 @@ use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, GeometryType, L
 
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
 
+/// Per-group point cap for the incremental hull, which is O(points x faces).
+/// Lidar clusters and plumes — the stated use case — routinely run to hundreds
+/// of thousands of points, where an ungated hull would appear to hang. Failing
+/// loudly matches the caps the other tools in this family use.
+const MAX_HULL_POINTS: usize = 200_000;
+
 pub struct MinimumBoundingVolumeTool;
 
 impl Tool for MinimumBoundingVolumeTool {
@@ -174,6 +180,14 @@ impl Tool for MinimumBoundingVolumeTool {
         let mut per_volume: Vec<Value> = Vec::new();
 
         for (label, pts) in labels.iter().zip(buckets.iter()) {
+            if shape == Shape::ConvexHull && pts.len() > MAX_HULL_POINTS {
+                return Err(ToolError::Execution(format!(
+                    "group '{label}' has {} points; the convex hull is capped at \
+                     {MAX_HULL_POINTS}. Thin the cloud, or use 'envelope'/'sphere', \
+                     which are linear in the point count",
+                    pts.len()
+                )));
+            }
             let Some(solid) = build_solid(shape, pts) else {
                 degenerate += 1;
                 continue;

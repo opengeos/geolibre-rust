@@ -149,20 +149,37 @@ impl Tool for GeneratePointsAlong3dLinesTool {
         if let Some(epsg) = layer.crs_epsg() {
             out = out.with_crs_epsg(epsg);
         }
-        for fd in layer.schema.fields() {
-            out.add_field(fd.clone());
-        }
-        out.add_field(FieldDef::new("LINE_ID", FieldType::Integer));
-        out.add_field(FieldDef::new("POINT_SEQ", FieldType::Integer));
-        if want_chainage {
-            out.add_field(FieldDef::new("CHAINAGE", FieldType::Float));
-        }
         let names: Vec<String> = layer
             .schema
             .fields()
             .iter()
             .map(|f| f.name.clone())
             .collect();
+        // Chainage/route layers routinely already carry LINE_ID or CHAINAGE.
+        // Appending ours unconditionally would duplicate the name, and the
+        // by-name attribute write below would then land in whichever index
+        // resolved first. Suffix ours until unique instead.
+        let unique = |base: &str| -> String {
+            if !names.iter().any(|n| n == base) {
+                return base.to_string();
+            }
+            (1..)
+                .map(|k| format!("{base}_{k}"))
+                .find(|c| !names.iter().any(|n| n == c))
+                .expect("an unused suffix always exists")
+        };
+        let line_id_name = unique("LINE_ID");
+        let seq_name = unique("POINT_SEQ");
+        let chainage_name = unique("CHAINAGE");
+
+        for fd in layer.schema.fields() {
+            out.add_field(fd.clone());
+        }
+        out.add_field(FieldDef::new(line_id_name.as_str(), FieldType::Integer));
+        out.add_field(FieldDef::new(seq_name.as_str(), FieldType::Integer));
+        if want_chainage {
+            out.add_field(FieldDef::new(chainage_name.as_str(), FieldType::Float));
+        }
 
         let mut emitted = 0usize;
         let mut skipped = 0usize;
@@ -219,10 +236,10 @@ impl Tool for GeneratePointsAlong3dLinesTool {
                             )
                         })
                         .collect();
-                    attrs.push(("LINE_ID", FieldValue::Integer(fid as i64)));
-                    attrs.push(("POINT_SEQ", FieldValue::Integer(seq as i64)));
+                    attrs.push((line_id_name.as_str(), FieldValue::Integer(fid as i64)));
+                    attrs.push((seq_name.as_str(), FieldValue::Integer(seq as i64)));
                     if want_chainage {
-                        attrs.push(("CHAINAGE", FieldValue::Float(chain)));
+                        attrs.push((chainage_name.as_str(), FieldValue::Float(chain)));
                     }
                     out.add_feature(Some(Geometry::point_z(p[0], p[1], p[2])), &attrs)
                         .map_err(|e| ToolError::Execution(format!("failed adding point: {e}")))?;

@@ -112,7 +112,9 @@ impl Tool for GenerateBreachLinesTool {
         let nodata = dem.nodata;
 
         // Optional termination targets.
-        let connections: Vec<(isize, isize)> = match parse_optional_str(args, "connection_points")? {
+        // A HashSet, not a Vec: the outlet test runs inside the Dijkstra pop
+        // loop, so a linear scan would be O(cells x points).
+        let connections: std::collections::HashSet<(isize, isize)> = match parse_optional_str(args, "connection_points")? {
             Some(p) => {
                 let layer = load_input_layer(p)?;
                 layer
@@ -122,7 +124,7 @@ impl Tool for GenerateBreachLinesTool {
                     .filter_map(|(x, y)| dem.world_to_pixel(x, y).map(|(c, r)| (r, c)))
                     .collect()
             }
-            None => Vec::new(),
+            None => std::collections::HashSet::new(),
         };
 
         let mut out = Layer::new("breach_lines").with_geom_type(GeometryType::LineString);
@@ -135,6 +137,12 @@ impl Tool for GenerateBreachLinesTool {
         out.add_field(FieldDef::new("CUT_VOLUME", FieldType::Float));
         out.add_field(FieldDef::new("INLET_Z", FieldType::Float));
         out.add_field(FieldDef::new("OUTLET_Z", FieldType::Float));
+
+        // `delineate_depressions` routinely emits thousands of polygons, so
+        // allocating and zeroing full-raster buffers per feature is O(features x
+        // raster). Allocate once and reset only the cells actually touched.
+        let mut inside = vec![false; (rows * cols) as usize];
+        let mut scratch = Scratch::new((rows * cols) as usize);
 
         let cell_area = dem.cell_size_x * dem.cell_size_y;
         let mut breached = 0usize;
@@ -161,7 +169,7 @@ impl Tool for GenerateBreachLinesTool {
                 continue;
             }
 
-            let mut inside = vec![false; (rows * cols) as usize];
+            let mut touched_inside: Vec<usize> = Vec::new();
             let mut pit: Option<(isize, isize, f64)> = None;
             for r in r0..=r1 {
                 for c in c0..=c1 {
@@ -170,6 +178,7 @@ impl Tool for GenerateBreachLinesTool {
                         continue;
                     }
                     inside[(r * cols + c) as usize] = true;
+                    touched_inside.push((r * cols + c) as usize);
                     let z = dem.get(0, r, c);
                     if z == nodata || !z.is_finite() {
                         continue;
@@ -180,13 +189,20 @@ impl Tool for GenerateBreachLinesTool {
                 }
             }
             let Some((pr, pc, pit_z)) = pit else {
+                for &i in &touched_inside {
+                    inside[i] = false;
+                }
                 unbreached += 1;
                 continue;
             };
 
-            match search(
-                &dem, &inside, (pr, pc), pit_z, method, max_length, &connections,
-            ) {
+            let found = search(
+                &dem, &inside, &mut scratch, (pr, pc), pit_z, method, max_length, &connections,
+            );
+            for &i in &touched_inside {
+                inside[i] = false;
+            }
+            match found {
                 Some(path) => {
                     let mut length = 0.0;
                     let mut max_cut = 0.0_f64;
@@ -252,20 +268,55 @@ impl Tool for GenerateBreachLinesTool {
     }
 }
 
+/// Reusable Dijkstra buffers.
+///
+/// `touched` records every index written during a sweep so the next call can
+/// reset just those, instead of re-zeroing the whole raster per depression.
+struct Scratch {
+    dist: Vec<f64>,
+    travelled: Vec<f64>,
+    back: Vec<usize>,
+    done: Vec<bool>,
+    touched: Vec<usize>,
+}
+
+impl Scratch {
+    fn new(n: usize) -> Self {
+        Self {
+            dist: vec![f64::INFINITY; n],
+            travelled: vec![f64::INFINITY; n],
+            back: vec![usize::MAX; n],
+            done: vec![false; n],
+            touched: Vec::new(),
+        }
+    }
+    fn reset(&mut self) {
+        for &i in &self.touched {
+            self.dist[i] = f64::INFINITY;
+            self.travelled[i] = f64::INFINITY;
+            self.back[i] = usize::MAX;
+            self.done[i] = false;
+        }
+        self.touched.clear();
+    }
+}
+
 /// Dijkstra sweep outward from the pit, returning the cell path to the first
 /// admissible outlet.
 ///
 /// An outlet is a cell outside the depression whose elevation is below the pit
 /// — i.e. water released there keeps flowing away rather than pooling straight
 /// back. When `connection_points` are supplied, only those cells qualify.
+#[allow(clippy::too_many_arguments)]
 fn search(
     dem: &Raster,
     inside: &[bool],
+    scratch: &mut Scratch,
     pit: (isize, isize),
     pit_z: f64,
     method: Method,
     max_length: Option<f64>,
-    connections: &[(isize, isize)],
+    connections: &std::collections::HashSet<(isize, isize)>,
 ) -> Option<Vec<(isize, isize)>> {
     let rows = dem.rows as isize;
     let cols = dem.cols as isize;
@@ -274,15 +325,21 @@ fn search(
     let diag = dem.cell_size_x.hypot(dem.cell_size_y);
     let straight = dem.cell_size_x.min(dem.cell_size_y);
 
-    let mut dist = vec![f64::INFINITY; n];
-    let mut travelled = vec![f64::INFINITY; n];
-    let mut back = vec![usize::MAX; n];
-    let mut done = vec![false; n];
+    scratch.reset();
+    let Scratch {
+        dist,
+        travelled,
+        back,
+        done,
+        touched,
+    } = scratch;
+    debug_assert_eq!(dist.len(), n);
     let mut heap: BinaryHeap<Node> = BinaryHeap::new();
 
     let start = (pit.0 * cols + pit.1) as usize;
     dist[start] = 0.0;
     travelled[start] = 0.0;
+    touched.push(start);
     heap.push(Node {
         cost: 0.0,
         idx: start,
@@ -346,6 +403,9 @@ fn search(
             };
             let nd = cost + increment;
             if nd < dist[nidx] {
+                if !dist[nidx].is_finite() {
+                    touched.push(nidx);
+                }
                 dist[nidx] = nd;
                 travelled[nidx] = travel;
                 back[nidx] = idx;

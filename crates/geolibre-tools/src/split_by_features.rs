@@ -127,6 +127,9 @@ impl Tool for SplitByFeaturesTool {
 
         for (key, name) in order.iter().zip(names.iter()) {
             let zone = &zones[key];
+            // Converted once per zone: `zone_contains` used to rebuild this for
+            // every coordinate tested, deep-cloning every ring per point.
+            let zone_geom = multipolygon_to_geometry(zone);
             let mut out = Layer::new(name);
             if let Some(gt) = layer.geom_type {
                 out = out.with_geom_type(gt);
@@ -146,7 +149,7 @@ impl Tool for SplitByFeaturesTool {
 
             for feat in layer.iter() {
                 let Some(g) = &feat.geometry else { continue };
-                let Some(clipped) = clip_geometry(g, zone) else {
+                let Some(clipped) = clip_geometry(g, zone, &zone_geom) else {
                     continue;
                 };
                 let attrs: Vec<(&str, FieldValue)> = field_names
@@ -192,14 +195,17 @@ impl Tool for SplitByFeaturesTool {
 }
 
 /// Clips one geometry to `zone`, returning `None` when nothing survives.
-fn clip_geometry(g: &Geometry, zone: &MultiPolygon) -> Option<Geometry> {
+///
+/// `zone_geom` is the same zone pre-converted to a `wbvector::Geometry` for the
+/// point-containment test, so it is built once per zone rather than per point.
+fn clip_geometry(g: &Geometry, zone: &MultiPolygon, zone_geom: &Geometry) -> Option<Geometry> {
     match g {
         // Points are kept whole or dropped — clipping cannot subdivide them.
-        Geometry::Point(c) => zone_contains(zone, c.x, c.y).then(|| g.clone()),
+        Geometry::Point(c) => geometry_contains_point(zone_geom, c.x, c.y).then(|| g.clone()),
         Geometry::MultiPoint(cs) => {
             let kept: Vec<Coord> = cs
                 .iter()
-                .filter(|c| zone_contains(zone, c.x, c.y))
+                .filter(|c| geometry_contains_point(zone_geom, c.x, c.y))
                 .cloned()
                 .collect();
             match kept.len() {
@@ -221,7 +227,10 @@ fn clip_geometry(g: &Geometry, zone: &MultiPolygon) -> Option<Geometry> {
             (!cut.0.is_empty()).then(|| multipolygon_to_geometry(&cut))
         }
         Geometry::GeometryCollection(gs) => {
-            let kept: Vec<Geometry> = gs.iter().filter_map(|s| clip_geometry(s, zone)).collect();
+            let kept: Vec<Geometry> = gs
+                .iter()
+                .filter_map(|s| clip_geometry(s, zone, zone_geom))
+                .collect();
             (!kept.is_empty()).then_some(Geometry::GeometryCollection(kept))
         }
     }
@@ -242,15 +251,13 @@ fn clip_lines(zone: &MultiPolygon, mls: &MultiLineString) -> Option<Geometry> {
     }
 }
 
-fn zone_contains(zone: &MultiPolygon, x: f64, y: f64) -> bool {
-    // Reuse the shared ray-casting test rather than pulling in geo's Contains,
-    // so on-edge behaviour matches the rest of the crate.
-    geometry_contains_point(&multipolygon_to_geometry(zone), x, y)
-}
-
 /// Turns split values into safe, unique file stems.
+///
+/// Every emitted stem is recorded, not just the sanitized base: keying on the
+/// base alone lets ["west", "west", "west_1"] emit `west_1` twice, silently
+/// overwriting the first file — exactly what the dissolve step exists to avoid.
 fn safe_file_names(values: &[String]) -> Vec<String> {
-    let mut used: HashMap<String, usize> = HashMap::new();
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(values.len());
     for v in values {
         let mut base: String = v
@@ -267,16 +274,15 @@ fn safe_file_names(values: &[String]) -> Vec<String> {
             base = "zone".to_string();
         }
         base.truncate(80);
-        let name = match used.get_mut(&base) {
-            None => {
-                used.insert(base.clone(), 1);
-                base
-            }
-            Some(n) => {
-                let candidate = format!("{base}_{n}");
-                *n += 1;
-                candidate
-            }
+        let name = if used.insert(base.clone()) {
+            base
+        } else {
+            let candidate = (1..)
+                .map(|k| format!("{base}_{k}"))
+                .find(|c| !used.contains(c))
+                .expect("an unused suffix always exists");
+            used.insert(candidate.clone());
+            candidate
         };
         out.push(name);
     }

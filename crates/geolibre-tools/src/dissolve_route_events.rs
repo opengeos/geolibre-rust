@@ -145,6 +145,7 @@ impl Tool for DissolveRouteEventsTool {
         // mode so non-matching spans never merge).
         let mut groups: Vec<Group> = Vec::new();
         let mut pos: HashMap<String, usize> = HashMap::new();
+        let mut route_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut skipped = 0usize;
         for feat in &layer.features {
             let (Some(from), Some(to)) = (
@@ -161,6 +162,7 @@ impl Tool for DissolveRouteEventsTool {
             // Tolerate reversed measures rather than dropping the row.
             let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
             let route = key_of(feat.attributes.get(r_i));
+            route_keys.insert(route.clone());
             let vals: Vec<String> = d_i
                 .iter()
                 .map(|&i| key_of(feat.attributes.get(i)))
@@ -204,17 +206,12 @@ impl Tool for DissolveRouteEventsTool {
         ));
         out.add_field(FieldDef::new(from_name, FieldType::Float));
         out.add_field(FieldDef::new(to_name, FieldType::Float));
+        // Values travel through the sweep as strings (they are also the group
+        // key), so both modes emit Text. Declaring the source type here while
+        // writing Text would leave the schema and the values disagreeing, which
+        // downstream writers either reject or silently coerce.
         for name in &diss_names {
-            // Concatenation can widen any type to text; dissolve preserves it.
-            let ty = match mode {
-                Mode::Dissolve => layer.schema.fields()[d_i[diss_names
-                    .iter()
-                    .position(|d| d == name)
-                    .expect("name came from diss_names")]]
-                .field_type,
-                Mode::Concatenate => FieldType::Text,
-            };
-            out.add_field(FieldDef::new(name.as_str(), ty));
+            out.add_field(FieldDef::new(name.as_str(), FieldType::Text));
         }
         out.add_field(FieldDef::new("EVENT_COUNT", FieldType::Integer));
 
@@ -259,7 +256,10 @@ impl Tool for DissolveRouteEventsTool {
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("input_event_count".to_string(), json!(n_in));
         outputs.insert("output_event_count".to_string(), json!(n_out));
-        outputs.insert("route_count".to_string(), json!(groups.len()));
+        outputs.insert("group_count".to_string(), json!(groups.len()));
+        // In 'dissolve' mode a group is (route x dissolve tuple), so the group
+        // count is not the route count; report the distinct routes separately.
+        outputs.insert("route_count".to_string(), json!(route_keys.len()));
         outputs.insert("skipped_rows".to_string(), json!(skipped));
         Ok(ToolRunResult { outputs })
     }

@@ -3667,6 +3667,86 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("output", vector_out()),
         ]),
+        // ── Whitebox tools with boolean params mistyped by keyword inference ──────
+        //
+        // `wbcore::manifest_with_io_schema_json` infers a param's type from
+        // keywords in its name and description. The five params below are all
+        // boolean flags whose descriptions happen to contain the words "output"
+        // or "if true / writes" that trigger the inference to classify them as
+        // output dataset paths instead of scalars. Providing explicit schemas
+        // here short-circuits the inference for the whole tool.
+        //
+        // Additional corrections bundled with each tool:
+        //   buffer_vector     – `mitre_limit` inferred as string, is a float
+        //   individual_tree_segmentation – `veg_classes` inferred as text-file
+        //                        input (is a plain string); `grid_cell_size` and
+        //                        `grid_refine_iterations` inferred as raster
+        //                        inputs (are scalars); `output_id_mode` inferred
+        //                        as a file output (is an enum selector)
+        //   lidar_tile        – `origin_x`/`origin_y` inferred as raster inputs
+        //                        (are coordinate floats)
+        "buffer_vector" => schemas(&[
+            ("input",             vector_in()),
+            ("distance",          float()),
+            ("quadrant_segments", float()),
+            ("cap_style",         ToolParamSchema::enum_values(&["round", "flat", "square"])),
+            ("join_style",        ToolParamSchema::enum_values(&["round", "bevel", "mitre"])),
+            ("mitre_limit",       float()),      // was: string
+            ("dissolve",          ToolParamSchema::bool()), // was: vector input
+            ("output",            vector_out()),
+        ]),
+        "individual_tree_segmentation" => schemas(&[
+            ("input",                  lidar_in()),
+            ("only_use_veg",           ToolParamSchema::bool()),
+            ("veg_classes",            ToolParamSchema::string()), // was: text dataset input
+            ("min_height",             float()),
+            ("max_height",             float()),
+            ("bandwidth_min",          float()),
+            ("bandwidth_max",          float()),
+            ("adaptive_bandwidth",     ToolParamSchema::bool()),
+            ("adaptive_neighbors",     float()),
+            ("adaptive_sector_count",  float()),
+            ("grid_acceleration",      ToolParamSchema::bool()),
+            ("grid_cell_size",         float()),   // was: raster input
+            ("grid_refine_exact",      ToolParamSchema::bool()),
+            ("grid_refine_iterations", int()),     // was: raster input
+            ("tile_size",              float()),
+            ("tile_overlap",           float()),
+            ("vertical_bandwidth",     float()),
+            ("max_iterations",         float()),
+            ("convergence_tol",        float()),
+            ("min_cluster_points",     float()),
+            ("mode_merge_dist",        float()),
+            ("threads",                float()),
+            ("simd",                   ToolParamSchema::bool()),
+            ("output_id_mode",         ToolParamSchema::enum_values(&[ // was: file output
+                "rgb", "user_data", "point_source_id",
+                "rgb+user_data", "rgb+point_source_id",
+            ])),
+            ("output_sidecar_csv",     ToolParamSchema::bool()), // was: table output
+            ("seed",                   float()),
+            ("output",                 lidar_out()),
+        ]),
+        "las_to_shapefile" => schemas(&[
+            ("input",             lidar_in()),
+            ("output",            vector_out()),
+            ("output_multipoint", ToolParamSchema::bool()), // was: vector output
+        ]),
+        "lidar_tile" => schemas(&[
+            ("input",              lidar_in()),
+            ("tile_width",         float()),
+            ("tile_height",        float()),
+            ("origin_x",           float()),   // was: raster input
+            ("origin_y",           float()),   // was: raster input
+            ("min_points_in_tile", float()),
+            ("output_laz_format",  ToolParamSchema::bool()), // was: lidar output
+            ("output_directory",   file_out()),
+        ]),
+        "lidar_tile_footprint" => schemas(&[
+            ("input",        lidar_in()),
+            ("output",       vector_out()),
+            ("output_hulls", ToolParamSchema::bool()), // was: file output
+        ]),
         _ => return None,
     };
     Some(map)

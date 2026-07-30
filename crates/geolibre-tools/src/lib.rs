@@ -622,6 +622,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
     let vector_out = ToolParamSchema::output_vector_any;
     let file_out = || ToolParamSchema::output(ToolDatasetSchema::File);
     let table_out = || ToolParamSchema::output(ToolDatasetSchema::Table);
+    let json_out = || ToolParamSchema::output(ToolDatasetSchema::Json);
     let lidar_in = ToolParamSchema::input_lidar;
     let lidar_out = || ToolParamSchema::output(ToolDatasetSchema::Lidar);
     let int = ToolParamSchema::scalar_integer;
@@ -3667,14 +3668,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ),
             ("output", vector_out()),
         ]),
-        // ── Whitebox tools with boolean params mistyped by keyword inference ──────
+        // ── Whitebox tools with params mistyped by keyword inference ─────────────
         //
         // `wbcore::manifest_with_io_schema_json` infers a param's type from
-        // keywords in its name and description. The five params below are all
-        // boolean flags whose descriptions happen to contain the words "output"
-        // or "if true / writes" that trigger the inference to classify them as
-        // output dataset paths instead of scalars. Providing explicit schemas
-        // here short-circuits the inference for the whole tool.
+        // keywords in its name and description. Five params across the first four
+        // tools below are boolean flags whose descriptions happen to contain the
+        // words "output" or "if true / writes" that trigger the inference to
+        // classify them as output dataset paths instead of scalars. Providing
+        // explicit schemas here short-circuits the inference for the whole tool.
         //
         // Additional corrections bundled with each tool:
         //   buffer_vector     – `mitre_limit` inferred as string, is a float
@@ -3752,6 +3753,56 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input",        lidar_in()),
             ("output",       vector_out()),
             ("output_hulls", ToolParamSchema::bool()), // was: file output
+        ]),
+        // `download_osm_vector` reads no dataset input at all (it queries
+        // Overpass for an extent), yet the inference gave it two. The
+        // `split_output_by_geometry` flag became a *vector input*, so a host that
+        // resolves inputs before running the tool asked for a layer to satisfy a
+        // checkbox and could not run the tool at all; `provenance_output` writes a
+        // sidecar but was inferred as an existing JSON input; and the EPSG codes,
+        // timeout and counts all came out as floats.
+        //
+        // The types below are the ones the tool's own arg parsing reads
+        // (`wbtools_oss/src/tools/gis/osm_download.rs`): `as_u64` for each int,
+        // `as_f64` for the two floats, and `as_str` for `cache_dir`, which is a
+        // directory path rather than a dataset. The two enum lists
+        // (`OSM_FILTER_PRESETS`, and the `overpass_profile` validation) are
+        // spelled out because an explicit table short-circuits the inference for
+        // the whole tool, which had been parsing them out of the descriptions.
+        "download_osm_vector" => schemas(&[
+            ("west",                     float()),
+            ("south",                    float()),
+            ("east",                     float()),
+            ("north",                    float()),
+            ("input_extent_epsg",        int()),   // was: float
+            ("filter_preset",            ToolParamSchema::enum_values(&[
+                "all", "roads", "buildings", "water", "landuse", "trails",
+                "parks", "rail", "amenities", "boundaries", "transit", "poi",
+            ])),
+            ("include_tags",             ToolParamSchema::string()),
+            ("include_key_values",       ToolParamSchema::string()),
+            ("filter_key",               ToolParamSchema::string()),
+            ("filter_key_value",         ToolParamSchema::string()),
+            ("include_points",           ToolParamSchema::bool()),
+            ("include_lines",            ToolParamSchema::bool()),
+            ("include_polygons",         ToolParamSchema::bool()),
+            ("clip_to_extent",           ToolParamSchema::bool()),
+            ("split_output_by_geometry", ToolParamSchema::bool()), // was: vector input
+            ("output_epsg",              int()),   // was: file output
+            ("overpass_profile",         ToolParamSchema::enum_values(&[
+                "main", "kumi", "fr", "custom",
+            ])),
+            ("overpass_url",             ToolParamSchema::string()),
+            ("timeout_seconds",          int()),   // was: float
+            ("max_elements",             int()),   // was: float
+            ("chunk_large_aoi",          ToolParamSchema::bool()),
+            ("chunk_max_area_deg2",      float()),
+            ("max_chunk_count",          int()),   // was: float
+            ("chunk_parallel_requests",  int()),   // was: float
+            ("cache_dir",                ToolParamSchema::string()), // was: json input
+            ("cache_ttl_hours",          int()),   // was: float
+            ("provenance_output",        json_out()), // was: json input
+            ("output",                   vector_out()),
         ]),
         _ => return None,
     };
@@ -3896,6 +3947,61 @@ mod tests {
                     ("input", lidar_in.clone()),
                     ("output", vector_out.clone()),
                     ("output_hulls", boolean.clone()),
+                ],
+            ),
+            (
+                "download_osm_vector",
+                &[
+                    ("west", float.clone()),
+                    ("south", float.clone()),
+                    ("east", float.clone()),
+                    ("north", float.clone()),
+                    ("input_extent_epsg", int.clone()),
+                    (
+                        "filter_preset",
+                        ToolParamSchema::enum_values(&[
+                            "all",
+                            "roads",
+                            "buildings",
+                            "water",
+                            "landuse",
+                            "trails",
+                            "parks",
+                            "rail",
+                            "amenities",
+                            "boundaries",
+                            "transit",
+                            "poi",
+                        ]),
+                    ),
+                    ("include_tags", ToolParamSchema::string()),
+                    ("include_key_values", ToolParamSchema::string()),
+                    ("filter_key", ToolParamSchema::string()),
+                    ("filter_key_value", ToolParamSchema::string()),
+                    ("include_points", boolean.clone()),
+                    ("include_lines", boolean.clone()),
+                    ("include_polygons", boolean.clone()),
+                    ("clip_to_extent", boolean.clone()),
+                    ("split_output_by_geometry", boolean.clone()),
+                    ("output_epsg", int.clone()),
+                    (
+                        "overpass_profile",
+                        ToolParamSchema::enum_values(&["main", "kumi", "fr", "custom"]),
+                    ),
+                    ("overpass_url", ToolParamSchema::string()),
+                    ("timeout_seconds", int.clone()),
+                    ("max_elements", int.clone()),
+                    ("chunk_large_aoi", boolean.clone()),
+                    ("chunk_max_area_deg2", float.clone()),
+                    ("max_chunk_count", int.clone()),
+                    ("chunk_parallel_requests", int.clone()),
+                    ("cache_dir", ToolParamSchema::string()),
+                    ("cache_ttl_hours", int.clone()),
+                    (
+                        "provenance_output",
+                        ToolParamSchema::output(ToolDatasetSchema::Json),
+                    ),
+                    ("output", vector_out.clone()),
                 ],
             ),
         ];

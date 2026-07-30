@@ -3685,10 +3685,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
         //                        as a file output (is an enum selector)
         //   lidar_tile        – `origin_x`/`origin_y` inferred as raster inputs
         //                        (are coordinate floats)
+        //
+        // Count-like params (`quadrant_segments`, `adaptive_neighbors`,
+        // `adaptive_sector_count`, `grid_refine_iterations`, `max_iterations`,
+        // `min_cluster_points`, `threads`, `seed`, `min_points_in_tile`) are
+        // integers upstream — they are all read with `parse_usize_alias` — so
+        // they get `int()` rather than `float()`.
         "buffer_vector" => schemas(&[
             ("input",             vector_in()),
             ("distance",          float()),
-            ("quadrant_segments", float()),
+            ("quadrant_segments", int()),
             ("cap_style",         ToolParamSchema::enum_values(&["round", "flat", "square"])),
             ("join_style",        ToolParamSchema::enum_values(&["round", "bevel", "mitre"])),
             ("mitre_limit",       float()),      // was: string
@@ -3704,8 +3710,8 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("bandwidth_min",          float()),
             ("bandwidth_max",          float()),
             ("adaptive_bandwidth",     ToolParamSchema::bool()),
-            ("adaptive_neighbors",     float()),
-            ("adaptive_sector_count",  float()),
+            ("adaptive_neighbors",     int()),
+            ("adaptive_sector_count",  int()),
             ("grid_acceleration",      ToolParamSchema::bool()),
             ("grid_cell_size",         float()),   // was: raster input
             ("grid_refine_exact",      ToolParamSchema::bool()),
@@ -3713,18 +3719,18 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tile_size",              float()),
             ("tile_overlap",           float()),
             ("vertical_bandwidth",     float()),
-            ("max_iterations",         float()),
+            ("max_iterations",         int()),
             ("convergence_tol",        float()),
-            ("min_cluster_points",     float()),
+            ("min_cluster_points",     int()),
             ("mode_merge_dist",        float()),
-            ("threads",                float()),
+            ("threads",                int()),
             ("simd",                   ToolParamSchema::bool()),
             ("output_id_mode",         ToolParamSchema::enum_values(&[ // was: file output
                 "rgb", "user_data", "point_source_id",
                 "rgb+user_data", "rgb+point_source_id",
             ])),
             ("output_sidecar_csv",     ToolParamSchema::bool()), // was: table output
-            ("seed",                   float()),
+            ("seed",                   int()),
             ("output",                 lidar_out()),
         ]),
         "las_to_shapefile" => schemas(&[
@@ -3738,7 +3744,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("tile_height",        float()),
             ("origin_x",           float()),   // was: raster input
             ("origin_y",           float()),   // was: raster input
-            ("min_points_in_tile", float()),
+            ("min_points_in_tile", int()),
             ("output_laz_format",  ToolParamSchema::bool()), // was: lidar output
             ("output_directory",   file_out()),
         ]),
@@ -3782,6 +3788,131 @@ mod tests {
                     meta.id,
                     param.name
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn corrected_whitebox_schemas_keep_their_exact_types() {
+        // The five whitebox overrides above exist only to correct keyword
+        // inference, so asserting that the param names are present is not
+        // enough — a regression back to a dataset or float schema would still
+        // pass. Pin the exact type of every param they declare.
+        let float = ToolParamSchema::scalar_float();
+        let int = ToolParamSchema::scalar_integer();
+        let boolean = ToolParamSchema::bool();
+        let lidar_in = ToolParamSchema::input_lidar();
+        let lidar_out = ToolParamSchema::output(ToolDatasetSchema::Lidar);
+        let vector_out = ToolParamSchema::output_vector_any();
+
+        let expected: &[(&str, &[(&str, ToolParamSchema)])] = &[
+            (
+                "buffer_vector",
+                &[
+                    ("input", ToolParamSchema::input_vector_any()),
+                    ("distance", float.clone()),
+                    ("quadrant_segments", int.clone()),
+                    (
+                        "cap_style",
+                        ToolParamSchema::enum_values(&["round", "flat", "square"]),
+                    ),
+                    (
+                        "join_style",
+                        ToolParamSchema::enum_values(&["round", "bevel", "mitre"]),
+                    ),
+                    ("mitre_limit", float.clone()),
+                    ("dissolve", boolean.clone()),
+                    ("output", vector_out.clone()),
+                ],
+            ),
+            (
+                "individual_tree_segmentation",
+                &[
+                    ("input", lidar_in.clone()),
+                    ("only_use_veg", boolean.clone()),
+                    ("veg_classes", ToolParamSchema::string()),
+                    ("min_height", float.clone()),
+                    ("max_height", float.clone()),
+                    ("bandwidth_min", float.clone()),
+                    ("bandwidth_max", float.clone()),
+                    ("adaptive_bandwidth", boolean.clone()),
+                    ("adaptive_neighbors", int.clone()),
+                    ("adaptive_sector_count", int.clone()),
+                    ("grid_acceleration", boolean.clone()),
+                    ("grid_cell_size", float.clone()),
+                    ("grid_refine_exact", boolean.clone()),
+                    ("grid_refine_iterations", int.clone()),
+                    ("tile_size", float.clone()),
+                    ("tile_overlap", float.clone()),
+                    ("vertical_bandwidth", float.clone()),
+                    ("max_iterations", int.clone()),
+                    ("convergence_tol", float.clone()),
+                    ("min_cluster_points", int.clone()),
+                    ("mode_merge_dist", float.clone()),
+                    ("threads", int.clone()),
+                    ("simd", boolean.clone()),
+                    (
+                        "output_id_mode",
+                        ToolParamSchema::enum_values(&[
+                            "rgb",
+                            "user_data",
+                            "point_source_id",
+                            "rgb+user_data",
+                            "rgb+point_source_id",
+                        ]),
+                    ),
+                    ("output_sidecar_csv", boolean.clone()),
+                    ("seed", int.clone()),
+                    ("output", lidar_out.clone()),
+                ],
+            ),
+            (
+                "las_to_shapefile",
+                &[
+                    ("input", lidar_in.clone()),
+                    ("output", vector_out.clone()),
+                    ("output_multipoint", boolean.clone()),
+                ],
+            ),
+            (
+                "lidar_tile",
+                &[
+                    ("input", lidar_in.clone()),
+                    ("tile_width", float.clone()),
+                    ("tile_height", float.clone()),
+                    ("origin_x", float.clone()),
+                    ("origin_y", float.clone()),
+                    ("min_points_in_tile", int.clone()),
+                    ("output_laz_format", boolean.clone()),
+                    (
+                        "output_directory",
+                        ToolParamSchema::output(ToolDatasetSchema::File),
+                    ),
+                ],
+            ),
+            (
+                "lidar_tile_footprint",
+                &[
+                    ("input", lidar_in.clone()),
+                    ("output", vector_out.clone()),
+                    ("output_hulls", boolean.clone()),
+                ],
+            ),
+        ];
+
+        for (tool_id, params) in expected {
+            let schemas = geolibre_param_schemas(tool_id)
+                .unwrap_or_else(|| panic!("missing param schemas for tool '{tool_id}'"));
+            assert_eq!(
+                schemas.len(),
+                params.len(),
+                "tool '{tool_id}' declares a different number of params than expected"
+            );
+            for (name, want) in *params {
+                let got = schemas
+                    .get(*name)
+                    .unwrap_or_else(|| panic!("tool '{tool_id}' is missing param '{name}'"));
+                assert_eq!(got, want, "tool '{tool_id}' param '{name}' has the wrong schema");
             }
         }
     }

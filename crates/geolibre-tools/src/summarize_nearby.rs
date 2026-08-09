@@ -32,9 +32,13 @@
 //!   apportions.
 //! - **line** summary features — a feature contributes the length of itself
 //!   clipped to the buffer (`geo`'s `BooleanOps::clip`); `count` is the number
-//!   of lines that touch the buffer, `length_within` is the total clipped
-//!   length, and each `sum_fields` entry is apportioned by the length fraction
-//!   (`value × clipped_length / feature_length`).
+//!   of lines with a positive clipped length, `length_within` is the total
+//!   clipped length, and each `sum_fields` entry is apportioned by the length
+//!   fraction (`value × clipped_length / feature_length`). A line merely
+//!   tangent to the buffer clips to zero length and is not counted, matching
+//!   how a polygon touching only at an edge contributes no area — `count` is
+//!   the `mean_<field>` denominator, so counting zero-contribution features
+//!   would deflate the means.
 //!
 //! Every output feature carries `input_id` (the value of `id_field`, or the
 //! input feature index), the buffer `distance`, `count`, `area_within` (0 unless

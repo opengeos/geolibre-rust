@@ -540,7 +540,20 @@ pub(crate) fn collect_triangles(geom: &Geometry) -> Vec<Tri> {
         if cs.len() < 3 {
             return;
         }
-        let p: Vec<[f64; 3]> = cs.iter().map(|c| [c.x, c.y, c.z.unwrap_or(0.0)]).collect();
+        let mut p: Vec<[f64; 3]> = cs.iter().map(|c| [c.x, c.y, c.z.unwrap_or(0.0)]).collect();
+        // Rings are usually written closed (last vertex == first). Fan-
+        // triangulating that duplicate emits a final zero-area triangle, which
+        // is invisible to ray casting but shows up as a spurious sliver when
+        // the triangles are exported as a mesh.
+        if p.len() > 3 {
+            let (a, b) = (p[0], p[p.len() - 1]);
+            if a[0] == b[0] && a[1] == b[1] && a[2] == b[2] {
+                p.pop();
+            }
+        }
+        if p.len() < 3 {
+            return;
+        }
         for k in 1..(p.len() - 1) {
             out.push([p[0], p[k], p[k + 1]]);
         }

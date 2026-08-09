@@ -150,6 +150,7 @@ mod mgwr;
 mod minimum_bounding_volume;
 mod multicriteria_overlay;
 mod multilook;
+mod multipatch_to_mesh;
 mod multiple_ring_buffer;
 mod near_3d;
 mod neighborhood_summary_statistics;
@@ -409,6 +410,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(multitemporal_coherence::MultitemporalCoherenceTool),
         Box::new(extract_ocean_winds::ExtractOceanWindsTool),
         Box::new(regression_kriging::RegressionKrigingTool),
+        Box::new(multipatch_to_mesh::MultipatchToMeshTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -784,6 +786,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "multipatch_to_mesh" => schemas(&[
+            ("input", vector_in()),
+            ("output", file_out()),
+            ("format", ToolParamSchema::enum_values(&["glb", "gltf", "obj"])),
+            ("origin", ToolParamSchema::enum_values(&["centroid", "min_corner", "none"])),
+            ("y_up", ToolParamSchema::bool()),
+            ("name_field", ToolParamSchema::string()),
         ]),
         "regression_kriging" => schemas(&[
             ("input", vector_in()),

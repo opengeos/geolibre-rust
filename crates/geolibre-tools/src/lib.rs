@@ -92,6 +92,7 @@ mod focal_statistics;
 mod forest_based_forecast;
 mod compute_sar_indices;
 mod convert_sar_units;
+mod extrude_between;
 mod flatten_interferogram;
 mod frequency_comparison;
 mod fuzzy_overlay;
@@ -210,6 +211,7 @@ mod mesh3d;
 mod multipatch_footprint;
 mod raster_stack;
 mod simplify_by_tangent_segments;
+mod surface_solid;
 mod union_3d;
 mod unwrap_phase;
 mod vector_common;
@@ -362,6 +364,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(difference_3d::Difference3dTool),
         Box::new(add_z_information::AddZInformationTool),
         Box::new(enclose_multipatch::EncloseMultipatchTool),
+        Box::new(extrude_between::ExtrudeBetweenTool),
         Box::new(generate_network_swm::GenerateNetworkSwmTool),
         Box::new(intersect_3d::Intersect3dTool),
         Box::new(intervisibility::IntervisibilityTool),
@@ -797,6 +800,14 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("properties", ToolParamSchema::string()),
             ("noise_filtering", float()),
+        ]),
+        "extrude_between" => schemas(&[
+            ("input", vector_in()),
+            ("surface_upper", raster_in()),
+            ("surface_lower", raster_in()),
+            ("output", vector_out()),
+            ("sample_distance", float()),
+            ("band", int()),
         ]),
         "enclose_multipatch" => schemas(&[
             ("input", vector_in()),

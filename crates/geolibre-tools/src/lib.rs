@@ -56,6 +56,8 @@ mod delineate_mounts;
 mod dem_filter;
 mod dendrogram;
 mod densify_sampling_network;
+mod detect_bright_ocean_objects;
+mod detect_dark_ocean_areas;
 mod detect_feature_changes;
 mod detect_image_anomalies;
 mod diffusion_interpolation_with_barriers;
@@ -288,6 +290,7 @@ mod detect_incidents;
 mod dimension_reduction;
 mod disperse_markers;
 mod extract_scanned_features;
+mod extract_water_sar;
 mod feature_outline_masks;
 mod fft2;
 mod find_argument_statistics;
@@ -317,6 +320,7 @@ mod porous_puff;
 mod predict_using_trend_raster;
 mod presence_only_prediction;
 mod propagate_displacement;
+mod remove_thermal_noise;
 mod repair_geometry;
 mod resolve_road_conflicts;
 mod space_time_kernel_density;
@@ -367,6 +371,10 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
+        Box::new(remove_thermal_noise::RemoveThermalNoiseTool),
+        Box::new(detect_bright_ocean_objects::DetectBrightOceanObjectsTool),
+        Box::new(detect_dark_ocean_areas::DetectDarkOceanAreasTool),
+        Box::new(extract_water_sar::ExtractWaterSarTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -916,6 +924,74 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "extract_water_sar" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("output_raster", raster_out()),
+            ("dem", raster_in()),
+            ("threshold_db", float()),
+            ("min_area", float()),
+            ("max_slope", float()),
+            ("max_height_above_min", float()),
+            ("mask_features", vector_in()),
+            ("mask_type", ToolParamSchema::enum_values(&["land_polygon", "water_polygon"])),
+            ("histogram_bins", int()),
+            ("input_units", ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"])),
+            ("band", int()),
+        ]),
+        "detect_dark_ocean_areas" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("output_raster", raster_out()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["statistical", "otsu", "fixed"]),
+            ),
+            ("threshold", float()),
+            ("min_area", float()),
+            ("min_contrast_db", float()),
+            ("mask_features", vector_in()),
+            ("mask_type", ToolParamSchema::enum_values(&["land_polygon", "water_polygon"])),
+            ("histogram_bins", int()),
+            ("input_units", ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"])),
+            ("band", int()),
+        ]),
+        "remove_thermal_noise" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("output_snr", raster_out()),
+            ("noise_raster", raster_in()),
+            ("noise_profile", ToolParamSchema::string()),
+            ("noise_constant", float()),
+            ("noise_units", ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"])),
+            ("input_units", ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"])),
+            ("output_units", ToolParamSchema::enum_values(&["linear", "db"])),
+            ("floor_fraction", float()),
+            ("band", int()),
+        ]),
+        "detect_bright_ocean_objects" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            (
+                "geometry_type",
+                ToolParamSchema::enum_values(&["bounding_box", "perimeter"]),
+            ),
+            ("threshold", float()),
+            ("guard_size", int()),
+            ("background_size", int()),
+            ("mask_features", vector_in()),
+            (
+                "mask_type",
+                ToolParamSchema::enum_values(&["land_polygon", "water_polygon"]),
+            ),
+            ("min_object_length", float()),
+            ("max_object_length", float()),
+            ("min_object_width", float()),
+            ("max_object_width", float()),
+            ("min_cells", int()),
+            ("input_units", ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"])),
+            ("band", int()),
         ]),
         "radiometric_terrain_flattening" => schemas(&[
             ("input", raster_in()),

@@ -198,6 +198,9 @@ mod transform_features;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
+mod is_closed_3d;
+mod mesh3d;
+mod multipatch_footprint;
 mod raster_stack;
 mod union_3d;
 mod vector_common;
@@ -344,6 +347,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(minimum_bounding_volume::MinimumBoundingVolumeTool),
         Box::new(voxel_isosurface::VoxelIsosurfaceTool),
         Box::new(inside_3d::Inside3dTool),
+        Box::new(is_closed_3d::IsClosed3dTool),
+        Box::new(multipatch_footprint::MultipatchFootprintTool),
         Box::new(union_3d::Union3dTool),
         Box::new(stack_profile::StackProfileTool),
         Box::new(generate_points_along_3d_lines::GeneratePointsAlong3dLinesTool),
@@ -760,6 +765,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("condition_number", float()),
             ("output_type", ToolParamSchema::enum_values(&["prediction", "standard_error", "condition_number"])),
             ("epsg", int()),
+        ]),
+        "multipatch_footprint" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("group_field", ToolParamSchema::string()),
+            ("simplify_tolerance", float()),
+        ]),
+        "is_closed_3d" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("closed_only", ToolParamSchema::bool()),
         ]),
         "union_3d" => schemas(&[
             ("input", vector_in()),

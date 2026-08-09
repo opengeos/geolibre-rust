@@ -92,6 +92,7 @@ mod focal_statistics;
 mod forest_based_forecast;
 mod compute_sar_indices;
 mod convert_sar_units;
+mod flatten_interferogram;
 mod frequency_comparison;
 mod fuzzy_overlay;
 mod gaussian_geostatistical_simulations;
@@ -209,6 +210,7 @@ mod multipatch_footprint;
 mod raster_stack;
 mod simplify_by_tangent_segments;
 mod union_3d;
+mod unwrap_phase;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -364,6 +366,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(is_closed_3d::IsClosed3dTool),
         Box::new(multipatch_footprint::MultipatchFootprintTool),
         Box::new(union_3d::Union3dTool),
+        Box::new(unwrap_phase::UnwrapPhaseTool),
         Box::new(stack_profile::StackProfileTool),
         Box::new(generate_points_along_3d_lines::GeneratePointsAlong3dLinesTool),
         Box::new(split_by_features::SplitByFeaturesTool),
@@ -490,6 +493,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(forest_based_forecast::ForestBasedForecastTool),
         Box::new(compute_sar_indices::ComputeSarIndicesTool),
         Box::new(convert_sar_units::ConvertSarUnitsTool),
+        Box::new(flatten_interferogram::FlattenInterferogramTool),
         Box::new(frequency_comparison::FrequencyComparisonTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(aggregate_points::AggregatePointsTool),
@@ -2922,6 +2926,34 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_height", float()),
             ("min_points", int()),
             ("cell_size", float()),
+        ]),
+        "unwrap_phase" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["least_squares_pcg"]),
+            ),
+            ("coherence", raster_in()),
+            ("coherence_threshold", float()),
+            ("max_iterations", int()),
+            ("tolerance", float()),
+            ("reference_row", int()),
+            ("reference_col", int()),
+            ("band", int()),
+        ]),
+        "flatten_interferogram" => schemas(&[
+            ("input", raster_in()),
+            ("dem", raster_in()),
+            ("output", raster_out()),
+            ("perpendicular_baseline", float()),
+            ("wavelength", float()),
+            // Dual-typed: a constant in degrees or a raster path.
+            ("incidence_angle", ToolParamSchema::string()),
+            ("slant_range", float()),
+            ("reference_elevation", float()),
+            ("out_topographic_phase", raster_out()),
+            ("band", int()),
         ]),
         "convert_sar_units" => schemas(&[
             ("input", raster_in()),

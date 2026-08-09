@@ -280,13 +280,17 @@ function osmFilters(flags) {
     if (!Object.hasOwn(OSM_FILTER_PRESETS, preset)) throw new Error(`unsupported filter_preset: ${preset}`);
     return OSM_FILTER_PRESETS[preset];
   }
-  return [...new Set([
-    ...tags.map((key) => `[${key}]`),
-    ...pairs.map((pair) => {
-      const pos = pair.indexOf("=");
-      return pos < 0 ? `[${pair}]` : `[${pair.slice(0, pos).trim()}=${pair.slice(pos + 1).trim()}]`;
-    }),
-  ])].sort();
+  const quote = (value) => JSON.stringify(String(value));
+  const explicit = [];
+  for (const key of tags) explicit.push(`[${quote(key)}]`);
+  for (const pair of pairs) {
+    const pos = pair.indexOf("=");
+    const key = (pos < 0 ? pair : pair.slice(0, pos)).trim();
+    if (!key) throw new Error("Overpass tag filters require a non-empty key");
+    if (pos < 0) explicit.push(`[${quote(key)}]`);
+    else explicit.push(`[${quote(key)}=${quote(pair.slice(pos + 1).trim())}]`);
+  }
+  return [...new Set(explicit)].sort();
 }
 
 function positiveNumberFlag(raw, fallback, name) {
@@ -295,9 +299,10 @@ function positiveNumberFlag(raw, fallback, name) {
   return value;
 }
 
-function positiveIntegerFlag(raw, fallback, name) {
+function positiveIntegerFlag(raw, fallback, name, maximum = Number.MAX_SAFE_INTEGER) {
   const value = positiveNumberFlag(raw, fallback, name);
   if (!Number.isInteger(value)) throw new Error(`--${name} must be a positive integer`);
+  if (value > maximum) throw new Error(`--${name} must not exceed ${maximum}`);
   return value;
 }
 
@@ -321,7 +326,7 @@ function osmQuery([west, south, east, north], flags) {
 function osmChunks([west, south, east, north], flags) {
   if (!flagBoolean(flags.chunk_large_aoi, true)) return [[west, south, east, north]];
   const maxArea = positiveNumberFlag(flags.chunk_max_area_deg2, 4, "chunk_max_area_deg2");
-  const maxChunkCount = positiveIntegerFlag(flags.max_chunk_count, 64, "max_chunk_count");
+  const maxChunkCount = positiveIntegerFlag(flags.max_chunk_count, 64, "max_chunk_count", 1024);
   const width = east - west;
   const height = north - south;
   const area = width * height;
@@ -363,12 +368,16 @@ async function runOsmDownloadTool(args, inputFiles) {
       fr: "https://overpass.openstreetmap.fr/api/interpreter",
     };
     const endpoint = String(flags.overpass_url || endpointProfiles[String(flags.overpass_profile ?? "main")] || endpointProfiles.main);
+    const endpointUrl = new URL(endpoint);
+    if (endpointUrl.protocol !== "https:" || endpointUrl.username || endpointUrl.password) {
+      throw new Error("Overpass endpoints must be credential-free HTTPS URLs");
+    }
     const chunks = osmChunks(bbox, flags);
     const input = { ...inputFiles };
     const timeout = Math.max(5, positiveNumberFlag(flags.timeout_seconds, 25, "timeout_seconds"));
     const concurrency = Math.min(
       chunks.length,
-      positiveIntegerFlag(flags.chunk_parallel_requests, 1, "chunk_parallel_requests"),
+      positiveIntegerFlag(flags.chunk_parallel_requests, 1, "chunk_parallel_requests", 16),
     );
     const responses = new Array(chunks.length);
     let nextChunk = 0;

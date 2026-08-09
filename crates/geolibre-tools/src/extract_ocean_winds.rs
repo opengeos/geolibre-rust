@@ -237,12 +237,39 @@ impl Tool for ExtractOceanWindsTool {
                     // rasterize_mask compares cell-centre coordinates directly
                     // against the polygon coordinates, so a mask in a different
                     // CRS masks the wrong cells (or none) without any error.
-                    if let (Some(img), Some(mask_epsg)) = (sigma.crs.epsg, layer.crs_epsg()) {
-                        if img != mask_epsg {
+                    match (sigma.crs.epsg, layer.crs_epsg()) {
+                        (Some(img), Some(mask_epsg)) if img != mask_epsg => {
                             return Err(ToolError::Validation(format!(
                                 "'water_mask' is EPSG:{mask_epsg} but 'input' is EPSG:{img}; \
                                  reproject the mask to the image CRS first"
-                            )));
+                            )))
+                        }
+                        (Some(_), Some(_)) => {}
+                        // One or both CRSs are undeclared, which is legitimate
+                        // (a GeoJSON without a `crs` member is CRS84 by spec),
+                        // so requiring the metadata would reject valid input.
+                        // The harm a mismatch actually causes is masking the
+                        // wrong cells, and the detectable form of that is a
+                        // mask whose extent does not meet the raster's at all.
+                        _ => {
+                            let r_x1 = sigma.x_min + sigma.cols as f64 * sigma.cell_size_x;
+                            let r_y1 = sigma.y_min + sigma.rows as f64 * sigma.cell_size_y;
+                            if let Some((mx0, my0, mx1, my1)) = layer_bounds(&layer) {
+                                if mx1 < sigma.x_min
+                                    || mx0 > r_x1
+                                    || my1 < sigma.y_min
+                                    || my0 > r_y1
+                                {
+                                    return Err(ToolError::Validation(format!(
+                                        "'water_mask' spans ({mx0:.3}, {my0:.3})-({mx1:.3}, \
+                                         {my1:.3}) but the image spans ({:.3}, {:.3})-({r_x1:.3}, \
+                                         {r_y1:.3}); they do not overlap, which usually means the \
+                                         two are in different coordinate systems. Declare or \
+                                         reproject the CRS of both.",
+                                        sigma.x_min, sigma.y_min
+                                    )));
+                                }
+                            }
                         }
                     }
                     rasterize_mask(&sigma, &layer, MaskSide::WaterPolygon)
@@ -385,6 +412,25 @@ impl Field {
             }
         }
     }
+}
+
+/// Axis-aligned extent of a layer's geometry, or `None` when it has none.
+fn layer_bounds(layer: &wbvector::Layer) -> Option<(f64, f64, f64, f64)> {
+    let mut b = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    let mut seen = false;
+    for f in layer.iter() {
+        if let Some(g) = f.geometry.as_ref() {
+            let (x0, y0, x1, y1) = crate::sar_common::envelope(g);
+            if x0.is_finite() && y0.is_finite() {
+                seen = true;
+                b.0 = b.0.min(x0);
+                b.1 = b.1.min(y0);
+                b.2 = b.2.max(x1);
+                b.3 = b.3.max(y1);
+            }
+        }
+    }
+    seen.then_some(b)
 }
 
 /// Wraps an angle difference into [0, 360).
@@ -882,6 +928,36 @@ mod tests {
         .unwrap();
         let err = ExtractOceanWindsTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("EPSG:4326"), "{err}");
+    }
+
+    #[test]
+    fn an_undeclared_mask_that_does_not_meet_the_image_is_refused() {
+        // With no CRS on either side the EPSG check cannot fire, so a
+        // disjoint extent is the detectable signature of a mismatch.
+        let mut l = wbvector::Layer::new("water").with_geom_type(wbvector::GeometryType::Polygon);
+        l.add_feature(
+            Some(wbvector::Geometry::polygon(
+                vec![
+                    wbvector::Coord::xy(500_000.0, 4_000_000.0),
+                    wbvector::Coord::xy(500_100.0, 4_000_000.0),
+                    wbvector::Coord::xy(500_100.0, 4_000_100.0),
+                    wbvector::Coord::xy(500_000.0, 4_000_000.0),
+                ],
+                Vec::new(),
+            )),
+            &[],
+        )
+        .unwrap();
+        let id = wbvector::memory_store::put_vector(l);
+        let mask = wbvector::memory_store::make_vector_memory_path(&id);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster(1, 2, &[-20.0, -20.0]), "units": "db",
+            "incidence_angle": 35.0, "wind_direction": 0.0, "look_direction": 0.0,
+            "water_mask": mask,
+        }))
+        .unwrap();
+        let err = ExtractOceanWindsTool.run(&args, &ctx()).unwrap_err();
+        assert!(format!("{err}").contains("do not overlap"), "{err}");
     }
 
     #[test]

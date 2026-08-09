@@ -294,7 +294,20 @@ impl Tool for CalculateEndTimeTool {
             attrs[end_idx] = match (ends[i], out_kind) {
                 (None, _) => FieldValue::Null,
                 (Some(v), EndKind::Text) => FieldValue::Text(format_iso8601(v)),
-                (Some(v), EndKind::Integer) => FieldValue::Integer(v.round() as i64),
+                (Some(v), EndKind::Integer) => {
+                    // Rounding would move the endpoint: a next start of 10.4
+                    // stored as 10 leaves an interval that no longer reaches
+                    // the following record. Refuse rather than silently
+                    // shortening it.
+                    if !v.is_finite() || v.fract() != 0.0 || v.abs() > i64::MAX as f64 {
+                        return Err(ToolError::Validation(format!(
+                            "end time {v} is not a whole number of seconds, but '{end_name}' is \
+                             an Integer column; storing it would move the endpoint. Use a Float \
+                             end_field, or supply whole-second starts and default_duration"
+                        )));
+                    }
+                    FieldValue::Integer(v as i64)
+                }
                 (Some(v), EndKind::Float) => FieldValue::Float(v),
             };
             out.push(wbvector::Feature {
@@ -600,6 +613,36 @@ mod tests {
         let (layer, _) = run(json!({"input": store(l), "start_field": "t"}));
         assert_eq!(layer.schema.fields().len(), 2, "no duplicate column");
         assert_eq!(col(&layer, "END_TIME")[0], FieldValue::Float(2.0));
+    }
+
+    #[test]
+    fn a_fractional_end_time_is_refused_for_an_integer_column() {
+        // Rounding 10.4 to 10 leaves an interval that stops short of the next
+        // record, which is a silent data change rather than a formatting one.
+        let mut l = Layer::new("obs");
+        l.add_field(FieldDef::new("t", FieldType::Float));
+        l.add_field(FieldDef::new("END_TIME", FieldType::Integer));
+        for t in [1.0, 10.4] {
+            l.add_feature(None, &[("t", t.into()), ("END_TIME", 0i64.into())])
+                .unwrap();
+        }
+        let args: ToolArgs =
+            serde_json::from_value(json!({"input": store(l), "start_field": "t"})).unwrap();
+        let err = CalculateEndTimeTool.run(&args, &ctx()).unwrap_err();
+        assert!(format!("{err}").contains("whole number"), "{err}");
+    }
+
+    #[test]
+    fn whole_second_endpoints_are_written_to_an_integer_column() {
+        let mut l = Layer::new("obs");
+        l.add_field(FieldDef::new("t", FieldType::Float));
+        l.add_field(FieldDef::new("END_TIME", FieldType::Integer));
+        for t in [1.0, 10.0] {
+            l.add_feature(None, &[("t", t.into()), ("END_TIME", 0i64.into())])
+                .unwrap();
+        }
+        let (layer, _) = run(json!({"input": store(l), "start_field": "t"}));
+        assert_eq!(col(&layer, "END_TIME")[0], FieldValue::Integer(10));
     }
 
     #[test]

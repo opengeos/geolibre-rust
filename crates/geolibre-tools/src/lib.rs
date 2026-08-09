@@ -310,6 +310,7 @@ mod dimension_reduction;
 mod dimensional_moving_statistics;
 mod disperse_markers;
 mod extract_scanned_features;
+mod extract_spectra_from_image;
 mod extract_water_sar;
 mod feature_outline_masks;
 mod fft2;
@@ -401,6 +402,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(merge_multidimensional_rasters::MergeMultidimensionalRastersTool),
         Box::new(reduce_point_density::ReducePointDensityTool),
         Box::new(calculate_end_time::CalculateEndTimeTool),
+        Box::new(extract_spectra_from_image::ExtractSpectraFromImageTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -776,6 +778,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "extract_spectra_from_image" => schemas(&[
+            ("input", raster_in()),
+            ("training_features", vector_in()),
+            ("class_field", ToolParamSchema::string()),
+            ("output", file_out()),
+            ("statistic", ToolParamSchema::enum_values(&["mean", "median", "max", "min"])),
+            ("trim_percent", float()),
+            ("min_cells", int()),
+            ("wavelengths", ToolParamSchema::string()),
+            ("output_stats", table_out()),
         ]),
         "calculate_end_time" => schemas(&[
             ("input", vector_in()),

@@ -205,7 +205,7 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
 /// The variants covered here must therefore track `geometry_contains_point`
 /// exactly: a geometry the containment test *can* accept but the envelope skips
 /// would be prefiltered away everywhere, masking the whole raster out.
-fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
+pub(crate) fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
     let mut bb = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     accumulate_envelope(geom, &mut bb);
     bb

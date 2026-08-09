@@ -45,7 +45,7 @@ use wbcore::{
 };
 use wbraster::DataType;
 
-use crate::args_common::{bool_or, choice_or, f64_or, opt_f64, opt_usize, usize_or};
+use crate::args_common::{bool_or, choice_or, f64_or, opt_f64, opt_usize};
 use crate::common::{parse_optional_output, write_or_store_output};
 use crate::cube::{load_cube, Cube};
 use crate::raster_stack::raster_like_multiband;
@@ -129,7 +129,7 @@ impl Tool for AggregateMultidimensionalRasterTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let prm = parse_params(args)?;
         let output = parse_optional_output(args, "output")?;
-        let cube = load_cube(args, "input", "dimension_values", "dimension", 1)?;
+        let cube = load_cube(args, "input", Some("dimension_values"), Some("dimension"), 1)?;
 
         let bins = build_bins(&cube, &prm)?;
         if bins.is_empty() {
@@ -216,8 +216,8 @@ fn build_bins(cube: &Cube, prm: &Params) -> Result<Vec<Bin>, ToolError> {
         Definition::IntervalValue => {
             let w = prm.interval_value.expect("validated");
             let mut start = lo;
-            // `hi + w/2` rather than `hi` so the final partial bin is emitted
-            // even when the span is not a whole multiple of the width.
+            // `<=` rather than `<` so the final partial bin is still emitted
+            // when the span is not a whole multiple of the width.
             while start <= hi {
                 edges.push((start, start + w));
                 start += w;
@@ -480,7 +480,6 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         )));
     }
     let ignore_nodata = bool_or(args, "ignore_nodata", true)?;
-    let _ = usize_or(args, "interval_count", 1)?; // surfaces a malformed number
 
     Ok(Params {
         definition,

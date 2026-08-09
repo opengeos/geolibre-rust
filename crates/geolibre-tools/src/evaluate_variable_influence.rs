@@ -629,16 +629,14 @@ fn build(
         let step = (vals.len() / 16).max(1);
         for w in vals.windows(2).step_by(step) {
             let thr = 0.5 * (w[0] + w[1]);
-            let (l, r): (Vec<usize>, Vec<usize>) =
-                rows.iter().partition(|&&i| x[i * p + f] <= thr);
-            if l.len() < prm.min_samples_leaf || r.len() < prm.min_samples_leaf {
+            // Scored in one pass without materialising the two sides. The
+            // search runs for every feature at every node of every tree, and
+            // the whole forest is re-scored `p * permutation_repeats` times, so
+            // two `Vec<usize>` allocations per candidate threshold add up
+            // quickly for nothing — only the chosen split needs the partition.
+            let Some(gain) = split_gain(x, y, p, rows, f, thr, parent, prm) else {
                 continue;
-            }
-            let wl = l.len() as f64 / rows.len() as f64;
-            let wr = 1.0 - wl;
-            let gain = parent
-                - wl * impurity(y, &l, prm.classification)
-                - wr * impurity(y, &r, prm.classification);
+            };
             if gain > best.map(|b| b.0).unwrap_or(1e-12) {
                 best = Some((gain, f, thr));
             }
@@ -657,6 +655,88 @@ fn build(
     nodes[idx].left = left;
     nodes[idx].right = right;
     idx
+}
+
+/// Impurity decrease from splitting `rows` at `thr` on feature `f`, or `None`
+/// when either side would be smaller than `min_samples_leaf`.
+///
+/// Accumulates each side's statistics directly rather than partitioning: for
+/// regression the running count/sum/sum-of-squares give the variance, and for
+/// classification a small per-side class tally gives the Gini index.
+#[allow(clippy::too_many_arguments)]
+fn split_gain(
+    x: &[f64],
+    y: &[f64],
+    p: usize,
+    rows: &[usize],
+    f: usize,
+    thr: f64,
+    parent: f64,
+    prm: &Params,
+) -> Option<f64> {
+    let (mut nl, mut nr) = (0usize, 0usize);
+
+    if prm.classification {
+        let mut left: BTreeMap<u64, usize> = BTreeMap::new();
+        let mut right: BTreeMap<u64, usize> = BTreeMap::new();
+        for &i in rows {
+            if x[i * p + f] <= thr {
+                nl += 1;
+                *left.entry(y[i].to_bits()).or_default() += 1;
+            } else {
+                nr += 1;
+                *right.entry(y[i].to_bits()).or_default() += 1;
+            }
+        }
+        if nl < prm.min_samples_leaf || nr < prm.min_samples_leaf {
+            return None;
+        }
+        let gini = |counts: &BTreeMap<u64, usize>, n: usize| -> f64 {
+            let n = n as f64;
+            1.0 - counts
+                .values()
+                .map(|&c| {
+                    let fr = c as f64 / n;
+                    fr * fr
+                })
+                .sum::<f64>()
+        };
+        let total = rows.len() as f64;
+        return Some(
+            parent
+                - (nl as f64 / total) * gini(&left, nl)
+                - (nr as f64 / total) * gini(&right, nr),
+        );
+    }
+
+    let (mut sl, mut sql, mut sr, mut sqr) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    for &i in rows {
+        let v = y[i];
+        if x[i * p + f] <= thr {
+            nl += 1;
+            sl += v;
+            sql += v * v;
+        } else {
+            nr += 1;
+            sr += v;
+            sqr += v * v;
+        }
+    }
+    if nl < prm.min_samples_leaf || nr < prm.min_samples_leaf {
+        return None;
+    }
+    // Variance as E[v^2] - E[v]^2; floored at zero, since cancellation can
+    // leave a tiny negative on a near-constant side.
+    let var = |n: usize, sum: f64, sum_sq: f64| {
+        let n = n as f64;
+        (sum_sq / n - (sum / n) * (sum / n)).max(0.0)
+    };
+    let total = rows.len() as f64;
+    Some(
+        parent
+            - (nl as f64 / total) * var(nl, sl, sql)
+            - (nr as f64 / total) * var(nr, sr, sqr),
+    )
 }
 
 /// Mean for regression, most common class for classification.

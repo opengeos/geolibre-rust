@@ -443,7 +443,11 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             "'outer_window_size' must be at least 4, got {requested}"
         )));
     }
-    let patch = next_pow2(requested);
+    let patch = next_pow2(requested).ok_or_else(|| {
+        ToolError::Validation(format!(
+            "'outer_window_size' {requested} is too large for any FFT size"
+        ))
+    })?;
 
     let step = match crate::args_common::opt_usize(args, "inner_window_size")? {
         None => (patch / 4).max(1),
@@ -464,6 +468,16 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     if smoothing == 0 || smoothing % 2 == 0 {
         return Err(ToolError::Validation(format!(
             "'spectrum_smoothing' must be a positive odd number, got {smoothing}"
+        )));
+    }
+    // `smooth_wrapped` costs patch^2 * width^2 per patch, so an unbounded width
+    // blocks the call — 999 on a 32-cell patch is about 1e9 operations for
+    // every patch in the raster. A width beyond the patch is meaningless
+    // anyway: the moving average just wraps over the whole spectrum repeatedly.
+    if smoothing > patch {
+        return Err(ToolError::Validation(format!(
+            "'spectrum_smoothing' ({smoothing}) must not exceed the FFT patch size \
+             ({patch}); a wider average simply wraps over the whole spectrum"
         )));
     }
 
@@ -673,6 +687,11 @@ mod tests {
         assert!(bad(json!({"input": "a.tif", "alpha": -0.1})).is_err());
         assert!(bad(json!({"input": "a.tif", "outer_window_size": 2})).is_err());
         assert!(bad(json!({"input": "a.tif", "spectrum_smoothing": 4})).is_err());
+        // Unbounded smoothing would block the call for minutes per patch.
+        assert!(
+            bad(json!({"input": "a.tif", "outer_window_size": 32, "spectrum_smoothing": 999}))
+                .is_err()
+        );
         // inner window larger than the (rounded) outer window
         assert!(
             bad(json!({"input": "a.tif", "outer_window_size": 16, "inner_window_size": 64}))

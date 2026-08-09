@@ -240,20 +240,32 @@ fn allocate(
         remainders.push((share - share.floor(), i));
     }
 
-    // Hand out the leftovers, largest fractional part first.
+    // Hand out the leftovers, largest fractional part first, repeating until
+    // they are gone or nothing has capacity left. A single pass gives each cell
+    // at most one extra point, which silently under-delivers whenever
+    // `max_points_per_cell` has truncated a high-weight cell: weights [1, 99]
+    // with 100 points and a cap of 10 placed 12 of the 20 that fit.
     remainders.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut leftover = total.saturating_sub(assigned);
-    for &(_, i) in &remainders {
-        if leftover == 0 {
+    while leftover > 0 {
+        let mut placed_this_pass = false;
+        for &(_, i) in &remainders {
+            if leftover == 0 {
+                break;
+            }
+            if let Some(cap) = max_per_cell {
+                if counts[i] >= cap {
+                    continue;
+                }
+            }
+            counts[i] += 1;
+            leftover -= 1;
+            placed_this_pass = true;
+        }
+        // Every cell is at its cap; the rest cannot be placed.
+        if !placed_this_pass {
             break;
         }
-        if let Some(cap) = max_per_cell {
-            if counts[i] >= cap {
-                continue;
-            }
-        }
-        counts[i] += 1;
-        leftover -= 1;
     }
     counts
 }
@@ -319,8 +331,13 @@ impl Method {
                 }
                 let capacity = 6 * ring;
                 let theta = 2.0 * PI * remaining as f64 / capacity as f64;
-                // Rings are spaced to fit inside the cell however many there are.
-                let max_ring = ((n as f64 / 6.0).sqrt().ceil() as usize).max(1);
+                // Rings are spaced to fit inside the cell however many there
+                // are. `max_ring` must come from the SAME accumulation that
+                // assigned `ring`: deriving it from `sqrt(n / 6)` disagreed, so
+                // the last points landed on a ring above it with a radius over
+                // 0.5 and `clamp_inside` pinned them to the cell border (n = 20
+                // put k = 19 on ring 3 while max_ring said 2).
+                let max_ring = highest_ring(n);
                 let radius = 0.5 * ring as f64 / (max_ring as f64 + 0.5);
                 (
                     clamp_inside(0.5 + radius * theta.cos()),
@@ -328,6 +345,21 @@ impl Method {
                 )
             }
         }
+    }
+}
+
+/// The highest ring index the concentric layout reaches for `n` points, using
+/// the same cumulative capacity (`1, 6, 12, ...`) that assigns each point.
+fn highest_ring(n: usize) -> usize {
+    let mut remaining = n;
+    let mut ring = 0usize;
+    loop {
+        let capacity = if ring == 0 { 1 } else { 6 * ring };
+        if remaining <= capacity {
+            return ring;
+        }
+        remaining -= capacity;
+        ring += 1;
     }
 }
 
@@ -589,6 +621,28 @@ mod tests {
         assert_eq!(distinct.len(), 1, "centroid stacks every point at the centre");
     }
 
+    /// Regression: `max_ring` was derived from `sqrt(n / 6)` while the ring
+    /// index came from the cumulative capacity, so the outermost points landed
+    /// past the intended radius and clamped onto the cell border.
+    #[test]
+    fn circular_points_stay_off_the_cell_border() {
+        let (layer, _) = run(json!({
+            "input": raster_of(1, 1, &[1.0]), "max_number_of_points": 20, "method": "circular"
+        }));
+        // The single cell spans x in [0, 10] and y in [0, 10].
+        for f in layer.iter() {
+            let Some(Geometry::Point(p)) = f.geometry.as_ref() else {
+                panic!()
+            };
+            assert!(
+                p.x > 0.01 && p.x < 9.99 && p.y > 0.01 && p.y < 9.99,
+                "point ({}, {}) was clamped to the cell border",
+                p.x,
+                p.y
+            );
+        }
+    }
+
     /// Zero, negative and no-data cells get nothing.
     #[test]
     fn nonpositive_and_nodata_cells_are_skipped() {
@@ -624,6 +678,21 @@ mod tests {
         for (cell, n) in &counts {
             assert!(*n <= 10, "cell {cell:?} got {n} points, over the cap");
         }
+        // Regression: the leftover loop made a single pass, so each cell could
+        // gain at most one extra point and a capped run delivered 12 of the 20
+        // that fit. Every point that has somewhere to go must be placed.
+        assert_eq!(layer.len(), 20, "both cells should fill to the cap");
+    }
+
+    /// When the cap leaves nowhere for the leftovers, stop rather than spin.
+    #[test]
+    fn cap_below_demand_places_what_fits() {
+        let (layer, outputs) = run(json!({
+            "input": raster_of(2, 1, &[1.0, 1.0]),
+            "max_number_of_points": 100, "max_points_per_cell": 3
+        }));
+        assert_eq!(layer.len(), 6, "two cells at a cap of 3");
+        assert_eq!(outputs["requested_points"].as_u64().unwrap(), 100);
     }
 
     /// The source weight travels with each point, and can be suppressed.

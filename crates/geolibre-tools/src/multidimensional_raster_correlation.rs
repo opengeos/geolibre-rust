@@ -131,8 +131,8 @@ impl Tool for MultidimensionalRasterCorrelationTool {
         let out_lag = parse_optional_output(args, "output_lag")?;
         let out_count = parse_optional_output(args, "output_count")?;
 
-        let a = load_cube(args, "input1", "dimension_values", "dimension", 2)?;
-        let b = load_cube(args, "input2", "dimension_values", "dimension", 2)?;
+        let a = load_cube(args, "input1", None, None, 2)?;
+        let b = load_cube(args, "input2", None, None, 2)?;
         check_alignment_refs(&[a.template(), b.template()])?;
         if a.len() != b.len() {
             return Err(ToolError::Validation(format!(
@@ -195,7 +195,7 @@ impl Tool for MultidimensionalRasterCorrelationTool {
                     if xs.len() < prm.min_valid {
                         continue;
                     }
-                    let Some(v) = correlate(&mut xs, &mut ys, prm.method) else {
+                    let Some(v) = correlate(&xs, &ys, prm.method) else {
                         continue;
                     };
                     let score = if prm.cross && prm.use_absolute {
@@ -260,8 +260,8 @@ impl Tool for MultidimensionalRasterCorrelationTool {
     }
 }
 
-/// One correlation coefficient. `xs`/`ys` may be reordered.
-fn correlate(xs: &mut [f64], ys: &mut [f64], method: Method) -> Option<f64> {
+/// One correlation coefficient. Neither input is modified.
+fn correlate(xs: &[f64], ys: &[f64], method: Method) -> Option<f64> {
     match method {
         Method::Pearson => pearson(xs, ys),
         Method::Spearman => {
@@ -390,10 +390,15 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     // A lag is signed, so it cannot go through the usize parsers.
     let lag = match args.get("lag") {
         None | Some(Value::Null) => 0isize,
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .ok_or_else(|| ToolError::Validation("'lag' must be a whole number".to_string()))?
-            as isize,
+        Some(Value::Number(n)) => {
+            let v = n.as_i64().ok_or_else(|| {
+                ToolError::Validation("'lag' must be a whole number".to_string())
+            })?;
+            // `as isize` is 32-bit on wasm32 and would wrap silently.
+            isize::try_from(v).map_err(|_| {
+                ToolError::Validation(format!("'lag' {v} is out of range on this target"))
+            })?
+        }
         Some(Value::String(s)) if s.trim().is_empty() => 0,
         Some(Value::String(s)) => s
             .trim()

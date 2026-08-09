@@ -249,7 +249,16 @@ impl Tool for RasterDomainTool {
                     );
                     feat.set_by_index(0, FieldValue::Integer(*fid as i64));
                     feat.set_by_index(1, FieldValue::Float(net));
-                    feat.set_by_index(2, FieldValue::Integer(interiors.len() as i64));
+                    // Match the polygon branch: with `fill_holes` the holes
+                    // are not emitted, so the count must read 0 in both forms.
+                    feat.set_by_index(
+                        2,
+                        FieldValue::Integer(if prm.fill_holes {
+                            0
+                        } else {
+                            interiors.len() as i64
+                        }),
+                    );
                     feat.set_by_index(3, FieldValue::Text(kind.to_string()));
                     layer.push(feat);
                     *fid += 1;

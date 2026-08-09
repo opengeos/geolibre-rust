@@ -123,7 +123,7 @@ impl Tool for DimensionalMovingStatisticsTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let prm = parse_params(args)?;
         let output = parse_optional_output(args, "output")?;
-        let cube = load_cube(args, "input", "dimension_values", "dimension", 1)?;
+        let cube = load_cube(args, "input", None, Some("dimension"), 1)?;
 
         let (rows, cols, n) = (cube.rows, cube.cols, cube.len());
         ctx.progress.info(&format!(

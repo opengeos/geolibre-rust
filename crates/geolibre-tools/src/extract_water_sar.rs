@@ -195,6 +195,18 @@ impl Tool for ExtractWaterSarTool {
             None => (None, None),
             Some(d) => {
                 let (csx, csy) = (raster.cell_size_x, raster.cell_size_y);
+                // Horn's operator takes one cell size. `check_alignment_refs`
+                // only matches the DEM grid to the SAR grid; it says nothing
+                // about x against y, so an anisotropic grid would bias the
+                // gradient and `max_slope` would silently keep or reject the
+                // wrong cells. Reject it, as radiometric_terrain_flattening
+                // does for the same reason.
+                if (csx - csy).abs() > 1e-6 * csx.abs().max(csy.abs()).max(1.0) {
+                    return Err(ToolError::Validation(format!(
+                        "the slope filter needs square cells; got {csx} x {csy}. \
+                         Resample the DEM, or omit it to skip the terrain filters."
+                    )));
+                }
                 let mut z = vec![f64::NAN; rows * cols];
                 for r in 0..rows {
                     for c in 0..cols {
@@ -204,10 +216,7 @@ impl Tool for ExtractWaterSarTool {
                         }
                     }
                 }
-                // Horn's operator assumes one cell size; use the mean when the
-                // grid is close to square, which the alignment check ensures it
-                // shares with the SAR raster.
-                let (s, _) = slope_aspect(&z, rows, cols, (csx + csy) / 2.0);
+                let (s, _) = slope_aspect(&z, rows, cols, csx);
                 let deg: Vec<f64> = s.iter().map(|v| v.to_degrees()).collect();
                 (Some(z), Some(deg))
             }
@@ -266,6 +275,7 @@ impl Tool for ExtractWaterSarTool {
         // level, so cells far above its own lowest point are not part of it.
         let mut rejected_height = 0usize;
         if let (Some(z), Some(limit)) = (&elev, prm.max_height_above_min) {
+            let mut kept = vec![false; rows * cols];
             for reg in regions.iter_mut() {
                 let base = reg
                     .cells
@@ -286,8 +296,17 @@ impl Tool for ExtractWaterSarTool {
                 });
                 reg.value_sum = sum;
                 rejected_height += before - reg.cells.len();
+                for &c in &reg.cells {
+                    kept[c] = true;
+                }
             }
-            regions.retain(|r| r.cells.len() >= min_cells);
+            // Removing interior cells can break one region into several
+            // disconnected pieces. Keeping the original grouping would give
+            // every piece the same label, so `polygonize` would trace one ring
+            // each while all of them reported the whole region's cell count and
+            // area — and `water_area` would then count those cells once per
+            // ring. Re-derive the components from what survived.
+            regions = connected_regions(&kept, &db, rows, cols, min_cells);
         }
 
         ctx.progress.info(&format!(

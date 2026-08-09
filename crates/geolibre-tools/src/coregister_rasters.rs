@@ -157,6 +157,18 @@ impl Tool for CoregisterRastersTool {
             )));
         }
 
+        if let Some(b) = prm.band {
+            for (name, r) in [("reference", &reference), ("secondary", &secondary)] {
+                if b as usize >= r.bands {
+                    return Err(ToolError::Validation(format!(
+                        "'band' {} is out of range for the {name} raster, which has {} band(s)",
+                        b + 1,
+                        r.bands
+                    )));
+                }
+            }
+        }
+
         let (rows, cols) = (reference.rows, reference.cols);
         let ref_grey = match_band(&reference, prm.band);
         let sec_grey = match_band(&secondary, prm.band);
@@ -175,6 +187,18 @@ impl Tool for CoregisterRastersTool {
             prm.max_shift
         ));
 
+        // A tile larger than the reference means every tile is skipped, after
+        // which the tie-point message would advise "try a larger tile_size" —
+        // the opposite of what would help.
+        if prm.tile_size > rows || prm.tile_size > cols {
+            return Err(ToolError::Validation(format!(
+                "'tile_size' {} does not fit in the {rows}x{cols} reference raster; \
+                 use at most {}",
+                prm.tile_size,
+                rows.min(cols)
+            )));
+        }
+
         let ties = measure_tie_points(
             &ref_grey,
             rows,
@@ -189,9 +213,10 @@ impl Tool for CoregisterRastersTool {
         let measured = ties.len();
         if measured < prm.transform.min_points() {
             return Err(ToolError::Execution(format!(
-                "only {measured} tie point(s) passed min_correlation {}; a {} fit needs {}. \
+                "only {measured} tie point(s) passed min_correlation {}; {} {} fit needs {}. \
                  Try a larger tile_size, a larger max_shift, or a lower min_correlation.",
                 prm.min_correlation,
+                prm.transform.article(),
                 prm.transform.label(),
                 prm.transform.min_points()
             )));
@@ -362,6 +387,8 @@ fn measure_tie_points(
     let g = prm.grid_size;
     let mut ties = Vec::new();
     let mut done = 0usize;
+    let mut seen_origins: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
 
     for gi in 0..g {
         for gj in 0..g {
@@ -380,6 +407,13 @@ fn measure_tie_points(
             let (lo_c, hi_c) = inset_span(ref_cols, t, prm.max_shift);
             let r0 = lo_r + if g == 1 { (hi_r - lo_r) / 2 } else { gi * (hi_r - lo_r) / (g - 1) };
             let c0 = lo_c + if g == 1 { (hi_c - lo_c) / 2 } else { gj * (hi_c - lo_c) / (g - 1) };
+            // `hi - lo` can be smaller than `g - 1`, in which case several grid
+            // positions land on the same origin. Matching that tile repeatedly
+            // weights its tie point several times in the fit and can leave the
+            // layout rank-deficient, which only the ridge term would hide.
+            if !seen_origins.insert((r0, c0)) {
+                continue;
+            }
 
             // Reference tile, mean-centred; a flat tile carries no information
             // and would make the normalisation singular.
@@ -510,7 +544,6 @@ fn ncc(
     t: usize,
 ) -> Option<f64> {
     let mut sum = 0.0;
-    let mut sum_sq = 0.0;
     for rr in 0..t {
         for cc in 0..t {
             let v = sec[(sr + rr) * sec_cols + sc + cc];
@@ -518,12 +551,22 @@ fn ncc(
                 return None;
             }
             sum += v;
-            sum_sq += v * v;
         }
     }
     let n = (t * t) as f64;
     let mean = sum / n;
-    let var = sum_sq - n * mean * mean;
+    // Second pass over deviations rather than `sum_sq - n*mean*mean`. SAR
+    // amplitude and 16-bit DN carry a large offset relative to their texture,
+    // where the one-pass form cancels catastrophically: it can return a small
+    // negative variance, rejecting a good window, or an underestimated norm,
+    // which yields a correlation above 1 that wins the peak search wrongly.
+    let mut var = 0.0;
+    for rr in 0..t {
+        for cc in 0..t {
+            let d = sec[(sr + rr) * sec_cols + sc + cc] - mean;
+            var += d * d;
+        }
+    }
     if var <= 0.0 {
         return None;
     }
@@ -569,6 +612,14 @@ impl TransformKind {
         }
     }
 
+    /// The indefinite article that reads correctly before [`Self::label`].
+    fn article(self) -> &'static str {
+        match self {
+            TransformKind::Affine => "an",
+            _ => "a",
+        }
+    }
+
     /// Basis terms evaluated at a reference pixel coordinate.
     fn basis(self, x: f64, y: f64) -> Vec<f64> {
         match self {
@@ -591,6 +642,15 @@ impl TransformKind {
 /// A fitted misregistration model plus its quality.
 struct Fit {
     kind: TransformKind,
+    /// Centre and scale used to normalise reference coordinates before the fit.
+    ///
+    /// Raw pixel coordinates put the `x*x` term of a `polynomial2` fit at 1e8 on
+    /// a 10000-column raster, so `A^T A` reaches 1e16 and the normal equations
+    /// square an already poor condition number — against which the 1e-9 ridge is
+    /// nothing. Centring on the tie-point centroid and scaling to roughly unit
+    /// range keeps every basis term the same order of magnitude.
+    origin: (f64, f64),
+    scale: f64,
     /// Coefficients for secondary column and row respectively.
     cx: Vec<f64>,
     cy: Vec<f64>,
@@ -603,7 +663,10 @@ struct Fit {
 impl Fit {
     /// Maps a reference pixel coordinate to a secondary pixel coordinate.
     fn apply(&self, x: f64, y: f64) -> (f64, f64) {
-        let b = self.kind.basis(x, y);
+        let b = self.kind.basis(
+            (x - self.origin.0) / self.scale,
+            (y - self.origin.1) / self.scale,
+        );
         let mut sx = 0.0;
         let mut sy = 0.0;
         for (i, t) in b.iter().enumerate() {
@@ -612,7 +675,8 @@ impl Fit {
         }
         // A pure translation still needs the identity part of the mapping: the
         // fit models only the constant offset, so the reference position must
-        // be carried through.
+        // be carried through. Its single basis term is the constant 1, which
+        // the normalisation leaves untouched, so the offset stays in pixels.
         if self.kind == TransformKind::Translation {
             (x + sx, y + sy)
         } else {
@@ -632,6 +696,20 @@ fn fit_transform(
     let mut cy;
     let mut rmse;
 
+    // Normalisation frame, fixed from the full tie-point set so trimming cannot
+    // shift it between passes.
+    let n = ties.len() as f64;
+    let origin = (
+        ties.iter().map(|t| t.ref_col).sum::<f64>() / n,
+        ties.iter().map(|t| t.ref_row).sum::<f64>() / n,
+    );
+    let scale = ties
+        .iter()
+        .map(|t| (t.ref_col - origin.0).abs().max((t.ref_row - origin.1).abs()))
+        .fold(0.0f64, f64::max)
+        .max(1.0);
+    let norm = |t: &TiePoint| ((t.ref_col - origin.0) / scale, (t.ref_row - origin.1) / scale);
+
     // Three trimming passes: enough to shed gross blunders without eroding a
     // legitimately noisy set.
     let mut pass = 0;
@@ -642,7 +720,8 @@ fn fit_transform(
         let mut by: Vec<f64> = Vec::with_capacity(active.len());
         for &i in &active {
             let t = &ties[i];
-            rows_a.push(kind.basis(t.ref_col, t.ref_row));
+            let (nx, ny) = norm(t);
+            rows_a.push(kind.basis(nx, ny));
             // Translation models the *offset*; the others model the absolute
             // secondary coordinate.
             if kind == TransformKind::Translation {
@@ -697,6 +776,8 @@ fn fit_transform(
 
     Ok(Fit {
         kind,
+        origin,
+        scale,
         cx,
         cy,
         used: active,
@@ -860,7 +941,19 @@ struct Params {
 }
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
-    let band = crate::args_common::opt_usize(args, "band")?.map(|b| b as isize);
+    // 1-based, like every other `band` in the crate. Storing the raw value
+    // made `band: 1` read index 1 while an omitted `band` read index 0, so the
+    // documented default contradicted itself and a single-band raster indexed
+    // out of range.
+    let band = match crate::args_common::opt_usize(args, "band")? {
+        None => None,
+        Some(0) => {
+            return Err(ToolError::Validation(
+                "'band' is 1-based; use 1 for the first band".to_string(),
+            ))
+        }
+        Some(b) => Some(b as isize - 1),
+    };
     let transform = match choice_or(
         args,
         "transform",
@@ -1155,6 +1248,10 @@ mod tests {
         assert!(bad(base(json!({"min_correlation": 2.0}))).is_err());
         assert!(bad(base(json!({"outlier_sigma": -1.0}))).is_err());
         assert!(bad(base(json!({"resample": "cubic"}))).is_err());
+        assert!(bad(base(json!({"grid_size": 0}))).is_err());
+        // `band` is 1-based, like every other band selector in the crate.
+        assert!(bad(base(json!({"band": 0}))).is_err());
+        assert!(bad(base(json!({"band": 1}))).is_ok());
         assert!(bad(base(json!({"transform": "polynomial2"}))).is_ok());
     }
 }

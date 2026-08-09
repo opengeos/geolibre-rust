@@ -194,6 +194,20 @@ impl Tool for DetectBrightOceanObjectsTool {
             prm.threshold, prm.guard, prm.background
         ));
 
+        // The ring is re-scanned per cell, so cost is rows*cols*(2b+1)^2. An
+        // unbounded `background_size` blocks the call: 500 is a million samples
+        // for every cell. A window wider than the raster also cannot describe
+        // local clutter, which is the whole premise of a CFAR detector.
+        let span = rows.min(cols);
+        if prm.background * 2 + 1 > span.max(1) {
+            return Err(ToolError::Validation(format!(
+                "'background_size' {} is too large for a {rows}x{cols} raster; the background \
+                 window must fit inside it, so use at most {}",
+                prm.background,
+                span.saturating_sub(1) / 2
+            )));
+        }
+
         let flag = cfar(&power, &analyse, rows, cols, &prm, ctx);
         let regions = connected_regions(&flag, &power, rows, cols, prm.min_cells);
         ctx.progress
@@ -819,6 +833,23 @@ mod tests {
         assert!(
             (span - 30.0).abs() < 1e-6,
             "traced outline should span exactly 3 cells (30 m), got {span}"
+        );
+    }
+
+    /// A background window larger than the raster cannot describe local
+    /// clutter and would cost a million samples per cell; reject it.
+    #[test]
+    fn oversized_background_window_is_rejected() {
+        let (rows, cols) = (20, 20);
+        let v: Vec<f64> = (0..rows * cols).map(|i| 0.05 + 0.02 * clutter(i)).collect();
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster_of(cols, rows, &v), "guard_size": 3, "background_size": 500
+        }))
+        .unwrap();
+        let err = DetectBrightOceanObjectsTool.run(&args, &ctx()).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("background_size"),
+            "expected a background_size error, got {err:?}"
         );
     }
 

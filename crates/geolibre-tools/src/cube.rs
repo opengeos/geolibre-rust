@@ -75,13 +75,18 @@ impl Cube {
 /// Loads a cube from a comma-separated `key` parameter.
 ///
 /// `min_slices` is the smallest usable stack for the calling tool.
-/// `coords_key` and `dimension_key` are the parameter names carrying the
-/// optional per-slice coordinates and the dimension's name.
+///
+/// `coords_key` and `dimension_key` name the parameters carrying the optional
+/// per-slice coordinates and the dimension's name. They are `Option` because a
+/// tool that has no use for one must also not *read* it: reading a key the
+/// tool does not declare makes it undiscoverable through the registry and CLI,
+/// and lets a supplied value fail validation for a parameter the caller was
+/// never told about.
 pub(crate) fn load_cube(
     args: &ToolArgs,
     key: &str,
-    coords_key: &str,
-    dimension_key: &str,
+    coords_key: Option<&str>,
+    dimension_key: Option<&str>,
     min_slices: usize,
 ) -> Result<Cube, ToolError> {
     let paths = parse_input_paths(args, key)?;
@@ -106,9 +111,12 @@ pub(crate) fn load_cube(
         )));
     }
 
-    let coords = parse_coords(args, coords_key, slices.len())?;
-    let dimension = args
-        .get(dimension_key)
+    let coords = match coords_key {
+        Some(k) => parse_coords(args, k, slices.len())?,
+        None => None,
+    };
+    let dimension = dimension_key
+        .and_then(|k| args.get(k))
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -219,7 +227,7 @@ mod tests {
     #[test]
     fn loads_slices_in_band_order() {
         let path = cube_raster(2, 1, &[vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]]);
-        let cube = load_cube(&args(json!({"input": path})), "input", "dv", "dim", 1).unwrap();
+        let cube = load_cube(&args(json!({"input": path})), "input", Some("dv"), Some("dim"), 1).unwrap();
         assert_eq!(cube.len(), 3);
         assert_eq!(cube.get(0, 0, 0), Some(1.0));
         assert_eq!(cube.get(1, 0, 0), Some(3.0));
@@ -238,8 +246,8 @@ mod tests {
         let cube = load_cube(
             &args(json!({"input": format!("{a},{b}")})),
             "input",
-            "dv",
-            "dim",
+            Some("dv"),
+            Some("dim"),
             1,
         )
         .unwrap();
@@ -250,7 +258,7 @@ mod tests {
     #[test]
     fn no_data_reads_as_none() {
         let path = cube_raster(2, 1, &[vec![1.0, -9999.0]]);
-        let cube = load_cube(&args(json!({"input": path})), "input", "dv", "dim", 1).unwrap();
+        let cube = load_cube(&args(json!({"input": path})), "input", Some("dv"), Some("dim"), 1).unwrap();
         assert_eq!(cube.get(0, 0, 0), Some(1.0));
         assert_eq!(cube.get(0, 0, 1), None);
         let mut s = Vec::new();
@@ -261,7 +269,7 @@ mod tests {
     #[test]
     fn coordinates_are_validated() {
         let path = cube_raster(1, 1, &[vec![1.0], vec![2.0], vec![3.0]]);
-        let load = |v: Value| load_cube(&args(v), "input", "dv", "dim", 1);
+        let load = |v: Value| load_cube(&args(v), "input", Some("dv"), Some("dim"), 1);
 
         let ok = load(json!({"input": path.clone(), "dv": "2000, 2001, 2002"})).unwrap();
         assert_eq!(ok.coord(1), 2001.0);
@@ -273,6 +281,6 @@ mod tests {
         // Not a number.
         assert!(load(json!({"input": path.clone(), "dv": "2000,x,2002"})).is_err());
         // Too few slices for the caller.
-        assert!(load_cube(&args(json!({"input": path})), "input", "dv", "dim", 9).is_err());
+        assert!(load_cube(&args(json!({"input": path})), "input", Some("dv"), Some("dim"), 9).is_err());
     }
 }

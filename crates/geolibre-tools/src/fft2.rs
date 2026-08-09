@@ -12,13 +12,16 @@
 /// A complex sample as `(real, imaginary)`.
 pub(crate) type Cpx = (f64, f64);
 
-/// Smallest power of two `>= n` (with `next_pow2(0) == 1`).
-pub(crate) fn next_pow2(n: usize) -> usize {
-    let mut p = 1usize;
-    while p < n {
-        p <<= 1;
+/// Smallest power of two `>= n`, or `None` when none is representable.
+///
+/// The naive `while p < n { p <<= 1 }` loop never terminates for an `n` above
+/// the largest representable power of two: `p` shifts to 0 and stays there.
+/// Callers must reject the `None` case rather than substitute a size.
+pub(crate) fn next_pow2(n: usize) -> Option<usize> {
+    if n <= 1 {
+        return Some(1);
     }
-    p
+    n.checked_next_power_of_two()
 }
 
 /// In-place radix-2 FFT over `buf`, whose length must be a power of two.
@@ -164,10 +167,20 @@ mod tests {
 
     #[test]
     fn pow2_rounding() {
-        assert_eq!(next_pow2(0), 1);
-        assert_eq!(next_pow2(1), 1);
-        assert_eq!(next_pow2(5), 8);
-        assert_eq!(next_pow2(32), 32);
-        assert_eq!(next_pow2(33), 64);
+        assert_eq!(next_pow2(0), Some(1));
+        assert_eq!(next_pow2(1), Some(1));
+        assert_eq!(next_pow2(5), Some(8));
+        assert_eq!(next_pow2(32), Some(32));
+        assert_eq!(next_pow2(33), Some(64));
+    }
+
+    /// A size with no representable power of two must be reported, not looped
+    /// on: the old shift loop spun forever once `p` overflowed to 0.
+    #[test]
+    fn pow2_beyond_range_is_none() {
+        assert_eq!(next_pow2(usize::MAX), None);
+        let biggest = 1usize << (usize::BITS - 1);
+        assert_eq!(next_pow2(biggest), Some(biggest));
+        assert_eq!(next_pow2(biggest + 1), None);
     }
 }

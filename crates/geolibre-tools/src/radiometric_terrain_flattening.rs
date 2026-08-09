@@ -22,15 +22,20 @@
 //! ## Method
 //!
 //! Slope and aspect come from Horn's 3x3 gradient (shared with
-//! `solar_radiation`). The local incidence angle between the terrain normal and
-//! the direction to the sensor is
+//! `solar_radiation`). The local incidence angle is the ellipsoid angle less
+//! the slope component **projected into the range plane**:
 //!
 //! ```text
-//! cos(theta_loc) = cos(theta) * cos(slope)
-//!                + sin(theta) * sin(slope) * cos(look_azimuth - uphill_aspect)
+//! slope_range = atan( tan(slope) * cos(aspect_downhill - look_azimuth) )
+//! theta_loc   = theta - slope_range
 //! ```
 //!
-//! and the flattened backscatter follows from replacing `theta` with
+//! The range projection, rather than the full 3-D angle between the look vector
+//! and the terrain normal, is what scales the pixel: only range is
+//! foreshortened, azimuth is not. It is also the only form in which layover can
+//! be expressed, since an unsigned 3-D angle is never negative.
+//!
+//! The flattened backscatter follows from replacing `theta` with
 //! `theta_loc` in the usual normalisation:
 //!
 //! ```text

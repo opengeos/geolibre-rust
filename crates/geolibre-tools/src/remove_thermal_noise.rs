@@ -133,10 +133,11 @@ impl Tool for RemoveThermalNoiseTool {
         let prm = parse_params(args)?;
         // One noise source must be given; silently defaulting to "no noise"
         // would make the tool a no-op that looks like it worked.
-        if args.get("noise_raster").and_then(Value::as_str).is_none()
-            && prm.profile.is_none()
-            && prm.constant.is_none()
-        {
+        // A blank or whitespace-only path is *absent*, not a raster source.
+        // Testing only that the key holds a string let `{"noise_raster": "  "}`
+        // through validation, after which `noise_field` skipped the raster
+        // branch and reached the constant with nothing set.
+        if noise_raster_path(args).is_none() && prm.profile.is_none() && prm.constant.is_none() {
             return Err(ToolError::Validation(
                 "one of 'noise_raster', 'noise_profile' or 'noise_constant' is required"
                     .to_string(),
@@ -245,6 +246,14 @@ impl Tool for RemoveThermalNoiseTool {
     }
 }
 
+/// The `noise_raster` parameter, or `None` when it is absent or blank.
+fn noise_raster_path(args: &ToolArgs) -> Option<&str> {
+    args.get("noise_raster")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
 /// Builds the per-cell noise power field, and names the source it came from.
 fn noise_field(
     args: &ToolArgs,
@@ -253,27 +262,24 @@ fn noise_field(
     rows: usize,
     cols: usize,
 ) -> Result<(Vec<f64>, &'static str), ToolError> {
-    if let Some(path) = args.get("noise_raster").and_then(Value::as_str) {
-        let path = path.trim();
-        if !path.is_empty() {
-            let nr = load_input_raster(path)?;
-            check_alignment_refs(&[template, &nr])?;
-            let mut out = vec![f64::NAN; rows * cols];
-            for r in 0..rows {
-                for c in 0..cols {
-                    let v = nr.get(0, r as isize, c as isize);
-                    if v != nr.nodata && v.is_finite() {
-                        // A noise raster is in the same representation as the
-                        // profile/constant forms, so it goes through the same
-                        // unit conversion.
-                        if let Some(p) = prm.noise_units.to_power(v) {
-                            out[r * cols + c] = p;
-                        }
+    if let Some(path) = noise_raster_path(args) {
+        let nr = load_input_raster(path)?;
+        check_alignment_refs(&[template, &nr])?;
+        let mut out = vec![f64::NAN; rows * cols];
+        for r in 0..rows {
+            for c in 0..cols {
+                let v = nr.get(0, r as isize, c as isize);
+                if v != nr.nodata && v.is_finite() {
+                    // A noise raster is in the same representation as the
+                    // profile/constant forms, so it goes through the same
+                    // unit conversion.
+                    if let Some(p) = prm.noise_units.to_power(v) {
+                        out[r * cols + c] = p;
                     }
                 }
             }
-            return Ok((out, "raster"));
         }
+        return Ok((out, "raster"));
     }
 
     if let Some(profile) = &prm.profile {
@@ -298,7 +304,13 @@ fn noise_field(
         return Ok((out, "profile"));
     }
 
-    let k = prm.constant.expect("validate guarantees a noise source");
+    // Reached only when every source is absent. `validate` rejects that, but
+    // an error beats a panic if a future caller bypasses it.
+    let k = prm.constant.ok_or_else(|| {
+        ToolError::Validation(
+            "one of 'noise_raster', 'noise_profile' or 'noise_constant' is required".to_string(),
+        )
+    })?;
     Ok((vec![k; rows * cols], "constant"))
 }
 
@@ -562,6 +574,9 @@ mod tests {
         assert!(bad(json!({"input": "a.tif", "noise_profile": "0.1,x"})).is_err());
         assert!(bad(json!({"input": "a.tif", "noise_constant": 0.1, "floor_fraction": 1.0})).is_err());
         assert!(bad(json!({"input": "a.tif", "noise_constant": 0.1, "noise_units": "watts"})).is_err());
+        // Regression: a blank path satisfied the old string-presence test and
+        // then reached `expect(None)` at runtime.
+        assert!(bad(json!({"input": "a.tif", "noise_raster": "   "})).is_err());
         assert!(bad(json!({"input": "a.tif", "noise_constant": 0.1})).is_ok());
         assert!(bad(json!({"input": "a.tif", "noise_profile": "0.1,0.2"})).is_ok());
     }

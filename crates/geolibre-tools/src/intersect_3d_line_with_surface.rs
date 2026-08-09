@@ -44,9 +44,7 @@ use wbcore::{
     ToolRunResult,
 };
 use wbraster::Raster;
-use wbvector::{
-    Coord, Feature, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer,
-};
+use wbvector::{Coord, Feature, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer};
 
 use crate::args_common::{band_index, bool_or, opt_positive_f64, req_str};
 use crate::common::{load_input_raster, parse_optional_output};
@@ -54,6 +52,11 @@ use crate::inside_3d::{collect_triangles, Tri};
 use crate::mesh3d::segment_triangle;
 use crate::surface_solid::sample_bilinear;
 use crate::vector_common::{load_input_layer, write_or_store_layer};
+
+/// Upper bound on the samples one segment may be densified into. Only a
+/// pathologically small `spacing` reaches it; the point is that it is reached
+/// rather than exhausting memory.
+const MAX_DENSIFY_STEPS: usize = 1_000_000;
 
 pub struct Intersect3dLineWithSurfaceTool;
 
@@ -180,6 +183,8 @@ impl Tool for Intersect3dLineWithSurfaceTool {
             ));
         }
 
+        let mesh_z = mesh_z_range(mesh.as_deref().unwrap_or(&[]));
+
         ctx.progress.info(&format!(
             "{} line(s) against a {}, spacing {spacing}",
             lines.len(),
@@ -228,106 +233,128 @@ impl Tool for Intersect3dLineWithSurfaceTool {
             // Densify in plan view and evaluate the line-minus-surface
             // clearance at each sample.
             let samples = densify_3d(&coords, spacing);
-            let mut evaluated: Vec<(Coord, f64)> = Vec::with_capacity(samples.len());
+            // Split into runs at every sample the surface has no value for.
+            // Dropping those samples and treating the rest as continuous makes
+            // the sample before a gap adjacent to the one after it, so a sign
+            // change across the gap reads as a crossing and its position is
+            // interpolated between two points that may be far apart.
+            let mut runs: Vec<Vec<(Coord, f64)>> = Vec::new();
+            let mut run: Vec<(Coord, f64)> = Vec::new();
             for p in samples {
-                let Some(sz) = surface_height(&surface, band, mesh.as_deref(), p.x, p.y) else {
-                    continue;
-                };
-                evaluated.push((p.clone(), p.z.unwrap_or(0.0) - sz));
+                match surface_height(&surface, band, mesh.as_deref(), p.x, p.y, mesh_z) {
+                    Some(sz) => run.push((p.clone(), p.z.unwrap_or(0.0) - sz)),
+                    None => {
+                        if run.len() >= 2 {
+                            runs.push(std::mem::take(&mut run));
+                        } else {
+                            run.clear();
+                        }
+                    }
+                }
             }
-            if evaluated.len() < 2 {
+            if run.len() >= 2 {
+                runs.push(run);
+            }
+            if runs.is_empty() {
                 continue;
             }
+            for evaluated in runs {
+                // Cut at every sign change. Each part records the inclusive range
+                // of *real* samples it covers, because `coords` also carries the
+                // interpolated cut vertices and those have no clearance value.
+                let mut parts: Vec<(Vec<Coord>, bool, usize, usize)> = Vec::new();
+                let mut current: Vec<Coord> = vec![evaluated[0].0.clone()];
+                let mut above = evaluated[0].1 >= 0.0;
+                let mut sample_start = 0usize;
+                for (si, w) in evaluated.windows(2).enumerate() {
+                    let (a, da) = (&w[0].0, w[0].1);
+                    let (b, db) = (&w[1].0, w[1].1);
+                    if (da >= 0.0) != (db >= 0.0) && (da - db).abs() > 0.0 {
+                        // Linear interpolation is exact here: between two densified
+                        // samples both the line and the sampled surface are linear,
+                        // so their difference is too.
+                        let t = da / (da - db);
+                        let x = a.x + t * (b.x - a.x);
+                        let y = a.y + t * (b.y - a.y);
+                        let z = a.z.unwrap_or(0.0) + t * (b.z.unwrap_or(0.0) - a.z.unwrap_or(0.0));
+                        let cut = Coord::xyz(x, y, z);
 
-            // Cut at every sign change.
-            let mut parts: Vec<(Vec<Coord>, bool)> = Vec::new();
-            let mut current: Vec<Coord> = vec![evaluated[0].0.clone()];
-            let mut above = evaluated[0].1 >= 0.0;
-            for w in evaluated.windows(2) {
-                let (a, da) = (&w[0].0, w[0].1);
-                let (b, db) = (&w[1].0, w[1].1);
-                if (da >= 0.0) != (db >= 0.0) && (da - db).abs() > 0.0 {
-                    // Linear interpolation is exact here: between two densified
-                    // samples both the line and the sampled surface are linear,
-                    // so their difference is too.
-                    let t = da / (da - db);
-                    let x = a.x + t * (b.x - a.x);
-                    let y = a.y + t * (b.y - a.y);
-                    let z = a.z.unwrap_or(0.0) + t * (b.z.unwrap_or(0.0) - a.z.unwrap_or(0.0));
-                    let cut = Coord::xyz(x, y, z);
+                        current.push(cut.clone());
+                        // This part owns samples `sample_start ..= si`; the sample
+                        // at `si + 1` is already on the other side of the surface.
+                        parts.push((std::mem::take(&mut current), above, sample_start, si));
+                        current.push(cut.clone());
+                        above = db >= 0.0;
+                        sample_start = si + 1;
+                        crossings_total += 1;
 
-                    current.push(cut.clone());
-                    parts.push((std::mem::take(&mut current), above));
-                    current.push(cut.clone());
-                    above = db >= 0.0;
-                    crossings_total += 1;
+                        let mut pf = Feature::with_geometry(
+                            point_fid,
+                            Geometry::Point(cut),
+                            out_pts.schema.len(),
+                        );
+                        pf.set_by_index(0, FieldValue::Integer(point_fid as i64));
+                        pf.set_by_index(1, FieldValue::Integer(feat.fid as i64));
+                        pf.set_by_index(2, FieldValue::Float(z));
+                        pf.set_by_index(
+                            3,
+                            FieldValue::Text(
+                                if db >= 0.0 { "emerging" } else { "entering" }.to_string(),
+                            ),
+                        );
+                        out_pts.push(pf);
+                        point_fid += 1;
+                    }
+                    current.push(b.clone());
+                }
+                if current.len() >= 2 {
+                    parts.push((current, above, sample_start, evaluated.len() - 1));
+                }
 
-                    let mut pf =
-                        Feature::with_geometry(point_fid, Geometry::Point(cut), out_pts.schema.len());
-                    pf.set_by_index(0, FieldValue::Integer(point_fid as i64));
-                    pf.set_by_index(1, FieldValue::Integer(feat.fid as i64));
-                    pf.set_by_index(2, FieldValue::Float(z));
-                    pf.set_by_index(
-                        3,
-                        FieldValue::Text(
-                            if db >= 0.0 { "emerging" } else { "entering" }.to_string(),
-                        ),
+                // Clearance statistics per part, from the real samples it spans.
+                let mut part_index = 0i64;
+                for (coords, is_above, lo, hi) in parts {
+                    let stats: Vec<f64> =
+                        evaluated[lo..=hi.max(lo)].iter().map(|(_, d)| *d).collect();
+
+                    let keep = if is_above {
+                        prm.keep_above
+                    } else {
+                        prm.keep_below
+                    };
+                    if !keep {
+                        part_index += 1;
+                        continue;
+                    }
+                    let length = length_3d(&coords);
+                    let (mn, mx) = if stats.is_empty() {
+                        (0.0, 0.0)
+                    } else {
+                        (
+                            stats.iter().copied().fold(f64::INFINITY, f64::min),
+                            stats.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                        )
+                    };
+
+                    let mut lf = Feature::with_geometry(
+                        line_fid,
+                        Geometry::LineString(coords),
+                        out_lines.schema.len(),
                     );
-                    out_pts.push(pf);
-                    point_fid += 1;
-                }
-                current.push(b.clone());
-            }
-            if current.len() >= 2 {
-                parts.push((current, above));
-            }
-
-            // Clearance statistics per part, from the samples it spans.
-            let mut part_index = 0i64;
-            let mut consumed = 0usize;
-            for (coords, is_above) in parts {
-                let span = coords.len();
-                let stats: Vec<f64> = evaluated
-                    .iter()
-                    .skip(consumed)
-                    .take(span)
-                    .map(|(_, d)| *d)
-                    .collect();
-                consumed += span.saturating_sub(1);
-
-                let keep = if is_above { prm.keep_above } else { prm.keep_below };
-                if !keep {
+                    lf.set_by_index(0, FieldValue::Integer(line_fid as i64));
+                    lf.set_by_index(1, FieldValue::Integer(feat.fid as i64));
+                    lf.set_by_index(2, FieldValue::Integer(part_index));
+                    lf.set_by_index(
+                        3,
+                        FieldValue::Text(if is_above { "above" } else { "below" }.to_string()),
+                    );
+                    lf.set_by_index(4, FieldValue::Float(length));
+                    lf.set_by_index(5, FieldValue::Float(mn));
+                    lf.set_by_index(6, FieldValue::Float(mx));
+                    out_lines.push(lf);
+                    line_fid += 1;
                     part_index += 1;
-                    continue;
                 }
-                let length = length_3d(&coords);
-                let (mn, mx) = if stats.is_empty() {
-                    (0.0, 0.0)
-                } else {
-                    (
-                        stats.iter().copied().fold(f64::INFINITY, f64::min),
-                        stats.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-                    )
-                };
-
-                let mut lf = Feature::with_geometry(
-                    line_fid,
-                    Geometry::LineString(coords),
-                    out_lines.schema.len(),
-                );
-                lf.set_by_index(0, FieldValue::Integer(line_fid as i64));
-                lf.set_by_index(1, FieldValue::Integer(feat.fid as i64));
-                lf.set_by_index(2, FieldValue::Integer(part_index));
-                lf.set_by_index(
-                    3,
-                    FieldValue::Text(if is_above { "above" } else { "below" }.to_string()),
-                );
-                lf.set_by_index(4, FieldValue::Float(length));
-                lf.set_by_index(5, FieldValue::Float(mn));
-                lf.set_by_index(6, FieldValue::Float(mx));
-                out_lines.push(lf);
-                line_fid += 1;
-                part_index += 1;
             }
             ctx.progress
                 .progress((n as f64 + 1.0) / lines.len().max(1) as f64);
@@ -371,7 +398,10 @@ fn densify_3d(coords: &[Coord], spacing: f64) -> Vec<Coord> {
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         let plan = (dx * dx + dy * dy).sqrt();
-        let steps = ((plan / spacing).ceil() as usize).max(1);
+        // Clamped as well as guarded: `as usize` saturates rather than
+        // overflowing, so an accidentally tiny spacing would otherwise turn
+        // this into an unbounded push loop.
+        let steps = ((plan / spacing).ceil() as usize).clamp(1, MAX_DENSIFY_STEPS);
         for s in 0..steps {
             let t = s as f64 / steps as f64;
             out.push(Coord::xyz(a.x + t * dx, a.y + t * dy, za + t * (zb - za)));
@@ -406,13 +436,16 @@ fn surface_height(
     mesh: Option<&[Tri]>,
     x: f64,
     y: f64,
+    // Precomputed once per run: the range does not change, and recomputing it
+    // here scanned every vertex of the mesh for every densified sample.
+    z_range: (f64, f64),
 ) -> Option<f64> {
     if let Some(r) = surface {
         return sample_bilinear(r, band, x, y);
     }
     let tris = mesh?;
     // Shoot a tall vertical segment and keep the highest hit.
-    let (lo, hi) = mesh_z_range(tris);
+    let (lo, hi) = z_range;
     let pad = (hi - lo).abs().max(1.0);
     let a = [x, y, lo - pad];
     let b = [x, y, hi + pad];
@@ -440,6 +473,7 @@ fn layer_triangles(layer: &Layer) -> Vec<Tri> {
         .collect()
 }
 
+/// Lowest and highest z over a triangle list; `(0, 0)` when it is empty.
 fn mesh_z_range(tris: &[Tri]) -> (f64, f64) {
     let mut lo = f64::INFINITY;
     let mut hi = f64::NEG_INFINITY;
@@ -473,7 +507,12 @@ fn mesh_spacing(mesh: Option<&[Tri]>) -> f64 {
         return 0.0;
     }
     let diag = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
-    (diag / 50.0).max(f64::MIN_POSITIVE)
+    // A mesh with no plan extent has no scale to derive a step from. Returning
+    // `f64::MIN_POSITIVE` instead would clear the caller's `> 0` guard, make
+    // `plan / spacing` infinite in `densify_3d`, saturate the `as usize` cast
+    // to `usize::MAX`, and push coordinates until memory ran out. Return 0 and
+    // let the caller report that it needs an explicit `spacing`.
+    diag / 50.0
 }
 
 // ── Parameters ──────────────────────────────────────────────────────────────
@@ -544,8 +583,7 @@ mod tests {
         layer = layer.with_crs_epsg(32610);
         layer.add_field(FieldDef::new("id", FieldType::Integer));
         let coords: Vec<Coord> = pts.iter().map(|&(x, y, z)| Coord::xyz(x, y, z)).collect();
-        let mut f =
-            Feature::with_geometry(0, Geometry::LineString(coords), layer.schema.len());
+        let mut f = Feature::with_geometry(0, Geometry::LineString(coords), layer.schema.len());
         f.set_by_index(0, FieldValue::Integer(0));
         layer.push(f);
         write_or_store_layer(layer, None).unwrap()
@@ -646,7 +684,10 @@ mod tests {
         }));
         assert_eq!(outputs["crossing_count"].as_u64().unwrap(), 0);
         assert_eq!(layer.len(), 1);
-        assert_eq!(text(&layer, layer.iter().next().unwrap(), "position"), "above");
+        assert_eq!(
+            text(&layer, layer.iter().next().unwrap(), "position"),
+            "above"
+        );
     }
 
     /// Clearance statistics describe how far the piece runs from the surface —
@@ -681,7 +722,10 @@ mod tests {
         above_only.insert("keep_below".into(), json!(false));
         let (layer, _) = run(Value::Object(above_only));
         assert_eq!(layer.len(), 1);
-        assert_eq!(text(&layer, layer.iter().next().unwrap(), "position"), "above");
+        assert_eq!(
+            text(&layer, layer.iter().next().unwrap(), "position"),
+            "above"
+        );
     }
 
     /// The multipatch form cuts against a mesh instead of a raster — the
@@ -705,8 +749,7 @@ mod tests {
             (tri((0.0, 0.0), (100.0, 0.0), (100.0, 100.0)), Vec::new()),
             (tri((0.0, 0.0), (100.0, 100.0), (0.0, 100.0)), Vec::new()),
         ];
-        let mut f =
-            Feature::with_geometry(0, Geometry::MultiPolygon(parts), mesh.schema.len());
+        let mut f = Feature::with_geometry(0, Geometry::MultiPolygon(parts), mesh.schema.len());
         f.set_by_index(0, FieldValue::Integer(0));
         mesh.push(f);
         let mesh_path = write_or_store_layer(mesh, None).unwrap();
@@ -735,6 +778,78 @@ mod tests {
         assert_eq!(load_input_layer(path).unwrap().len(), 1);
     }
 
+    /// Regression: `coords` carries the interpolated cut vertices, which have
+    /// no clearance value, so taking `coords.len()` samples read one value from
+    /// the other side of the surface. An `above` part could then report a
+    /// negative minimum clearance and a `below` part a positive maximum.
+    #[test]
+    fn clearance_signs_match_each_part() {
+        let (layer, _) = run(json!({
+            "input": line_layer(&[
+                (5.0, 50.0, 60.0), (35.0, 50.0, 20.0), (65.0, 50.0, 20.0), (95.0, 50.0, 60.0)
+            ]),
+            "surface": flat_surface(40.0), "spacing": 1.0
+        }));
+        assert_eq!(layer.len(), 3);
+        let mi = layer.schema.field_index("min_clearance").unwrap();
+        let xi = layer.schema.field_index("max_clearance").unwrap();
+        for f in layer.iter() {
+            let (FieldValue::Float(mn), FieldValue::Float(mx)) =
+                (&f.attributes[mi], &f.attributes[xi])
+            else {
+                panic!("clearances must be floats")
+            };
+            match text(&layer, f, "position").as_str() {
+                "above" => assert!(
+                    *mn >= 0.0 && *mx >= 0.0,
+                    "an above part must not report a negative clearance ({mn}, {mx})"
+                ),
+                "below" => assert!(
+                    *mn <= 0.0 && *mx <= 0.0,
+                    "a below part must not report a positive clearance ({mn}, {mx})"
+                ),
+                other => panic!("unexpected position {other}"),
+            }
+        }
+    }
+
+    /// A mesh with no plan extent yields no spacing, and must be reported
+    /// rather than densified into an unbounded loop.
+    #[test]
+    fn degenerate_multipatch_is_reported() {
+        let mut mesh = Layer::new("degenerate");
+        mesh.geom_type = Some(GeometryType::MultiPolygon);
+        mesh = mesh.with_crs_epsg(32610);
+        mesh.add_field(FieldDef::new("id", FieldType::Integer));
+        // Three vertices sharing one plan position: zero plan diagonal.
+        let ring = Ring::new(vec![
+            Coord::xyz(50.0, 50.0, 0.0),
+            Coord::xyz(50.0, 50.0, 10.0),
+            Coord::xyz(50.0, 50.0, 20.0),
+        ]);
+        let mut f = Feature::with_geometry(
+            0,
+            Geometry::MultiPolygon(vec![(ring, Vec::new())]),
+            mesh.schema.len(),
+        );
+        f.set_by_index(0, FieldValue::Integer(0));
+        mesh.push(f);
+        let mesh_path = write_or_store_layer(mesh, None).unwrap();
+
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": line_layer(&[(10.0, 50.0, 0.0), (90.0, 50.0, 60.0)]),
+            "multipatch": mesh_path
+        }))
+        .unwrap();
+        let err = Intersect3dLineWithSurfaceTool
+            .run(&args, &ctx())
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("spacing"),
+            "expected a spacing error, got {err:?}"
+        );
+    }
+
     #[test]
     fn rejects_bad_params() {
         let bad = |v: Value| {
@@ -745,9 +860,7 @@ mod tests {
         // Neither cutting geometry supplied.
         assert!(bad(json!({"input": "l.shp"})).is_err());
         // Both supplied is ambiguous.
-        assert!(
-            bad(json!({"input": "l.shp", "surface": "s.tif", "multipatch": "m.shp"})).is_err()
-        );
+        assert!(bad(json!({"input": "l.shp", "surface": "s.tif", "multipatch": "m.shp"})).is_err());
         assert!(bad(json!({
             "input": "l.shp", "surface": "s.tif", "keep_above": false, "keep_below": false
         }))

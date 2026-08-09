@@ -129,7 +129,7 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
         let out_loadings = parse_optional_output(args, "output_loadings")?;
         let out_eigen = parse_optional_output(args, "output_eigenvalues")?;
 
-        let cube = load_cube(args, "input", "dimension_values", "dimension", 2)?;
+        let cube = load_cube(args, "input", Some("dimension_values"), Some("dimension"), 2)?;
         let (rows, cols, n) = (cube.rows, cube.cols, cube.len());
 
         // Complete cases only: a covariance whose entries came from different
@@ -195,7 +195,7 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
             }
         }
 
-        let (mut values, vectors) = jacobi_eigen(&cov);
+        let (values, vectors) = jacobi_eigen(&cov);
         // Order components by explained variance, descending.
         let mut order: Vec<usize> = (0..n).collect();
         order.sort_by(|&a, &b| values[b].total_cmp(&values[a]));
@@ -224,7 +224,6 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
         }
         let eigenvalues: Vec<f64> = (0..keep).map(|k| values[order[k]].max(0.0)).collect();
         let total: f64 = values.iter().map(|v| v.max(0.0)).sum();
-        values.truncate(n); // keep clippy from flagging the unused tail
 
         // Project every complete cell onto the retained components.
         let nodata = -9999.0_f64;
@@ -259,6 +258,11 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
 
         // Under spatial reduction the roles swap: the rasters carry the
         // loadings and the table carries the component series.
+        // `bands` holds the per-cell projection score in both modes. Under
+        // dimension reduction those scores *are* the components; under spatial
+        // reduction the same numbers are each cell's loading on a component
+        // whose series lives in the table. Same arithmetic, different reading —
+        // the match below chooses the table, not the raster.
         let (raster_bands, table_rows): (Vec<Vec<f64>>, Vec<Vec<f64>>) = match prm.mode {
             Mode::Dimension => (bands, loadings.clone()),
             Mode::Spatial => {
@@ -317,10 +321,17 @@ fn loadings_table(cube: &Cube, rows_data: &[Vec<f64>], mode: Mode) -> Result<Lay
     });
     // The dimension's own name is used for its column, so a caller who asked
     // for "year" gets a `year` column rather than a generic one.
-    let dim_col = cube.dimension.clone();
     let pc_cols: Vec<String> = (0..rows_data.len())
         .map(|k| format!("pc{}", k + 1))
         .collect();
+    // The dimension name defaults to "slice" and can be set to anything, so it
+    // can collide with the fixed columns. `wbvector` keeps the FIRST field of a
+    // duplicated name, so a collision would silently drop the coordinate rather
+    // than fail — suffix it instead.
+    let mut dim_col = cube.dimension.clone();
+    while dim_col == "slice" || pc_cols.contains(&dim_col) {
+        dim_col.push('_');
+    }
 
     layer.add_field(FieldDef::new("slice", FieldType::Integer));
     layer.add_field(FieldDef::new(&dim_col, FieldType::Float));

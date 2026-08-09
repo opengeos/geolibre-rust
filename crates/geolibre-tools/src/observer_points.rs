@@ -167,7 +167,7 @@ impl Tool for ObserverPointsTool {
         }
 
         let layer = load_input_layer(&obs_path)?;
-        let observers = collect_observers(&dem, &layer, &prm)?;
+        let observers = collect_observers(&dem, &layer, &prm, band)?;
         if observers.is_empty() {
             return Err(ToolError::Validation(
                 "no observer points fell inside the elevation raster".to_string(),
@@ -196,8 +196,34 @@ impl Tool for ObserverPointsTool {
         let mut per_observer = vec![0usize; observers.len()];
 
         for (k, obs) in observers.iter().enumerate() {
-            for r in 0..rows {
-                for c in 0..cols {
+            // With a range limit, only the cells inside that radius can be
+            // visible, so scanning the whole grid is wasted work — the full
+            // sweep is O(observers x rows x cols x max(rows, cols)) and a
+            // routine DEM makes the tool look hung.
+            let (r0, r1, c0, c1) = match prm.max_distance {
+                None => (0, rows, 0, cols),
+                Some(d) => {
+                    let dr = (d / dem.cell_size_y).ceil() as usize + 1;
+                    let dc = (d / dem.cell_size_x).ceil() as usize + 1;
+                    (
+                        obs.row.saturating_sub(dr),
+                        (obs.row + dr + 1).min(rows),
+                        obs.col.saturating_sub(dc),
+                        (obs.col + dc + 1).min(cols),
+                    )
+                }
+            };
+            let scanned_rows = r1.saturating_sub(r0).max(1);
+            for r in r0..r1 {
+                // Report inside the pass as well as between passes, so a long
+                // single-observer sweep stays observable.
+                if r % 64 == 0 {
+                    ctx.progress.progress(
+                        (k as f64 + (r - r0) as f64 / scanned_rows as f64)
+                            / observers.len() as f64,
+                    );
+                }
+                for c in c0..c1 {
                     let i = r * cols + c;
                     if !z[i].is_finite() {
                         continue;
@@ -285,6 +311,7 @@ fn collect_observers(
     dem: &Raster,
     layer: &Layer,
     prm: &Params,
+    band: isize,
 ) -> Result<Vec<Observer>, ToolError> {
     let (rows, cols) = (dem.rows, dem.cols);
     let y_max = dem.y_min + rows as f64 * dem.cell_size_y;
@@ -313,7 +340,10 @@ fn collect_observers(
         if row >= rows || col >= cols {
             continue;
         }
-        let ground = dem.get(0, row as isize, col as isize);
+        // The same band `run` built the elevation grid from; reading band 0
+        // here would put the eye height on a different surface than the
+        // line-of-sight walk.
+        let ground = dem.get(band, row as isize, col as isize);
         if ground == dem.nodata || !ground.is_finite() {
             continue;
         }

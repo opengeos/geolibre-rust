@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 use wbcore::ToolError;
 use wbraster::Raster;
-use wbvector::{Geometry, Layer};
+use wbvector::{Coord, Geometry, Layer};
 
 use crate::polygonize::{polygonize_to_geojson, PolygonizeParams};
 use crate::vector_common::geometry_contains_point;
@@ -176,11 +176,19 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
     if geoms.is_empty() {
         return keep;
     }
+    // Envelope per geometry, computed once. Without it every cell walks every
+    // ring of every polygon, and a coastline mask of thousands of polygons over
+    // a full scene dominates the runtime of all three tools that mask.
+    let boxes: Vec<(f64, f64, f64, f64)> = geoms.iter().map(|g| envelope(g)).collect();
+
     for r in 0..rows {
         let y = y_max - (r as f64 + 0.5) * raster.cell_size_y;
         for c in 0..cols {
             let x = raster.x_min + (c as f64 + 0.5) * raster.cell_size_x;
-            let inside = geoms.iter().any(|g| geometry_contains_point(g, x, y));
+            let inside = geoms.iter().zip(&boxes).any(|(g, bb)| {
+                x >= bb.0 && x <= bb.2 && y >= bb.1 && y <= bb.3
+                    && geometry_contains_point(g, x, y)
+            });
             keep[r * cols + c] = match side {
                 MaskSide::LandPolygon => !inside,
                 MaskSide::WaterPolygon => inside,
@@ -188,6 +196,30 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
         }
     }
     keep
+}
+
+/// Axis-aligned envelope `(min_x, min_y, max_x, max_y)` of a geometry.
+///
+/// An empty geometry gets an inverted box, which the prefilter then rejects for
+/// every cell — the containment test would say the same, only far more slowly.
+fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
+    let mut bb = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    let mut visit = |c: &Coord| {
+        bb.0 = bb.0.min(c.x);
+        bb.1 = bb.1.min(c.y);
+        bb.2 = bb.2.max(c.x);
+        bb.3 = bb.3.max(c.y);
+    };
+    match geom {
+        Geometry::Polygon { exterior, .. } => exterior.coords().iter().for_each(&mut visit),
+        Geometry::MultiPolygon(parts) => {
+            for (ext, _) in parts {
+                ext.coords().iter().for_each(&mut visit);
+            }
+        }
+        _ => {}
+    }
+    bb
 }
 
 /// One 4-connected run of flagged cells.

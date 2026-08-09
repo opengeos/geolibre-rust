@@ -272,8 +272,10 @@ impl Tool for ValidateFlowDirectionTool {
 /// Decodes a direction value into its (row, col) steps.
 ///
 /// Under D8 the value must be exactly one of the eight codes. Under MFD it may
-/// be their sum, so every set bit contributes a step; a value with bits outside
-/// the eight directions is still invalid.
+/// be their sum, so every set bit contributes a step. Note that the eight codes
+/// cover all eight bits of a byte, so every whole number in `1..=255` decodes to
+/// a non-empty step list: under MFD the `invalid_code` check catches fractional,
+/// negative and out-of-range values only, not a bit pattern.
 fn decode(code: f64, mfd: bool) -> Vec<(isize, isize)> {
     // Directions are integers; a fractional value cannot be one.
     if code < 0.0 || code.fract() != 0.0 || code > 255.0 {

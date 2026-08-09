@@ -150,6 +150,17 @@ impl Tool for ExtractSpectraFromImageTool {
         let wavelengths = parse_wavelengths(args, "wavelengths", bands)?;
 
         let layer = load_input_layer(&training)?;
+        // Training coordinates are mapped straight into raster cells, so a CRS
+        // mismatch samples the wrong cells (or finds no overlap) and reports a
+        // confident, wrong library rather than an error.
+        if let (Some(img), Some(train)) = (raster.crs.epsg, layer.crs_epsg()) {
+            if img != train {
+                return Err(ToolError::Validation(format!(
+                    "'training_features' is EPSG:{train} but 'input' is EPSG:{img}; reproject \
+                     the training layer to the image CRS first"
+                )));
+            }
+        }
         let fidx = layer.schema.field_index(&class_field).ok_or_else(|| {
             ToolError::Validation(format!(
                 "class_field '{class_field}' not found in the training layer"
@@ -393,21 +404,37 @@ fn parse_wavelengths(
     key: &str,
     bands: usize,
 ) -> Result<Option<Vec<f64>>, ToolError> {
-    let Some(s) = args.get(key).and_then(Value::as_str) else {
-        return Ok(None);
+    // A delimited string or a JSON array. Reading only strings meant an array
+    // vanished, and the tool then wrote no wavelength header with no error.
+    let vals: Vec<f64> = match args.get(key) {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(s)) if s.trim().is_empty() => return Ok(None),
+        Some(Value::String(s)) => s
+            .split([',', ';'])
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(|t| {
+                t.parse::<f64>().map_err(|_| {
+                    ToolError::Validation(format!("'{key}' entry '{t}' is not a number"))
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|t| t.trim().parse::<f64>().ok()))
+                    .ok_or_else(|| {
+                        ToolError::Validation(format!("'{key}' entry {v} is not a number"))
+                    })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(other) => {
+            return Err(ToolError::Validation(format!(
+                "'{key}' must be a delimited string or an array of numbers; got {other}"
+            )))
+        }
     };
-    if s.trim().is_empty() {
-        return Ok(None);
-    }
-    let vals: Vec<f64> = s
-        .split([',', ';'])
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|_| ToolError::Validation(format!("'{key}' entry '{t}' is not a number")))
-        })
-        .collect::<Result<_, _>>()?;
     if vals.len() != bands {
         return Err(ToolError::Validation(format!(
             "'{key}' has {} value(s) but the image has {bands} band(s)",
@@ -431,7 +458,15 @@ fn label_string(v: &FieldValue) -> String {
 /// class name would shift every band value by one column. Substituting is the
 /// only safe option and is cheaper than failing on a legitimate label.
 fn csv_escape(s: &str) -> String {
-    s.replace([',', '\n', '\r'], "_")
+    let cleaned = s.replace([',', '\n', '\r'], "_");
+    // The library parser skips lines beginning with '#', so a class named
+    // "#urban" would silently vanish from the library and the stats file while
+    // still being counted in `classes` and `class_count`.
+    if cleaned.starts_with('#') {
+        format!("_{cleaned}")
+    } else {
+        cleaned
+    }
 }
 
 fn fmt(v: &f64) -> String {

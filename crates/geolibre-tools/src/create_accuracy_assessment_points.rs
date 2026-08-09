@@ -135,24 +135,30 @@ impl Tool for CreateAccuracyAssessmentPointsTool {
         let seed = args.get("seed").and_then(|v| v.as_u64()).unwrap_or(1);
         let output = parse_optional_str(args, "output")?;
 
+        let mut rng = Rng::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xDEAD_BEEF);
+
         // Candidate locations, bucketed by class. Raster and vector inputs
-        // differ only in how the buckets are filled.
-        let (buckets, epsg, source_kind) =
-            collect_candidates(&input, class_field.as_deref(), band)?;
+        // differ only in how the buckets are filled. No class can ever be
+        // allocated more than `num_points`, so a reservoir that size is always
+        // sufficient and bounds memory independently of the raster's size.
+        let (cand, epsg, source_kind) =
+            collect_candidates(&input, class_field.as_deref(), band, num_points, &mut rng)?;
+        let Candidates { buckets, totals } = cand;
         if buckets.is_empty() {
             return Err(ToolError::Execution(
                 "the input contained no valid classified cells or features".to_string(),
             ));
         }
-        let total_candidates: usize = buckets.values().map(|v| v.len()).sum();
+        let total_candidates: usize = totals.values().sum();
         ctx.progress.info(&format!(
             "{source_kind}: {} class(es), {total_candidates} candidate location(s)",
             buckets.len()
         ));
 
-        let allocation = allocate(&buckets, num_points, strategy, min_per_class);
+        // Allocation is area-proportional, so it must use the TRUE counts, not
+        // the (capped) reservoir sizes.
+        let allocation = allocate(&totals, num_points, strategy, min_per_class);
 
-        let mut rng = Rng::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xDEAD_BEEF);
         let mut layer =
             Layer::new("accuracy_assessment_points").with_geom_type(GeometryType::Point);
         if let Some(e) = epsg {
@@ -208,12 +214,12 @@ impl Tool for CreateAccuracyAssessmentPointsTool {
 /// unstratified. Every branch corrects the rounding residual so the totals sum
 /// to `num_points` exactly (when the candidates allow it).
 fn allocate(
-    buckets: &BTreeMap<i64, Vec<(f64, f64)>>,
+    totals: &BTreeMap<i64, usize>,
     num_points: usize,
     strategy: &str,
     min_per_class: usize,
 ) -> Vec<(i64, usize)> {
-    let classes: Vec<i64> = buckets.keys().copied().collect();
+    let classes: Vec<i64> = totals.keys().copied().collect();
     let n = classes.len();
 
     let mut alloc: Vec<(i64, usize)> = match strategy {
@@ -233,21 +239,21 @@ fn allocate(
             // Unstratified: allocate strictly in proportion to candidate count
             // with no floor, which is the same distribution a single pooled
             // uniform draw would produce in expectation.
-            let total: usize = buckets.values().map(|v| v.len()).sum();
+            let total: usize = totals.values().sum();
             classes
                 .iter()
                 .map(|c| {
-                    let share = buckets[c].len() as f64 / total as f64;
+                    let share = totals[c] as f64 / total as f64;
                     (*c, (share * num_points as f64).floor() as usize)
                 })
                 .collect()
         }
         _ => {
-            let total: usize = buckets.values().map(|v| v.len()).sum();
+            let total: usize = totals.values().sum();
             classes
                 .iter()
                 .map(|c| {
-                    let share = buckets[c].len() as f64 / total as f64;
+                    let share = totals[c] as f64 / total as f64;
                     let want = (share * num_points as f64).round() as usize;
                     (*c, want.max(min_per_class))
                 })
@@ -264,7 +270,7 @@ fn allocate(
         0
     };
     let mut order: Vec<usize> = (0..alloc.len()).collect();
-    order.sort_by_key(|&i| std::cmp::Reverse(buckets[&alloc[i].0].len()));
+    order.sort_by_key(|&i| std::cmp::Reverse(totals[&alloc[i].0]));
 
     let mut guard = 0_usize;
     loop {
@@ -280,7 +286,7 @@ fn allocate(
         let mut changed = false;
         if sum < num_points {
             for &i in &order {
-                if alloc[i].1 < buckets[&alloc[i].0].len() {
+                if alloc[i].1 < totals[&alloc[i].0] {
                     alloc[i].1 += 1;
                     changed = true;
                     break;
@@ -344,35 +350,68 @@ fn collect_candidates(
     input: &str,
     class_field: Option<&str>,
     band: isize,
-) -> Result<(BTreeMap<i64, Vec<(f64, f64)>>, Option<u32>, &'static str), ToolError> {
+    reservoir_size: usize,
+    rng: &mut Rng,
+) -> Result<(Candidates, Option<u32>, &'static str), ToolError> {
     let mut buckets: BTreeMap<i64, Vec<(f64, f64)>> = BTreeMap::new();
+    let mut totals: BTreeMap<i64, usize> = BTreeMap::new();
 
-    if let Ok(raster) = load_input_raster(input) {
-        if band as usize >= raster.bands {
-            return Err(ToolError::Validation(format!(
-                "band {} out of range (raster has {} band(s))",
-                band + 1,
-                raster.bands
-            )));
-        }
-        let rows = raster.rows;
-        let cols = raster.cols;
-        let y_max = raster.y_min + rows as f64 * raster.cell_size_y;
-        for r in 0..rows {
-            for c in 0..cols {
-                let v = raster.get(band, r as isize, c as isize);
-                if v == raster.nodata || !v.is_finite() {
-                    continue;
-                }
-                let x = raster.x_min + (c as f64 + 0.5) * raster.cell_size_x;
-                let y = y_max - (r as f64 + 0.5) * raster.cell_size_y;
-                buckets.entry(v.round() as i64).or_default().push((x, y));
+    let raster_err = match load_input_raster(input) {
+        Ok(raster) => {
+            if band as usize >= raster.bands {
+                return Err(ToolError::Validation(format!(
+                    "band {} out of range (raster has {} band(s))",
+                    band + 1,
+                    raster.bands
+                )));
             }
+            let rows = raster.rows;
+            let cols = raster.cols;
+            let y_max = raster.y_min + rows as f64 * raster.cell_size_y;
+            for r in 0..rows {
+                for c in 0..cols {
+                    let v = raster.get(band, r as isize, c as isize);
+                    if v == raster.nodata || !v.is_finite() {
+                        continue;
+                    }
+                    let x = raster.x_min + (c as f64 + 0.5) * raster.cell_size_x;
+                    let y = y_max - (r as f64 + 0.5) * raster.cell_size_y;
+                    let class = v.round() as i64;
+                    // Reservoir sampling (Algorithm R), so memory is
+                    // O(classes x reservoir_size) rather than O(valid cells).
+                    // Materializing every cell allocated ~1.6 GB for a
+                    // 10000x10000 raster to then draw 500 points from it. The
+                    // true count is tracked separately, because the
+                    // proportional allocation needs it.
+                    let seen = totals.entry(class).or_insert(0);
+                    let pool = buckets.entry(class).or_default();
+                    if pool.len() < reservoir_size {
+                        pool.push((x, y));
+                    } else {
+                        // Replace a uniformly chosen slot with probability
+                        // reservoir_size / (seen + 1).
+                        let j = (rng.f64() * (*seen as f64 + 1.0)) as usize;
+                        if j < reservoir_size {
+                            pool[j] = (x, y);
+                        }
+                    }
+                    *seen += 1;
+                }
+            }
+            return Ok((Candidates { buckets, totals }, raster.crs.epsg, "raster"));
         }
-        return Ok((buckets, raster.crs.epsg, "raster"));
-    }
+        Err(e) => e,
+    };
 
-    let layer = load_input_layer(input)?;
+    // Not a raster. If it is not a usable vector either, report BOTH failures:
+    // dropping the raster error sends a user with a corrupt .tif to "failed
+    // reading input vector", which points at the wrong problem.
+    let layer = load_input_layer(input).map_err(|vector_err| {
+        ToolError::Validation(format!(
+            "'{input}' could not be read as a raster ({raster_err}) or as a vector \
+             ({vector_err})"
+        ))
+    })?;
     let field = class_field.ok_or_else(|| {
         ToolError::Validation(
             "'class_field' is required when 'input' is a vector layer".to_string(),
@@ -389,9 +428,21 @@ fn collect_candidates(
         };
         if let Some((x, y)) = representative_point(feature.geometry.as_ref()) {
             buckets.entry(class).or_default().push((x, y));
+            *totals.entry(class).or_insert(0) += 1;
         }
     }
-    Ok((buckets, layer.crs_epsg(), "vector"))
+    // A vector layer is already resident, so its candidates need no reservoir.
+    Ok((Candidates { buckets, totals }, layer.crs_epsg(), "vector"))
+}
+
+/// Per-class sampling pools plus the true candidate counts.
+///
+/// For a raster input `buckets` holds a bounded reservoir rather than every
+/// cell, so `totals` is the only correct source for area-proportional
+/// allocation and for reporting.
+struct Candidates {
+    buckets: BTreeMap<i64, Vec<(f64, f64)>>,
+    totals: BTreeMap<i64, usize>,
 }
 
 /// A point guaranteed to lie on (or in) the geometry. Polygons use the centroid
@@ -664,6 +715,34 @@ mod tests {
             // Only cells 0 and 3 are valid, at x = 0.5 and 3.5.
             assert!(p.x < 1.0 || p.x > 3.0, "sampled a no-data cell at {}", p.x);
         }
+    }
+
+    #[test]
+    fn candidate_memory_stays_bounded_by_num_points_not_raster_size() {
+        // Materializing every valid cell allocated ~1.6 GB for a 10000x10000
+        // raster to then draw 500 points. The reservoir caps each class at
+        // num_points, and the reported total still reflects the true count.
+        let data = vec![1.0; 100 * 100];
+        let mut rng = Rng::new(1);
+        let (cand, _, kind) =
+            collect_candidates(&raster(100, 100, &data), None, 0, 5, &mut rng).unwrap();
+        assert_eq!(kind, "raster");
+        assert_eq!(cand.totals[&1], 10_000, "the true count must be preserved");
+        assert_eq!(cand.buckets[&1].len(), 5, "the pool must stay at the cap");
+    }
+
+    #[test]
+    fn an_unreadable_input_reports_both_failures() {
+        // Falling through to the vector branch pointed a user with a corrupt
+        // raster at "failed reading input vector", which is the wrong problem.
+        let args: ToolArgs =
+            serde_json::from_value(json!({"input": "/nonexistent/file.tif"})).unwrap();
+        let err = CreateAccuracyAssessmentPointsTool
+            .run(&args, &ctx())
+            .unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("as a raster"), "{msg}");
+        assert!(msg.contains("as a vector"), "{msg}");
     }
 
     #[test]

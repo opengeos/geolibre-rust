@@ -634,8 +634,7 @@ mod tests {
             .unwrap();
         let id = wbvector::memory_store::put_vector(l);
         let path = wbvector::memory_store::make_vector_memory_path(&id);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"zoom": 4, "extent": path})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"zoom": 4, "extent": path})).unwrap();
         let err = TileGridPolygonsTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("lon/lat range"), "{err}");
     }
@@ -646,8 +645,7 @@ mod tests {
         // then f64::max turns it into 0.0, so the tool would emit tile (0,0)
         // and report success on a grid the caller never asked for.
         for bad in ["nan,0,10,10", "0,0,inf,10", "-inf,-inf,inf,inf"] {
-            let args: ToolArgs =
-                serde_json::from_value(json!({"zoom": 2, "bbox": bad})).unwrap();
+            let args: ToolArgs = serde_json::from_value(json!({"zoom": 2, "bbox": bad})).unwrap();
             assert!(
                 TileGridPolygonsTool.validate(&args).is_err(),
                 "bbox '{bad}' should be refused"

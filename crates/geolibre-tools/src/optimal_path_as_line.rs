@@ -227,7 +227,7 @@ impl Tool for OptimalPathAsLineTool {
         };
 
         let mut unreachable = 0_u64;
-        let mut traced = 0_u64;
+        let mut zero_length = 0_u64;
         for (dest_id, d) in selected.iter().enumerate() {
             let cells = trace(d.idx, &backlink, rows, cols)?;
             let Some(cells) = cells else {
@@ -235,13 +235,14 @@ impl Tool for OptimalPathAsLineTool {
                 continue;
             };
             // A destination sitting on a source cell is a zero-length path, not
-            // an error, but it has no line geometry to emit.
+            // an error, but it has no line geometry to emit. Counted so a
+            // caller can reconcile destination_cells against the outputs.
             if cells.len() < 2 {
+                zero_length += 1;
                 continue;
             }
             let source = *cells.last().expect("non-empty trace");
             let coords: Vec<Coord> = cells.iter().map(|&c| cell_xy(c)).collect();
-            traced += 1;
             out.push(Feature {
                 fid: 0,
                 geometry: Some(Geometry::line_string(coords)),
@@ -265,8 +266,9 @@ impl Tool for OptimalPathAsLineTool {
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("path_count".to_string(), json!(path_count));
         outputs.insert("destination_cells".to_string(), json!(selected.len()));
-        outputs.insert("traced".to_string(), json!(traced));
         outputs.insert("unreachable".to_string(), json!(unreachable));
+        // destination_cells == path_count + unreachable + zero_length.
+        outputs.insert("zero_length".to_string(), json!(zero_length));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -304,8 +306,8 @@ fn trace(
         let code = code_at(cur);
         if code == backlink.nodata || !code.is_finite() {
             return Err(ToolError::Execution(format!(
-                "backlink raster has no-data at cell ({}, {}) mid-path; the accumulation and \
-                 backlink rasters do not agree",
+                "backlink raster has no-data at cell ({}, {}) on the interior of a path; a \
+                 reachable cell must carry a 0-8 direction all the way back to its source",
                 cur / cols,
                 cur % cols
             )));
@@ -636,6 +638,56 @@ mod tests {
             serde_json::from_value(json!({"destination": dest, "backlink": backlink})).unwrap();
         let err = OptimalPathAsLineTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("off the grid"), "got: {err}");
+    }
+
+    #[test]
+    fn a_vector_destination_maps_points_to_the_right_cells() {
+        // The vector branch holds the zone_field lookup and the point-to-cell
+        // mapping, which must agree with cell_xy. A sign error in the row
+        // formula would ship undetected — no test used it.
+        let mut l = wbvector::Layer::new("dest")
+            .with_geom_type(wbvector::GeometryType::Point)
+            .with_crs_epsg(3857);
+        l.add_field(wbvector::FieldDef::new(
+            "zone",
+            wbvector::FieldType::Integer,
+        ));
+        // 1x4 grid, unit cells at y in [0,1): cell centres are x = 0.5..3.5.
+        l.add_feature(Some(Geometry::point(3.5, 0.5)), &[("zone", 42i64.into())])
+            .unwrap();
+        let id = wbvector::memory_store::put_vector(l);
+        let path = wbvector::memory_store::make_vector_memory_path(&id);
+
+        let (layer, res) = run(json!({
+            "destination": path, "backlink": west_backlink(), "zone_field": "zone",
+        }));
+        assert_eq!(res.outputs["path_count"], json!(1));
+        let Some(Geometry::LineString(coords)) = layer.features[0].geometry.as_ref() else {
+            panic!("expected a LineString")
+        };
+        // The point sits in the easternmost cell, so the trace starts there.
+        assert!(
+            (coords[0].x - 3.5).abs() < 1e-9,
+            "started at {}",
+            coords[0].x
+        );
+        assert!((coords[coords.len() - 1].x - 0.5).abs() < 1e-9);
+        let zi = layer.schema.field_index("Zone").unwrap();
+        assert_eq!(layer.features[0].attributes[zi], FieldValue::Integer(42));
+    }
+
+    #[test]
+    fn a_destination_on_a_source_is_reported_as_zero_length() {
+        let dest = raster(1, 4, &[1.0, 0.0, 0.0, 1.0]);
+        let (_, res) = run(json!({"destination": dest, "backlink": west_backlink()}));
+        assert_eq!(res.outputs["path_count"], json!(1));
+        assert_eq!(res.outputs["zero_length"], json!(1));
+        // The counts must reconcile against destination_cells.
+        let d = res.outputs["destination_cells"].as_u64().unwrap();
+        let p = res.outputs["path_count"].as_u64().unwrap();
+        let u = res.outputs["unreachable"].as_u64().unwrap();
+        let z = res.outputs["zero_length"].as_u64().unwrap();
+        assert_eq!(d, p + u + z);
     }
 
     #[test]

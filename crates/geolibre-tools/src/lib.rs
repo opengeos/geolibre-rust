@@ -881,7 +881,8 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", raster_out()),
         ]),
         "subset_multidimensional_raster" => schemas(&[
-            ("input", raster_in()),
+            // Cube inputs are comma-separated paths whose bands concatenate.
+            ("input", ToolParamSchema::input_multiple(ToolDatasetSchema::Raster)),
             ("dimension_values", ToolParamSchema::string()),
             ("dimension", ToolParamSchema::string()),
             ("dimension_range", ToolParamSchema::string()),

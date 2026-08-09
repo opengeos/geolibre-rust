@@ -427,7 +427,12 @@ impl Tool for ContiguousCartogramTool {
         let mut cursor = 0_usize;
         for f in layer.iter() {
             let geom = match f.geometry.as_ref() {
-                Some(g) => Some(rebuild_geometry(g, &pts, &mut cursor, densify_spacing * cell)?),
+                Some(g) => Some(rebuild_geometry(
+                    g,
+                    &pts,
+                    &mut cursor,
+                    densify_spacing * cell,
+                )?),
                 None => None,
             };
             // Match the predicate `total_value` used exactly: a feature is
@@ -1028,11 +1033,36 @@ mod tests {
 
         let ring = |x0: f64, y0: f64, x1: f64, y1: f64| {
             Ring(vec![
-                Coord { x: x0, y: y0, z: None, m: None },
-                Coord { x: x1, y: y0, z: None, m: None },
-                Coord { x: x1, y: y1, z: None, m: None },
-                Coord { x: x0, y: y1, z: None, m: None },
-                Coord { x: x0, y: y0, z: None, m: None },
+                Coord {
+                    x: x0,
+                    y: y0,
+                    z: None,
+                    m: None,
+                },
+                Coord {
+                    x: x1,
+                    y: y0,
+                    z: None,
+                    m: None,
+                },
+                Coord {
+                    x: x1,
+                    y: y1,
+                    z: None,
+                    m: None,
+                },
+                Coord {
+                    x: x0,
+                    y: y1,
+                    z: None,
+                    m: None,
+                },
+                Coord {
+                    x: x0,
+                    y: y0,
+                    z: None,
+                    m: None,
+                },
             ])
         };
         // A square with a hole.

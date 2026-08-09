@@ -280,6 +280,16 @@ fn thin_by_spacing(pts: &[Pt], min_distance: f64) -> Result<Vec<usize>, ToolErro
     // so a boundary pair is not split by one ulp of rounding.
     let cutoff = r2 * (1.0 - 1e-9);
     for p in pts {
+        // A pinned point is retained unconditionally, including against another
+        // pinned point. The module doc promises they "are never displaced", and
+        // applying the spacing test between two flagged hazards would drop one
+        // of them — for the bathymetry case that is a lost shoal sounding.
+        if p.pinned {
+            tree.add([p.x, p.y], p.fid)
+                .map_err(|e| ToolError::Execution(format!("kd-tree insert failed: {e:?}")))?;
+            kept.push(p.fid);
+            continue;
+        }
         let neighbours = tree
             .within(&[p.x, p.y], r2, &squared_euclidean)
             .map_err(|e| ToolError::Execution(format!("kd-tree query failed: {e:?}")))?;
@@ -299,14 +309,21 @@ fn thin_by_spacing(pts: &[Pt], min_distance: f64) -> Result<Vec<usize>, ToolErro
 /// is the winner and later ones in that cell are dropped.
 fn thin_by_bin(pts: &[Pt], bin_size: f64) -> Vec<usize> {
     let mut seen: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+    let mut kept: Vec<usize> = Vec::new();
     for p in pts {
+        // Pinned points bypass the one-per-cell rule entirely, for the same
+        // reason as in thin_by_spacing: two hazards can share a cell.
+        if p.pinned {
+            kept.push(p.fid);
+            continue;
+        }
         let key = (
             (p.x / bin_size).floor() as i64,
             (p.y / bin_size).floor() as i64,
         );
         seen.entry(key).or_insert(p.fid);
     }
-    let mut kept: Vec<usize> = seen.into_values().collect();
+    kept.extend(seen.into_values());
     kept.sort_unstable();
     kept
 }
@@ -506,6 +523,28 @@ mod tests {
             "sort_field": "depth", "keep_field": "shoal",
         }));
         assert_eq!(xs(&kept), vec![0.45], "the pinned hazard must be retained");
+    }
+
+    #[test]
+    fn two_pinned_hazards_closer_than_the_spacing_both_survive() {
+        // The module doc promises pinned points are never displaced. Applying
+        // the spacing test between two of them drops a shoal sounding.
+        let mut l = Layer::new("p").with_geom_type(GeometryType::Point);
+        l.add_field(FieldDef::new("shoal", FieldType::Integer));
+        for x in [0.0, 0.1] {
+            l.add_feature(Some(Geometry::point(x, 0.0)), &[("shoal", 1i64.into())])
+                .unwrap();
+        }
+        let path = store(l);
+        let (kept, _, _) = run(json!({
+            "input": path.clone(), "min_distance": 5.0, "keep_field": "shoal",
+        }));
+        assert_eq!(xs(&kept).len(), 2, "both pinned hazards must be retained");
+
+        let (kept, _, _) = run(json!({
+            "input": path, "method": "bin", "bin_size": 5.0, "keep_field": "shoal",
+        }));
+        assert_eq!(xs(&kept).len(), 2, "bin mode must pin them too");
     }
 
     #[test]

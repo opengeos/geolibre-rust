@@ -417,7 +417,9 @@ fn nearest(
     // Partition rather than sort: only the k nearest matter, and their order
     // among themselves does not affect the kriging system. The index tie-break
     // keeps the selection deterministic for equidistant samples.
-    scratch.select_nth_unstable_by(k - 1, |a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    scratch.select_nth_unstable_by(k - 1, |a, b| {
+        a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1))
+    });
     scratch.truncate(k);
     for &(_, i) in scratch.iter() {
         out_coords.push(coords[i]);

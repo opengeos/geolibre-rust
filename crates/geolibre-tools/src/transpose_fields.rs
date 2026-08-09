@@ -41,6 +41,10 @@ use wbvector::{Feature, FieldDef, FieldType, FieldValue, Layer};
 use crate::args_common::bool_or;
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
 
+/// Ceiling on emitted rows. Every row carries a geometry clone, so the output
+/// is resident in full before the writer runs.
+const MAX_OUTPUT_ROWS: u64 = 20_000_000;
+
 pub struct TransposeFieldsTool;
 
 impl Tool for TransposeFieldsTool {
@@ -138,6 +142,19 @@ impl Tool for TransposeFieldsTool {
 
         let layer = load_input_layer(input)?;
 
+        // features x columns rows, each cloning the geometry. A 100-column
+        // table over 100k polygons is 10M features held in memory before the
+        // writer runs, so fail with a clear message rather than exhausting it.
+        let projected = (layer.features.len() as u64).saturating_mul(fields.len() as u64);
+        if projected > MAX_OUTPUT_ROWS {
+            return Err(ToolError::Validation(format!(
+                "this would emit {projected} rows ({} feature(s) x {} column(s)), over the \
+                 {MAX_OUTPUT_ROWS}-row limit; transpose fewer columns or split the input",
+                layer.features.len(),
+                fields.len()
+            )));
+        }
+
         // Resolve the transposed columns up front so a typo fails before any
         // work rather than producing a silently empty column.
         let mut t_idx = Vec::with_capacity(fields.len());
@@ -177,12 +194,28 @@ impl Tool for TransposeFieldsTool {
         // misalign the output: wbvector keeps the first schema entry for a
         // duplicated name, so the second FieldDef is dropped while attributes
         // are still written positionally.
-        for appended in [&field_name, &value_name, &"SRC_FID".to_string()] {
-            if retain.iter().any(|(n, _, _)| n == appended) {
+        let src_fid = "SRC_FID".to_string();
+        let appended = [&field_name, &value_name, &src_fid];
+        for name in appended {
+            if retain.iter().any(|(n, _, _)| n == name) {
                 return Err(ToolError::Validation(format!(
-                    "the retained fields already include '{appended}', which this tool appends; \
+                    "the retained fields already include '{name}', which this tool appends; \
                      rename it or narrow 'retain_fields'"
                 )));
+            }
+        }
+        // The appended names must also be distinct from EACH OTHER. Setting
+        // value_field == transposed_field, or either to SRC_FID, calls
+        // add_field twice with one name; wbvector keeps the first entry, so
+        // every attribute after the duplicate is read from the wrong column.
+        for (i, a) in appended.iter().enumerate() {
+            for b in appended.iter().skip(i + 1) {
+                if a == b {
+                    return Err(ToolError::Validation(format!(
+                        "'{a}' is used for more than one output column; 'value_field', \
+                         'transposed_field' and the SRC_FID column must all differ"
+                    )));
+                }
             }
         }
 
@@ -620,6 +653,28 @@ mod tests {
             serde_json::from_value(json!({"input": path, "transpose_fields": "a"})).unwrap();
         let err = TransposeFieldsTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("VALUE"), "{err}");
+    }
+
+    #[test]
+    fn appended_columns_colliding_with_each_other_are_rejected() {
+        // add_field would be called twice with one name; wbvector keeps the
+        // first entry, so every later attribute reads from the wrong column.
+        let bad = |v: Value| {
+            let args: ToolArgs = serde_json::from_value(v).unwrap();
+            TransposeFieldsTool.run(&args, &ctx()).is_err()
+        };
+        assert!(bad(json!({
+            "input": wide(), "transpose_fields": "POP_2000,POP_2010",
+            "value_field": "V", "transposed_field": "V",
+        })));
+        assert!(bad(json!({
+            "input": wide(), "transpose_fields": "POP_2000,POP_2010",
+            "value_field": "SRC_FID",
+        })));
+        assert!(bad(json!({
+            "input": wide(), "transpose_fields": "POP_2000,POP_2010",
+            "transposed_field": "SRC_FID",
+        })));
     }
 
     #[test]

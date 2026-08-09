@@ -398,8 +398,12 @@ fn write_geometry(
             exterior,
             interiors,
         } => {
-            write_polygon(w, exterior, interiors, style, z)?;
-            counts.polygons += 1;
+            if ring_is_writable(exterior) {
+                write_polygon(w, exterior, interiors, style, z)?;
+                counts.polygons += 1;
+            } else {
+                counts.skipped += 1;
+            }
         }
         // Multi-part geometries become a <MultiGeometry> of their parts.
         Geometry::MultiPoint(ps) => {
@@ -419,8 +423,12 @@ fn write_geometry(
         Geometry::MultiPolygon(polys) => {
             w.write_event(Event::Start(BytesStart::new("MultiGeometry")))?;
             for (ext, holes) in polys {
-                write_polygon(w, ext, holes, style, z)?;
-                counts.polygons += 1;
+                if ring_is_writable(ext) {
+                    write_polygon(w, ext, holes, style, z)?;
+                    counts.polygons += 1;
+                } else {
+                    counts.skipped += 1;
+                }
             }
             w.write_event(Event::End(BytesEnd::new("MultiGeometry")))?;
         }
@@ -433,6 +441,13 @@ fn write_geometry(
         }
     }
     Ok(())
+}
+
+/// KML requires a LinearRing to hold at least four coordinate tuples (three
+/// distinct vertices plus the closing repeat). Anything shorter produces a
+/// document strict validators reject.
+fn ring_is_writable(ring: &Ring) -> bool {
+    ring.0.len() >= 3
 }
 
 fn write_polygon(
@@ -455,7 +470,7 @@ fn write_polygon(
     w.write_event(Event::End(BytesEnd::new("LinearRing")))?;
     w.write_event(Event::End(BytesEnd::new("outerBoundaryIs")))?;
 
-    for hole in interiors {
+    for hole in interiors.iter().filter(|r| ring_is_writable(r)) {
         w.write_event(Event::Start(BytesStart::new("innerBoundaryIs")))?;
         w.write_event(Event::Start(BytesStart::new("LinearRing")))?;
         text_el(w, "coordinates", &coord_str(&oriented(&hole.0, false), z))?;
@@ -564,7 +579,9 @@ fn field_as_f64(v: &FieldValue) -> Option<f64> {
     match v {
         FieldValue::Integer(i) => Some(*i as f64),
         FieldValue::Float(f) if f.is_finite() => Some(*f),
-        FieldValue::Text(s) => s.trim().parse::<f64>().ok(),
+        // "NaN" and "inf" both parse successfully; fmt_num would then emit
+        // them as the third coordinate and KML readers reject the tuple.
+        FieldValue::Text(s) => s.trim().parse::<f64>().ok().filter(|v| v.is_finite()),
         _ => None,
     }
 }
@@ -769,6 +786,28 @@ mod tests {
         let (text, _) = run(json!({"input": store(l), "output": out}));
         assert!(text.contains("<outerBoundaryIs>"));
         assert!(text.contains("<innerBoundaryIs>"));
+    }
+
+    #[test]
+    fn a_degenerate_ring_is_skipped_rather_than_emitting_invalid_kml() {
+        // KML requires a LinearRing to carry at least four coordinate tuples;
+        // a two-vertex ring produces a document strict validators reject.
+        let mut l = Layer::new("p")
+            .with_geom_type(GeometryType::Polygon)
+            .with_crs_epsg(4326);
+        l.add_feature(
+            Some(Geometry::polygon(
+                vec![Coord::xy(0.0, 0.0), Coord::xy(1.0, 1.0)],
+                Vec::new(),
+            )),
+            &[],
+        )
+        .unwrap();
+        let out = tmp("degen", "kml");
+        let (text, res) = run(json!({"input": store(l), "output": out}));
+        assert_eq!(res.outputs["polygon_count"], json!(0));
+        assert_eq!(res.outputs["skipped_count"], json!(1));
+        assert!(!text.contains("<LinearRing>"), "got: {text}");
     }
 
     #[test]

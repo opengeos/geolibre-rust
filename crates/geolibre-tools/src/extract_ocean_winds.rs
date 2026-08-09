@@ -84,6 +84,11 @@ const POLARIZATIONS: [&str; 2] = ["vv", "hh"];
 /// GMF flattens below roughly 0.5 m/s.
 const MIN_WIND: f64 = 0.2;
 
+/// Upper limit accepted for `max_wind`. It sets the per-cell scan length, and
+/// no real retrieval goes near it (the strongest recorded surface winds are
+/// about 30 m/s below it).
+const MAX_WIND_CEILING: f64 = 100.0;
+
 pub struct ExtractOceanWindsTool;
 
 impl Tool for ExtractOceanWindsTool {
@@ -161,11 +166,22 @@ impl Tool for ExtractOceanWindsTool {
         if let Some(u) = args.get("units").and_then(Value::as_str) {
             SarUnits::parse(u)?;
         }
+        match args.get("water_mask") {
+            None | Some(Value::Null) | Some(Value::String(_)) => {}
+            Some(other) => {
+                return Err(ToolError::Validation(format!(
+                    "'water_mask' must be a raster or vector path; got {other}"
+                )))
+            }
+        }
         choice_or(args, "polarization", &POLARIZATIONS, "vv")?;
         if let Some(m) = opt_positive_f64(args, "max_wind")? {
-            if m <= MIN_WIND {
+            // The scan length is (max_wind - MIN_WIND) / SCAN_STEP evaluations
+            // PER CELL, so an unbounded value does not fail — it stops
+            // responding. 100 m/s is above any real retrieval.
+            if m <= MIN_WIND || m > MAX_WIND_CEILING {
                 return Err(ToolError::Validation(format!(
-                    "'max_wind' must exceed {MIN_WIND} m/s"
+                    "'max_wind' must be between {MIN_WIND} and {MAX_WIND_CEILING} m/s, got {m}"
                 )));
             }
         }
@@ -213,8 +229,12 @@ impl Tool for ExtractOceanWindsTool {
                         .collect()
                 }
                 Err(_) => {
+                    // The parameter is a WATER mask, so its polygons delineate
+                    // water and the cells to analyse are the ones inside them.
+                    // (MaskSide has no "inside" variant; passing one made this
+                    // whole branch fail at runtime.)
                     let layer = load_input_layer(spec)?;
-                    rasterize_mask(&sigma, &layer, MaskSide::parse("inside")?)
+                    rasterize_mask(&sigma, &layer, MaskSide::WaterPolygon)
                 }
             }),
         };
@@ -785,6 +805,43 @@ mod tests {
     }
 
     #[test]
+    fn a_polygon_water_mask_excludes_land_cells() {
+        // The vector branch takes a different path from the raster one: the
+        // raster load fails, a layer is loaded, and rasterize_mask builds the
+        // mask. Only the raster branch was covered.
+        let s0 = cmod5n_forward(10.0, 0.0, 35.0);
+        let db = 10.0 * s0.log10();
+        let mut l = wbvector::Layer::new("water")
+            .with_geom_type(wbvector::GeometryType::Polygon)
+            .with_crs_epsg(3857);
+        // Covers only the western half of a 1x2 grid (cells at x = 0.5, 1.5).
+        l.add_feature(
+            Some(wbvector::Geometry::polygon(
+                vec![
+                    wbvector::Coord::xy(0.0, 0.0),
+                    wbvector::Coord::xy(1.0, 0.0),
+                    wbvector::Coord::xy(1.0, 1.0),
+                    wbvector::Coord::xy(0.0, 1.0),
+                    wbvector::Coord::xy(0.0, 0.0),
+                ],
+                Vec::new(),
+            )),
+            &[],
+        )
+        .unwrap();
+        let id = wbvector::memory_store::put_vector(l);
+        let mask = wbvector::memory_store::make_vector_memory_path(&id);
+        let (out, res) = run(json!({
+            "input": raster(1, 2, &[db, db]), "units": "db",
+            "incidence_angle": 35.0, "wind_direction": 0.0, "look_direction": 0.0,
+            "water_mask": mask,
+        }));
+        assert_eq!(res.outputs["masked_cells"], json!(1));
+        assert_eq!(res.outputs["valid_cells"], json!(1));
+        assert_eq!(out.get(0, 0, 1), out.nodata, "the land cell must be masked");
+    }
+
+    #[test]
     fn nodata_cells_stay_nodata() {
         let (out, res) = run(json!({
             "input": raster(1, 2, &[-9999.0, -20.0]), "units": "db",
@@ -871,5 +928,10 @@ mod tests {
         assert!(bad(with("polarization", json!("hv"))));
         assert!(bad(with("max_wind", json!(0.1))));
         assert!(bad(with("max_wind", json!(-5))));
+        // Unbounded above, the per-cell scan would run ~2e9 evaluations and
+        // the tool would stop responding rather than fail.
+        assert!(bad(with("max_wind", json!(1e9))));
+        // A non-string water_mask must not be silently dropped.
+        assert!(bad(with("water_mask", json!(1))));
     }
 }

@@ -109,6 +109,7 @@ impl Tool for CalculateEndTimeTool {
                 "missing required string parameter 'start_field'".to_string(),
             ));
         }
+        parse_list(args, "id_fields")?;
         let last = choice_or(args, "last_record", &LAST_RECORD, "null")?;
         let dur = opt_f64(args, "default_duration")?;
         if last == "duration" {
@@ -138,7 +139,7 @@ impl Tool for CalculateEndTimeTool {
         let end_name = parse_optional_str(args, "end_field")?
             .unwrap_or("END_TIME")
             .to_string();
-        let id_fields = parse_list(args, "id_fields");
+        let id_fields = parse_list(args, "id_fields")?;
         let last_record = choice_or(args, "last_record", &LAST_RECORD, "null")?;
         let default_duration = opt_f64(args, "default_duration")?.unwrap_or(0.0);
         let output = parse_optional_str(args, "output")?;
@@ -160,9 +161,18 @@ impl Tool for CalculateEndTimeTool {
         // a text timestamp column gets an ISO-8601 string, a numeric one gets a
         // number. Writing an epoch integer into a column of ISO strings would
         // make the layer self-inconsistent.
-        let start_type = layer.schema.fields()[start_idx].field_type;
+        // When the end column already exists, ITS declared type decides how the
+        // value is written; only a freshly created column follows the start
+        // field. Writing a Float into a Text column (or the reverse) produces a
+        // layer whose values disagree with its own schema, which the shapefile
+        // and GeoParquet writers both expect to be consistent.
+        let type_source = layer
+            .schema
+            .field_index(&end_name)
+            .map(|i| layer.schema.fields()[i].field_type)
+            .unwrap_or_else(|| layer.schema.fields()[start_idx].field_type);
         let textual = matches!(
-            start_type,
+            type_source,
             FieldType::Text | FieldType::Date | FieldType::DateTime
         );
 
@@ -177,26 +187,30 @@ impl Tool for CalculateEndTimeTool {
             );
         }
 
-        // Group key per row, from the id fields.
-        let key_of = |i: usize| -> String {
-            id_idx
-                .iter()
-                .map(|&k| {
-                    layer.features[i]
-                        .attributes
-                        .get(k)
-                        .map(key_string)
-                        .unwrap_or_default()
-                })
-                .collect::<Vec<_>>()
-                .join("\u{1}")
-        };
+        // Group key per row, materialized once. Building it inside the
+        // comparator would allocate a String on every comparison, so sorting
+        // alone would cost O(n log n) allocations.
+        let keys: Vec<String> = (0..n)
+            .map(|i| {
+                id_idx
+                    .iter()
+                    .map(|&k| {
+                        layer.features[i]
+                            .attributes
+                            .get(k)
+                            .map(key_string)
+                            .unwrap_or_default()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\u{1}")
+            })
+            .collect();
 
         // Sort INDICES, not features: the output must keep input row order.
         let mut order: Vec<usize> = (0..n).filter(|&i| starts[i].is_some()).collect();
         order.sort_by(|&a, &b| {
-            key_of(a)
-                .cmp(&key_of(b))
+            keys[a]
+                .cmp(&keys[b])
                 .then_with(|| starts[a].unwrap().total_cmp(&starts[b].unwrap()))
                 .then_with(|| a.cmp(&b))
         });
@@ -205,9 +219,9 @@ impl Tool for CalculateEndTimeTool {
         let mut groups = 0_u64;
         let mut i = 0;
         while i < order.len() {
-            let key = key_of(order[i]);
+            let key = &keys[order[i]];
             let mut j = i;
-            while j < order.len() && key_of(order[j]) == key {
+            while j < order.len() && &keys[order[j]] == key {
                 j += 1;
             }
             groups += 1;
@@ -329,17 +343,32 @@ fn key_string(v: &FieldValue) -> String {
     }
 }
 
-fn parse_list(args: &ToolArgs, key: &str) -> Vec<String> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(|s| {
-            s.split([',', ';'])
-                .map(str::trim)
-                .filter(|p| !p.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
+/// Accepts a delimited string or a JSON array, matching `transpose_fields`.
+///
+/// Reading only strings meant `["id"]` yielded an empty list, every row landed
+/// in one group, and end times were filled straight across entity boundaries —
+/// the exact failure the module doc warns about, with no error to the caller.
+fn parse_list(args: &ToolArgs, key: &str) -> Result<Vec<String>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::String(s)) => Ok(s
+            .split([',', ';'])
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_str().map(str::to_string).ok_or_else(|| {
+                    ToolError::Validation(format!("every entry of '{key}' must be a string"))
+                })
+            })
+            .collect(),
+        Some(other) => Err(ToolError::Validation(format!(
+            "'{key}' must be a delimited string or an array of strings; got {other}"
+        ))),
+    }
 }
 
 #[cfg(test)]

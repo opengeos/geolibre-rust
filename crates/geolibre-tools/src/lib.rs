@@ -144,6 +144,7 @@ mod matched_filter_target_detection;
 mod maximum_likelihood_classification;
 mod median_center;
 mod merge_divided_roads;
+mod merge_multidimensional_rasters;
 mod mgwr;
 mod minimum_bounding_volume;
 mod multicriteria_overlay;
@@ -204,6 +205,7 @@ mod stack_profile;
 mod storage_capacity;
 mod subdivide_polygon;
 mod subset_features;
+mod subset_multidimensional_raster;
 mod summarize_nearby;
 mod summarize_categorical_raster;
 mod summarize_percent_change;
@@ -393,6 +395,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(transpose_fields::TransposeFieldsTool),
         Box::new(features_to_kml::FeaturesToKmlTool),
         Box::new(tile_grid_polygons::TileGridPolygonsTool),
+        Box::new(subset_multidimensional_raster::SubsetMultidimensionalRasterTool),
+        Box::new(merge_multidimensional_rasters::MergeMultidimensionalRastersTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -768,6 +772,23 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "merge_multidimensional_rasters" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("dimension_values", ToolParamSchema::string()),
+            ("dimension", ToolParamSchema::string()),
+            ("resolve_overlap", ToolParamSchema::enum_values(&["first", "last", "mean", "min", "max", "error"])),
+            ("tolerance", float()),
+            ("output", raster_out()),
+        ]),
+        "subset_multidimensional_raster" => schemas(&[
+            ("input", raster_in()),
+            ("dimension_values", ToolParamSchema::string()),
+            ("dimension", ToolParamSchema::string()),
+            ("dimension_range", ToolParamSchema::string()),
+            ("indices", ToolParamSchema::string()),
+            ("step", int()),
+            ("output", raster_out()),
         ]),
         "tile_grid_polygons" => schemas(&[
             ("zoom", int()),

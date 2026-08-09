@@ -154,76 +154,26 @@ impl Tool for SarCoherenceTool {
         ));
 
         let out_nodata = -1.0_f64;
-        let mut coh = vec![out_nodata; rows * cols];
-        // NaN, not the coherence sentinel: -1.0 rad is a legitimate wrapped
-        // phase in (-pi, pi], so reusing -1.0 here would mislabel a real value
-        // as unset.
-        let mut phase = vec![f64::NAN; rows * cols];
-        let mut valid = 0_u64;
-        let mut coh_sum = 0.0_f64;
-
-        let half_r = (win_r / 2) as isize;
-        let half_a = (win_a / 2) as isize;
-
-        for row in 0..rows {
-            for col in 0..cols {
-                // Accumulate the complex cross-product and both intensities.
-                let (mut cr, mut ci) = (0.0_f64, 0.0_f64);
-                let (mut p_ref, mut p_sec) = (0.0_f64, 0.0_f64);
-                let mut n = 0_usize;
-                let mut poisoned = false;
-
-                for dr in -half_a..=half_a {
-                    let r = row as isize + dr;
-                    if r < 0 || r >= rows as isize {
-                        continue;
-                    }
-                    for dc in -half_r..=half_r {
-                        let c = col as isize + dc;
-                        if c < 0 || c >= cols as isize {
-                            continue;
-                        }
-                        let k = r as usize * cols + c as usize;
-                        let (a_i, a_q) = (ri[k], rq[k]);
-                        let (b_i, b_q) = (si[k], sq[k]);
-                        if !a_i.is_finite()
-                            || !a_q.is_finite()
-                            || !b_i.is_finite()
-                            || !b_q.is_finite()
-                        {
-                            poisoned = true;
-                            continue;
-                        }
-                        // reference * conj(secondary)
-                        cr += a_i * b_i + a_q * b_q;
-                        ci += a_q * b_i - a_i * b_q;
-                        p_ref += a_i * a_i + a_q * a_q;
-                        p_sec += b_i * b_i + b_q * b_q;
-                        n += 1;
-                    }
-                }
-
-                if n == 0 || poisoned {
-                    continue;
-                }
-                let denom = (p_ref * p_sec).sqrt();
-                if denom <= 0.0 {
-                    continue;
-                }
-                // Magnitude of the complex sum — NOT the sum of magnitudes.
-                let mut gamma = (cr * cr + ci * ci).sqrt() / denom;
-                if bias_correction {
-                    gamma = correct_bias(gamma, n);
-                }
-                let gamma = gamma.clamp(0.0, 1.0);
-                coh[row * cols + col] = gamma;
-                phase[row * cols + col] = ci.atan2(cr);
-                valid += 1;
-                coh_sum += gamma;
-            }
-            ctx.progress
-                .progress((row as f64 + 1.0) / rows.max(1) as f64);
-        }
+        let est = estimate_coherence(
+            &ri,
+            &rq,
+            &si,
+            &sq,
+            rows,
+            cols,
+            win_r,
+            win_a,
+            bias_correction,
+        );
+        ctx.progress.progress(1.0);
+        let (valid, coh_sum) = (est.valid, est.sum);
+        // NaN marks "not estimated"; the raster wants the -1.0 sentinel.
+        let coh: Vec<f64> = est
+            .coherence
+            .iter()
+            .map(|v| if v.is_nan() { out_nodata } else { *v })
+            .collect();
+        let phase = est.phase;
 
         let coh_raster = raster_like_with_data(&reference, coh, out_nodata, DataType::F32)?;
         let out_path = write_or_store_output(coh_raster, output)?;
@@ -262,7 +212,7 @@ impl Tool for SarCoherenceTool {
 }
 
 /// Reads bands 1 and 2 as I and Q, mapping no-data to NaN.
-fn complex_bands(r: &wbraster::Raster) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn complex_bands(r: &wbraster::Raster) -> (Vec<f64>, Vec<f64>) {
     let rows = r.rows;
     let cols = r.cols;
     let nd = r.nodata;
@@ -279,6 +229,106 @@ fn complex_bands(r: &wbraster::Raster) -> (Vec<f64>, Vec<f64>) {
         }
     }
     (i, q)
+}
+
+/// Per-cell coherence and interferometric phase over a moving window.
+///
+/// Factored out of `run` so `multitemporal_coherence` estimates every pair with
+/// the *same* code rather than a copy. The correctness trap lives here: the
+/// numerator is the **magnitude of the complex sum**, not the sum of
+/// magnitudes — averaging magnitudes discards the phase alignment that
+/// coherence measures and reports a decorrelated pair as fully coherent.
+///
+/// Cells that could not be estimated are `NaN` in both outputs; callers map
+/// that onto whatever no-data sentinel their raster uses.
+pub(crate) struct CoherenceEstimate {
+    pub(crate) coherence: Vec<f64>,
+    pub(crate) phase: Vec<f64>,
+    pub(crate) valid: u64,
+    pub(crate) sum: f64,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn estimate_coherence(
+    ri: &[f64],
+    rq: &[f64],
+    si: &[f64],
+    sq: &[f64],
+    rows: usize,
+    cols: usize,
+    win_r: usize,
+    win_a: usize,
+    bias_correction: bool,
+) -> CoherenceEstimate {
+    let mut coherence = vec![f64::NAN; rows * cols];
+    let mut phase = vec![f64::NAN; rows * cols];
+    let mut valid = 0_u64;
+    let mut sum = 0.0_f64;
+
+    let half_r = (win_r / 2) as isize;
+    let half_a = (win_a / 2) as isize;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            // Accumulate the complex cross-product and both intensities.
+            let (mut cr, mut ci) = (0.0_f64, 0.0_f64);
+            let (mut p_ref, mut p_sec) = (0.0_f64, 0.0_f64);
+            let mut n = 0_usize;
+            let mut poisoned = false;
+
+            for dr in -half_a..=half_a {
+                let r = row as isize + dr;
+                if r < 0 || r >= rows as isize {
+                    continue;
+                }
+                for dc in -half_r..=half_r {
+                    let c = col as isize + dc;
+                    if c < 0 || c >= cols as isize {
+                        continue;
+                    }
+                    let k = r as usize * cols + c as usize;
+                    let (a_i, a_q) = (ri[k], rq[k]);
+                    let (b_i, b_q) = (si[k], sq[k]);
+                    if !a_i.is_finite() || !a_q.is_finite() || !b_i.is_finite() || !b_q.is_finite()
+                    {
+                        poisoned = true;
+                        continue;
+                    }
+                    // reference * conj(secondary)
+                    cr += a_i * b_i + a_q * b_q;
+                    ci += a_q * b_i - a_i * b_q;
+                    p_ref += a_i * a_i + a_q * a_q;
+                    p_sec += b_i * b_i + b_q * b_q;
+                    n += 1;
+                }
+            }
+
+            if n == 0 || poisoned {
+                continue;
+            }
+            let denom = (p_ref * p_sec).sqrt();
+            if denom <= 0.0 {
+                continue;
+            }
+            // Magnitude of the complex sum — NOT the sum of magnitudes.
+            let mut gamma = (cr * cr + ci * ci).sqrt() / denom;
+            if bias_correction {
+                gamma = correct_bias(gamma, n);
+            }
+            let gamma = gamma.clamp(0.0, 1.0);
+            coherence[row * cols + col] = gamma;
+            phase[row * cols + col] = ci.atan2(cr);
+            valid += 1;
+            sum += gamma;
+        }
+    }
+
+    CoherenceEstimate {
+        coherence,
+        phase,
+        valid,
+        sum,
+    }
 }
 
 /// Removes the well-known upward bias of the coherence magnitude estimator at

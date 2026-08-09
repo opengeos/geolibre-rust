@@ -309,6 +309,7 @@ mod detect_incidents;
 mod dimension_reduction;
 mod dimensional_moving_statistics;
 mod disperse_markers;
+mod extract_ocean_winds;
 mod extract_scanned_features;
 mod extract_spectra_from_image;
 mod extract_water_sar;
@@ -333,6 +334,7 @@ mod merge_lines_by_pseudo_node;
 mod multidimensional_anomaly;
 mod multidimensional_principal_components;
 mod multidimensional_raster_correlation;
+mod multitemporal_coherence;
 mod multivariate_clustering;
 mod optimized_hot_spot_analysis;
 mod optimized_outlier_analysis;
@@ -403,6 +405,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(reduce_point_density::ReducePointDensityTool),
         Box::new(calculate_end_time::CalculateEndTimeTool),
         Box::new(extract_spectra_from_image::ExtractSpectraFromImageTool),
+        Box::new(multitemporal_coherence::MultitemporalCoherenceTool),
+        Box::new(extract_ocean_winds::ExtractOceanWindsTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -778,6 +782,29 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "extract_ocean_winds" => schemas(&[
+            ("input", raster_in()),
+            ("units", ToolParamSchema::enum_values(&["dn", "amplitude", "intensity", "db"])),
+            ("incidence_angle", ToolParamSchema::string()),
+            ("wind_direction", ToolParamSchema::string()),
+            ("look_direction", ToolParamSchema::string()),
+            ("polarization", ToolParamSchema::enum_values(&["vv", "hh"])),
+            ("polarization_ratio_alpha", float()),
+            ("water_mask", vector_in()),
+            ("max_wind", float()),
+            ("output", raster_out()),
+        ]),
+        "multitemporal_coherence" => schemas(&[
+            ("inputs", ToolParamSchema::string()),
+            ("dates", ToolParamSchema::string()),
+            ("pairs", ToolParamSchema::enum_values(&["consecutive", "all", "reference"])),
+            ("reference_index", int()),
+            ("window_size", ToolParamSchema::string()),
+            ("bias_correction", ToolParamSchema::bool()),
+            ("statistics", ToolParamSchema::string()),
+            ("output", raster_out()),
+            ("output_pairs", raster_out()),
         ]),
         "extract_spectra_from_image" => schemas(&[
             ("input", raster_in()),

@@ -212,6 +212,7 @@ mod mesh3d;
 mod multipatch_footprint;
 mod raster_stack;
 mod simplify_by_tangent_segments;
+mod sun_shadow_volume;
 mod surface_solid;
 mod union_3d;
 mod unwrap_phase;
@@ -367,6 +368,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(enclose_multipatch::EncloseMultipatchTool),
         Box::new(extrude_between::ExtrudeBetweenTool),
         Box::new(fence_diagram::FenceDiagramTool),
+        Box::new(sun_shadow_volume::SunShadowVolumeTool),
         Box::new(generate_network_swm::GenerateNetworkSwmTool),
         Box::new(intersect_3d::Intersect3dTool),
         Box::new(intervisibility::IntervisibilityTool),
@@ -802,6 +804,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("properties", ToolParamSchema::string()),
             ("noise_filtering", float()),
+        ]),
+        "sun_shadow_volume" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("datetime", ToolParamSchema::string()),
+            ("latitude", float()),
+            ("utc_offset", float()),
+            ("adjusted_for_dst", ToolParamSchema::bool()),
+            ("ground_elevation", float()),
+            ("max_length", float()),
         ]),
         "fence_diagram" => schemas(&[
             ("input", vector_in()),

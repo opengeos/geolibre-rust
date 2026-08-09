@@ -284,13 +284,17 @@ impl Tool for SolarRadiationTool {
 // ── Solar geometry ───────────────────────────────────────────────────────────
 
 /// Solar declination (radians) for a day of year.
-fn declination(day: i64) -> f64 {
+///
+/// Shared with sun_shadow_volume so both tools place the sun identically.
+pub(crate) fn declination(day: i64) -> f64 {
     0.409_28 * (2.0 * PI * (284.0 + day as f64) / 365.0).sin()
 }
 
 /// Sun altitude and azimuth (radians; azimuth from north, clockwise) at a solar
 /// hour, for a latitude and declination.
-fn sun_position(lat: f64, decl: f64, hour: f64) -> (f64, f64) {
+///
+/// Shared with sun_shadow_volume.
+pub(crate) fn sun_position(lat: f64, decl: f64, hour: f64) -> (f64, f64) {
     let h = (hour - 12.0) * 15.0 * PI / 180.0; // hour angle
     let sin_alt = lat.sin() * decl.sin() + lat.cos() * decl.cos() * h.cos();
     let alt = sin_alt.clamp(-1.0, 1.0).asin();

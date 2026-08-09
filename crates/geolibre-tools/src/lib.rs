@@ -10,6 +10,7 @@
 mod add_surface_information;
 mod adjust_3d_z;
 mod adjust_stream_to_raster;
+mod aggregate_multidimensional_raster;
 mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
@@ -48,6 +49,7 @@ mod create_overpass;
 mod create_underpass;
 mod create_routes;
 mod create_spatially_balanced_points;
+mod cube;
 mod cul_de_sac_masks;
 mod cut_fill;
 mod delineate_built_up_areas;
@@ -288,6 +290,7 @@ mod darcy_flow;
 mod detect_graphic_conflict;
 mod detect_incidents;
 mod dimension_reduction;
+mod dimensional_moving_statistics;
 mod disperse_markers;
 mod extract_scanned_features;
 mod extract_water_sar;
@@ -310,6 +313,8 @@ mod line_statistics;
 mod local_bivariate_relationships;
 mod merge_lines_by_pseudo_node;
 mod multidimensional_anomaly;
+mod multidimensional_principal_components;
+mod multidimensional_raster_correlation;
 mod multivariate_clustering;
 mod optimized_hot_spot_analysis;
 mod optimized_outlier_analysis;
@@ -375,6 +380,10 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_bright_ocean_objects::DetectBrightOceanObjectsTool),
         Box::new(detect_dark_ocean_areas::DetectDarkOceanAreasTool),
         Box::new(extract_water_sar::ExtractWaterSarTool),
+        Box::new(aggregate_multidimensional_raster::AggregateMultidimensionalRasterTool),
+        Box::new(dimensional_moving_statistics::DimensionalMovingStatisticsTool),
+        Box::new(multidimensional_raster_correlation::MultidimensionalRasterCorrelationTool),
+        Box::new(multidimensional_principal_components::MultidimensionalPrincipalComponentsTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -924,6 +933,116 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "multidimensional_raster_correlation" => schemas(&[
+            (
+                "input1",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            (
+                "input2",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            ("output_lag", raster_out()),
+            ("output_count", raster_out()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["pearson", "spearman", "kendall"]),
+            ),
+            ("lag", int()),
+            ("cross_correlation", ToolParamSchema::bool()),
+            ("max_lag", int()),
+            ("use_absolute", ToolParamSchema::bool()),
+            ("min_valid", int()),
+        ]),
+        "multidimensional_principal_components" => schemas(&[
+            (
+                "input",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            ("output_loadings", table_out()),
+            ("output_eigenvalues", table_out()),
+            (
+                "mode",
+                ToolParamSchema::enum_values(&["dimension_reduction", "spatial_reduction"]),
+            ),
+            ("dimension", ToolParamSchema::string()),
+            ("dimension_values", ToolParamSchema::string()),
+            ("number_of_pc", int()),
+            ("correlation", ToolParamSchema::bool()),
+        ]),
+        "aggregate_multidimensional_raster" => schemas(&[
+            (
+                "input",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            ("dimension", ToolParamSchema::string()),
+            ("dimension_values", ToolParamSchema::string()),
+            (
+                "aggregation_definition",
+                ToolParamSchema::enum_values(&[
+                    "all",
+                    "interval_value",
+                    "interval_count",
+                    "interval_ranges",
+                ]),
+            ),
+            ("interval_value", float()),
+            ("interval_count", int()),
+            ("interval_ranges", ToolParamSchema::string()),
+            (
+                "aggregation_method",
+                ToolParamSchema::enum_values(&[
+                    "mean",
+                    "majority",
+                    "maximum",
+                    "median",
+                    "minimum",
+                    "minority",
+                    "percentile",
+                    "range",
+                    "std",
+                    "sum",
+                    "variety",
+                ]),
+            ),
+            ("percentile_value", float()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+        ]),
+        "dimensional_moving_statistics" => schemas(&[
+            (
+                "input",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            ("dimension", ToolParamSchema::string()),
+            ("backward_window", int()),
+            ("forward_window", int()),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "mean",
+                    "circular_mean",
+                    "majority",
+                    "maximum",
+                    "median",
+                    "minimum",
+                    "minority",
+                    "percentile",
+                    "std",
+                    "sum",
+                ]),
+            ),
+            ("percentile_value", float()),
+            ("period", float()),
+            ("min_valid", int()),
+            (
+                "nodata_handling",
+                ToolParamSchema::enum_values(&["data", "nodata", "fill_nodata"]),
+            ),
         ]),
         "extract_water_sar" => schemas(&[
             ("input", raster_in()),

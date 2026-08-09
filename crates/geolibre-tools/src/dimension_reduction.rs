@@ -322,8 +322,11 @@ impl Tool for DimensionReductionTool {
 /// Solves the symmetric eigen-problem `S v = λ v` via cyclic Jacobi rotations.
 /// Returns `(eigenvalues, eigenvectors)` where `eigenvectors[row][col]` holds the
 /// `col`-th eigenvector (a column). No sorting is applied here.
+///
+/// `pub(crate)` because `multidimensional_principal_components` needs the same
+/// symmetric solver for its slice-space covariance.
 #[allow(clippy::needless_range_loop)] // Jacobi rotations index rows/cols directly
-fn jacobi_eigen(s: &[Vec<f64>]) -> (Vec<f64>, Vec<Vec<f64>>) {
+pub(crate) fn jacobi_eigen(s: &[Vec<f64>]) -> (Vec<f64>, Vec<Vec<f64>>) {
     let n = s.len();
     let mut a: Vec<Vec<f64>> = s.to_vec();
     let mut v = vec![vec![0.0f64; n]; n];

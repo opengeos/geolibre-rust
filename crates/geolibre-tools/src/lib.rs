@@ -40,12 +40,10 @@ mod colocation_analysis;
 mod combine;
 mod common;
 mod compare_spatial_weights;
-mod composite_bands;
 mod construct_sight_lines;
 mod coregister_rasters;
 mod corridor;
 mod count_overlapping_features;
-mod create_accuracy_assessment_points;
 mod create_cartographic_partitions;
 mod create_overpass;
 mod create_underpass;
@@ -155,7 +153,6 @@ mod optics_clustering;
 mod observer_points;
 mod optimal_corridor_connections;
 mod optimal_interpolation;
-mod optimal_path_as_line;
 mod path_distance;
 mod pmtiles;
 mod pivot_table;
@@ -215,7 +212,6 @@ mod time_series_clustering;
 mod time_series_smoothing;
 mod trace_proximity_events;
 mod transform_features;
-mod transpose_fields;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
@@ -385,10 +381,6 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(semivariogram_sensitivity::SemivariogramSensitivityTool),
         Box::new(spatially_constrained_multivariate_clustering::SpatiallyConstrainedMultivariateClusteringTool),
         Box::new(optimal_corridor_connections::OptimalCorridorConnectionsTool),
-        Box::new(optimal_path_as_line::OptimalPathAsLineTool),
-        Box::new(create_accuracy_assessment_points::CreateAccuracyAssessmentPointsTool),
-        Box::new(composite_bands::CompositeBandsTool),
-        Box::new(transpose_fields::TransposeFieldsTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -764,41 +756,6 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
-        ]),
-        "transpose_fields" => schemas(&[
-            ("input", vector_in()),
-            ("transpose_fields", ToolParamSchema::string()),
-            ("value_field", ToolParamSchema::string()),
-            ("transposed_field", ToolParamSchema::string()),
-            ("field_labels", ToolParamSchema::string()),
-            ("retain_fields", ToolParamSchema::string()),
-            ("drop_nulls", ToolParamSchema::bool()),
-            ("output", vector_out()),
-        ]),
-        "composite_bands" => schemas(&[
-            ("inputs", ToolParamSchema::string()),
-            ("band", int()),
-            ("nodata_policy", ToolParamSchema::enum_values(&["any", "all"])),
-            ("nodata", float()),
-            ("output", raster_out()),
-        ]),
-        "create_accuracy_assessment_points" => schemas(&[
-            ("input", raster_in()),
-            ("class_field", ToolParamSchema::string()),
-            ("num_points", int()),
-            ("sampling_strategy", ToolParamSchema::enum_values(&["stratified_random", "equalized_stratified", "random"])),
-            ("min_points_per_class", int()),
-            ("band", int()),
-            ("seed", int()),
-            ("output", vector_out()),
-        ]),
-        "optimal_path_as_line" => schemas(&[
-            ("destination", raster_in()),
-            ("backlink", raster_in()),
-            ("accumulation", raster_in()),
-            ("path_type", ToolParamSchema::enum_values(&["each_cell", "each_zone", "best_single"])),
-            ("zone_field", ToolParamSchema::string()),
-            ("output", vector_out()),
         ]),
         "optimal_corridor_connections" => schemas(&[
             ("input", vector_in()),

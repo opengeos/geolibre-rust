@@ -198,6 +198,7 @@ mod transform_features;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
+mod cost_back_link;
 mod difference_3d;
 mod enclose_multipatch;
 mod intersect_3d;
@@ -255,6 +256,7 @@ mod align_features;
 mod analyze_changes_ccdc;
 mod band_collection_statistics;
 mod calculate_polygon_main_angle;
+mod add_z_information;
 mod args_common;
 mod apply_radiometric_calibration;
 mod cell_position_statistics;
@@ -351,7 +353,9 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(minimum_bounding_volume::MinimumBoundingVolumeTool),
         Box::new(voxel_isosurface::VoxelIsosurfaceTool),
         Box::new(inside_3d::Inside3dTool),
+        Box::new(cost_back_link::CostBackLinkTool),
         Box::new(difference_3d::Difference3dTool),
+        Box::new(add_z_information::AddZInformationTool),
         Box::new(enclose_multipatch::EncloseMultipatchTool),
         Box::new(intersect_3d::Intersect3dTool),
         Box::new(intervisibility::IntervisibilityTool),
@@ -780,6 +784,12 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("group_field", ToolParamSchema::string()),
             ("simplify_tolerance", float()),
         ]),
+        "add_z_information" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("properties", ToolParamSchema::string()),
+            ("noise_filtering", float()),
+        ]),
         "enclose_multipatch" => schemas(&[
             ("input", vector_in()),
             ("output", vector_out()),
@@ -795,6 +805,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("observer_offset", float()),
             ("target_offset", float()),
             ("visible_only", ToolParamSchema::bool()),
+        ]),
+        "cost_back_link" => schemas(&[
+            // Dual-typed: a source raster or a point vector layer.
+            ("source", ToolParamSchema::string()),
+            ("cost", raster_in()),
+            ("surface", raster_in()),
+            ("output", raster_out()),
+            ("out_distance", raster_out()),
+            ("max_distance", float()),
         ]),
         "intersect_3d" => schemas(&[
             ("input", vector_in()),

@@ -421,14 +421,14 @@ fn point_xy(geom: &Geometry) -> Option<(f64, f64)> {
     }
 }
 
-fn parse_time_value(fv: &FieldValue) -> Option<f64> {
+pub(crate) fn parse_time_value(fv: &FieldValue) -> Option<f64> {
     if let Some(n) = fv.as_f64() {
         return Some(n);
     }
     fv.as_str().and_then(parse_iso8601_seconds)
 }
 
-fn parse_iso8601_seconds(s: &str) -> Option<f64> {
+pub(crate) fn parse_iso8601_seconds(s: &str) -> Option<f64> {
     let s = s.trim();
     if s.len() < 10 {
         return None;

@@ -24,6 +24,7 @@ mod build_balanced_zones;
 mod build_seamlines;
 mod calculate_adjacent_fields;
 mod calculate_distance_band;
+mod calculate_end_time;
 mod calculate_grid_convergence_angle;
 mod calculate_missing_z_values;
 mod calculate_motion_statistics;
@@ -173,6 +174,7 @@ mod reclassify_field;
 mod reconstruct_tracks;
 mod regions;
 mod regularize_adjacent_building_footprint;
+mod reduce_point_density;
 mod regularize_building_footprints;
 mod remove_overlap_multiple;
 mod render;
@@ -397,6 +399,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(tile_grid_polygons::TileGridPolygonsTool),
         Box::new(subset_multidimensional_raster::SubsetMultidimensionalRasterTool),
         Box::new(merge_multidimensional_rasters::MergeMultidimensionalRastersTool),
+        Box::new(reduce_point_density::ReducePointDensityTool),
+        Box::new(calculate_end_time::CalculateEndTimeTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -772,6 +776,26 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "calculate_end_time" => schemas(&[
+            ("input", vector_in()),
+            ("start_field", ToolParamSchema::string()),
+            ("end_field", ToolParamSchema::string()),
+            ("id_fields", ToolParamSchema::string()),
+            ("last_record", ToolParamSchema::enum_values(&["null", "same_as_start", "duration"])),
+            ("default_duration", float()),
+            ("output", vector_out()),
+        ]),
+        "reduce_point_density" => schemas(&[
+            ("input", vector_in()),
+            ("method", ToolParamSchema::enum_values(&["spacing", "bin"])),
+            ("min_distance", float()),
+            ("bin_size", float()),
+            ("sort_field", ToolParamSchema::string()),
+            ("sort_order", ToolParamSchema::enum_values(&["descending", "ascending"])),
+            ("keep_field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("output_removed", vector_out()),
         ]),
         "merge_multidimensional_rasters" => schemas(&[
             ("inputs", ToolParamSchema::string()),

@@ -231,6 +231,17 @@ pub(crate) fn complex_bands(r: &wbraster::Raster) -> (Vec<f64>, Vec<f64>) {
     (i, q)
 }
 
+/// The result of [`estimate_coherence`].
+///
+/// Cells that could not be estimated are `NaN` in both `coherence` and `phase`;
+/// callers map that onto whatever no-data sentinel their raster uses.
+pub(crate) struct CoherenceEstimate {
+    pub(crate) coherence: Vec<f64>,
+    pub(crate) phase: Vec<f64>,
+    pub(crate) valid: u64,
+    pub(crate) sum: f64,
+}
+
 /// Per-cell coherence and interferometric phase over a moving window.
 ///
 /// Factored out of `run` so `multitemporal_coherence` estimates every pair with
@@ -239,15 +250,13 @@ pub(crate) fn complex_bands(r: &wbraster::Raster) -> (Vec<f64>, Vec<f64>) {
 /// magnitudes — averaging magnitudes discards the phase alignment that
 /// coherence measures and reports a decorrelated pair as fully coherent.
 ///
-/// Cells that could not be estimated are `NaN` in both outputs; callers map
-/// that onto whatever no-data sentinel their raster uses.
-pub(crate) struct CoherenceEstimate {
-    pub(crate) coherence: Vec<f64>,
-    pub(crate) phase: Vec<f64>,
-    pub(crate) valid: u64,
-    pub(crate) sum: f64,
-}
-
+/// `ri`, `rq`, `si` and `sq` are row-major buffers of exactly `rows * cols`
+/// samples; invalid samples are `NaN`. Cells that could not be estimated are
+/// `NaN` in both outputs.
+///
+/// # Panics
+///
+/// Panics if any input buffer is shorter than `rows * cols`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn estimate_coherence(
     ri: &[f64],
@@ -260,8 +269,20 @@ pub(crate) fn estimate_coherence(
     win_a: usize,
     bias_correction: bool,
 ) -> CoherenceEstimate {
-    let mut coherence = vec![f64::NAN; rows * cols];
-    let mut phase = vec![f64::NAN; rows * cols];
+    // Four same-typed slices and nine positional arguments make a transposed
+    // call easy to write; without this the failure surfaces as an index panic
+    // in the inner loop rather than at the boundary.
+    let cells = rows * cols;
+    for (name, buf) in [("ri", ri), ("rq", rq), ("si", si), ("sq", sq)] {
+        assert!(
+            buf.len() >= cells,
+            "estimate_coherence: '{name}' holds {} samples but {rows}x{cols} needs {cells}",
+            buf.len()
+        );
+    }
+
+    let mut coherence = vec![f64::NAN; cells];
+    let mut phase = vec![f64::NAN; cells];
     let mut valid = 0_u64;
     let mut sum = 0.0_f64;
 

@@ -197,37 +197,40 @@ impl Tool for RegressionKrigingTool {
                 dropped_novalue += 1;
                 continue;
             };
-            let Some((x, y)) = point_xy(f.geometry.as_ref()) else {
+            let pts = point_xys(f.geometry.as_ref());
+            if pts.is_empty() {
                 dropped_novalue += 1;
                 continue;
-            };
-            let mut row = vec![1.0_f64];
-            let mut ok = true;
-            let mut inside = true;
-            for c in &covariates {
-                match sample(c, y_max, x, y, bilinear) {
-                    Some(Some(cv)) => row.push(cv),
-                    Some(None) => {
-                        ok = false;
-                        break;
-                    }
-                    None => {
-                        inside = false;
-                        break;
+            }
+            for (x, y) in pts {
+                let mut row = vec![1.0_f64];
+                let mut ok = true;
+                let mut inside = true;
+                for c in &covariates {
+                    match sample(c, y_max, x, y, bilinear) {
+                        Some(Some(cv)) => row.push(cv),
+                        Some(None) => {
+                            ok = false;
+                            break;
+                        }
+                        None => {
+                            inside = false;
+                            break;
+                        }
                     }
                 }
+                if !inside {
+                    dropped_outside += 1;
+                    continue;
+                }
+                if !ok {
+                    dropped_nodata += 1;
+                    continue;
+                }
+                coords.push((x, y));
+                xs.push(row);
+                ys.push(v);
             }
-            if !inside {
-                dropped_outside += 1;
-                continue;
-            }
-            if !ok {
-                dropped_nodata += 1;
-                continue;
-            }
-            coords.push((x, y));
-            xs.push(row);
-            ys.push(v);
         }
 
         if xs.len() <= p {
@@ -257,9 +260,10 @@ impl Tool for RegressionKrigingTool {
         } else {
             0.0
         };
-        // Largest diagonal of (X'X)^-1 scaled by the column norms is a cheap
-        // collinearity signal; a huge value means the coefficients are unstable
-        // even though the solve succeeded.
+        // Largest diagonal of (X'X)^-1 — a cheap collinearity signal: a large
+        // value means the coefficients are unstable even though the solve
+        // succeeded. It carries the units of the covariates, so it is
+        // comparable across cells of one run, not across runs.
         let max_xtx_inv_diag = (0..p).map(|i| fit.xtx_inv[i][i]).fold(0.0_f64, f64::max);
 
         ctx.progress.info(&format!(
@@ -294,6 +298,10 @@ impl Tool for RegressionKrigingTool {
         let mut err = vec![nodata; rows * cols];
         let mut valid = 0_u64;
         let mut kriging_failed = 0_u64;
+        // Reused across cells: nearest() is called once per grid cell.
+        let mut scratch: Vec<(f64, usize)> = Vec::with_capacity(coords.len());
+        let mut nc: Vec<(f64, f64)> = Vec::with_capacity(max_neighbors);
+        let mut nv: Vec<f64> = Vec::with_capacity(max_neighbors);
 
         for r in 0..rows {
             for c in 0..cols {
@@ -320,7 +328,15 @@ impl Tool for RegressionKrigingTool {
                     (resid_mean, 0.0)
                 } else {
                     // Nearest `max_neighbors` samples for the residual solve.
-                    let (nc, nv) = nearest(&coords, &fit.residual, (x, y), max_neighbors);
+                    nearest(
+                        &coords,
+                        &fit.residual,
+                        (x, y),
+                        max_neighbors,
+                        &mut scratch,
+                        &mut nc,
+                        &mut nv,
+                    );
                     match ordinary_kriging(&nc, &nv, (x, y), &vg) {
                         Some((v, var)) => (v, var.max(0.0).sqrt()),
                         None => {
@@ -371,26 +387,42 @@ impl Tool for RegressionKrigingTool {
 }
 
 /// The `k` samples nearest `target`, as parallel coordinate/value vectors.
+/// `scratch` is reused across calls; `nearest` runs once per grid cell, so a
+/// fresh allocation (and a full sort) per call dominates the run. Distances are
+/// computed once each and the k smallest selected in linear time, rather than
+/// re-evaluating `dist` twice per comparison inside a comparator.
 fn nearest(
     coords: &[(f64, f64)],
     values: &[f64],
     target: (f64, f64),
     k: usize,
-) -> (Vec<(f64, f64)>, Vec<f64>) {
+    scratch: &mut Vec<(f64, usize)>,
+    out_coords: &mut Vec<(f64, f64)>,
+    out_values: &mut Vec<f64>,
+) {
+    out_coords.clear();
+    out_values.clear();
     if coords.len() <= k {
-        return (coords.to_vec(), values.to_vec());
+        out_coords.extend_from_slice(coords);
+        out_values.extend_from_slice(values);
+        return;
     }
-    let mut idx: Vec<usize> = (0..coords.len()).collect();
-    idx.sort_by(|&a, &b| {
-        dist(coords[a], target)
-            .total_cmp(&dist(coords[b], target))
-            .then_with(|| a.cmp(&b))
-    });
-    idx.truncate(k);
-    (
-        idx.iter().map(|&i| coords[i]).collect(),
-        idx.iter().map(|&i| values[i]).collect(),
-    )
+    scratch.clear();
+    scratch.extend(
+        coords
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (dist(*c, target), i)),
+    );
+    // Partition rather than sort: only the k nearest matter, and their order
+    // among themselves does not affect the kriging system. The index tie-break
+    // keeps the selection deterministic for equidistant samples.
+    scratch.select_nth_unstable_by(k - 1, |a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    scratch.truncate(k);
+    for &(_, i) in scratch.iter() {
+        out_coords.push(coords[i]);
+        out_values.push(values[i]);
+    }
 }
 
 /// Samples a covariate at a map location.
@@ -434,11 +466,16 @@ fn sample(r: &Raster, y_max: f64, x: f64, y: f64, bilinear: bool) -> Option<Opti
     Some(Some(top * (1.0 - ty) + bot * ty))
 }
 
-fn point_xy(g: Option<&wbvector::Geometry>) -> Option<(f64, f64)> {
-    match g? {
-        wbvector::Geometry::Point(p) => Some((p.x, p.y)),
-        wbvector::Geometry::MultiPoint(ps) => ps.first().map(|p| (p.x, p.y)),
-        _ => None,
+/// Every point a sample feature carries.
+///
+/// A MultiPoint contributes all of its vertices, matching
+/// `extract_spectra_from_image`; keeping only the first would silently discard
+/// observations.
+fn point_xys(g: Option<&wbvector::Geometry>) -> Vec<(f64, f64)> {
+    match g {
+        Some(wbvector::Geometry::Point(p)) => vec![(p.x, p.y)],
+        Some(wbvector::Geometry::MultiPoint(ps)) => ps.iter().map(|p| (p.x, p.y)).collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -597,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn a_noisy_fit_still_krige_its_residuals() {
+    fn a_noisy_fit_still_kriges_its_residuals() {
         // The complement: with genuine residual structure the kriging branch
         // must actually run, so the degenerate short-circuit cannot be masking
         // a broken solver.
@@ -651,10 +688,11 @@ mod tests {
     }
 
     #[test]
-    fn it_beats_plain_kriging_when_a_covariate_carries_the_signal() {
-        // The claim that justifies the tool. The target is driven by a
-        // covariate that varies fast relative to the sample spacing, so
-        // ordinary kriging (which sees only the sample values) must do worse.
+    fn a_fast_varying_covariate_is_reproduced_between_sparse_samples() {
+        // The claim that justifies the tool, stated as what this test actually
+        // checks: the target is driven by a covariate varying fast relative to
+        // the sample spacing, and the surface must track it between samples —
+        // which interpolating the sample values alone cannot do.
         let cov = grid(16, |x, y| ((x * 0.9).sin() + (y * 0.7).cos()) * 10.0);
         let truth = |x: f64, y: f64| 2.0 + 1.5 * (((x * 0.9).sin() + (y * 0.7).cos()) * 10.0);
         let pts = samples(16, 5, truth);
@@ -861,6 +899,70 @@ mod tests {
             format!("{err}").contains("more samples than terms"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn bilinear_sampling_differs_from_nearest_cell_and_matches_the_true_surface() {
+        // The bilinear branch holds the only non-trivial arithmetic in
+        // `sample`, including the corner-fallback path; a transposed weight or
+        // a swapped corner would pass every other test in this file.
+        // A step covariate: nearest-cell snaps to one side of the step while
+        // bilinear blends across it, so the two must disagree. (On a linear
+        // surface they happen to agree, which is why that fixture cannot
+        // exercise this branch.)
+        let step = grid(4, |x, _| if x < 2.0 { 0.0 } else { 10.0 });
+        let sr = load_input_raster(&step).unwrap();
+        let near = sample(&sr, 4.0, 2.0, 2.0, false).unwrap().unwrap();
+        let bilin = sample(&sr, 4.0, 2.0, 2.0, true).unwrap().unwrap();
+        assert_eq!(near, 10.0, "nearest-cell should snap to the high side");
+        assert!(
+            (bilin - 5.0).abs() < 1e-9,
+            "bilinear should blend the step evenly at its midpoint, got {bilin}"
+        );
+
+        // On an exactly linear covariate, bilinear must reproduce the surface
+        // exactly at any interior point — a transposed weight would not.
+        let lin = grid(8, |x, y| x + y);
+        let lr = load_input_raster(&lin).unwrap();
+        let (px, py) = (2.3, 5.7);
+        let v = sample(&lr, 8.0, px, py, true).unwrap().unwrap();
+        assert!(
+            (v - (px + py)).abs() < 1e-9,
+            "bilinear should reproduce a linear surface exactly, got {v} for {}",
+            px + py
+        );
+    }
+
+    #[test]
+    fn bilinear_falls_back_to_nearest_cell_beside_a_nodata_corner() {
+        // Weighting a hole as zero would drag the value toward the origin.
+        let mut r = Raster::new(RasterConfig {
+            cols: 4,
+            rows: 4,
+            bands: 1,
+            x_min: 0.0,
+            y_min: 0.0,
+            cell_size: 1.0,
+            cell_size_y: None,
+            nodata: -9999.0,
+            data_type: DataType::F64,
+            crs: CrsInfo {
+                epsg: Some(3857),
+                wkt: None,
+                proj4: None,
+            },
+            metadata: Vec::new(),
+        });
+        for row in 0..4 {
+            for col in 0..4 {
+                r.set(0, row as isize, col as isize, 10.0).unwrap();
+            }
+        }
+        r.set(0, 1, 1, -9999.0).unwrap();
+        // Nearest cell is (0,0), which is valid, but the bilinear stencil
+        // reaches the no-data corner at (1,1) — so the fallback must engage.
+        let v = sample(&r, 4.0, 0.6, 3.4, true).unwrap().unwrap();
+        assert_eq!(v, 10.0, "a missing corner must not be weighted as zero");
     }
 
     #[test]

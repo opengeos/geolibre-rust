@@ -69,6 +69,14 @@ const MAX_GRID: usize = 4096;
 
 const SEA_MODES: [&str; 2] = ["mean", "min"];
 
+/// Blur is a Gaussian sigma in grid cells; beyond the grid itself it is
+/// meaningless, and the kernel it sizes is `2*ceil(3*sigma)+1` f64 values.
+const MAX_BLUR: f64 = MAX_GRID as f64;
+/// Densification spacing bounds, in map units. Below the minimum every edge
+/// saturates the per-edge vertex cap; above the maximum nothing is inserted.
+const MIN_DENSIFY: f64 = 1e-3;
+const MAX_DENSIFY: f64 = 1e6;
+
 pub struct ContiguousCartogramTool;
 
 impl Tool for ContiguousCartogramTool {
@@ -147,27 +155,45 @@ impl Tool for ContiguousCartogramTool {
                 "'iterations' must be at least 1".to_string(),
             ));
         }
+        // Both of these scale an allocation, so each needs bounding at BOTH
+        // ends. The blur kernel holds 2*ceil(3*sigma)+1 f64 values, so an
+        // unbounded blur of 1e9 asks for tens of gigabytes; a vanishing
+        // densify_spacing makes every edge hit the per-edge vertex cap and the
+        // concatenated total is not itself bounded.
         if let Some(b) = opt_f64(args, "blur")? {
-            if !b.is_finite() || b < 0.0 {
-                return Err(ToolError::Validation(
-                    "'blur' must be a non-negative number of grid cells".to_string(),
-                ));
+            if !b.is_finite() || !(0.0..=MAX_BLUR).contains(&b) {
+                return Err(ToolError::Validation(format!(
+                    "'blur' must be between 0 and {MAX_BLUR} grid cells, got {b}"
+                )));
             }
         }
         if let Some(d) = opt_f64(args, "densify_spacing")? {
-            if !d.is_finite() || d <= 0.0 {
-                return Err(ToolError::Validation(
-                    "'densify_spacing' must be positive".to_string(),
-                ));
+            if !d.is_finite() || !(MIN_DENSIFY..=MAX_DENSIFY).contains(&d) {
+                return Err(ToolError::Validation(format!(
+                    "'densify_spacing' must be between {MIN_DENSIFY} and {MAX_DENSIFY} grid \
+                     cells, got {d}"
+                )));
             }
         }
-        if let Some(s) = args.get("sea_density").and_then(Value::as_str) {
-            let s = s.trim().to_ascii_lowercase();
-            if !SEA_MODES.contains(&s.as_str()) {
+        // Read the raw value: `and_then(Value::as_str)` yields None for a
+        // number or boolean, and `run` would then fall back to "mean" without
+        // telling the caller their parameter was dropped.
+        match args.get("sea_density") {
+            None | Some(Value::Null) => {}
+            Some(Value::String(raw)) => {
+                let v = raw.trim().to_ascii_lowercase();
+                if !SEA_MODES.contains(&v.as_str()) {
+                    return Err(ToolError::Validation(format!(
+                        "'sea_density' must be one of {}, got '{v}'",
+                        SEA_MODES.join("|")
+                    )));
+                }
+            }
+            Some(other) => {
                 return Err(ToolError::Validation(format!(
-                    "'sea_density' must be one of {}, got '{s}'",
+                    "'sea_density' must be a string, one of {}; got {other}",
                     SEA_MODES.join("|")
-                )));
+                )))
             }
         }
         Ok(())
@@ -183,13 +209,15 @@ impl Tool for ContiguousCartogramTool {
             )));
         }
         let iterations = usize_or(args, "iterations", 20)?.max(1);
-        let blur = opt_f64(args, "blur")?.unwrap_or(0.5).max(0.0);
+        let blur = opt_f64(args, "blur")?.unwrap_or(0.5);
         let sea_mode = args
             .get("sea_density")
             .and_then(Value::as_str)
             .map(|s| s.trim().to_ascii_lowercase())
             .unwrap_or_else(|| "mean".to_string());
-        let densify_spacing = opt_f64(args, "densify_spacing")?.unwrap_or(1.0).max(1e-6);
+        // `validate` bounds this to [MIN_DENSIFY, MAX_DENSIFY], so no floor is
+        // needed here to keep `densify` from saturating its per-edge cap.
+        let densify_spacing = opt_f64(args, "densify_spacing")?.unwrap_or(1.0);
         let output = parse_optional_str(args, "output")?;
 
         let layer = load_input_layer(&input)?;
@@ -240,8 +268,17 @@ impl Tool for ContiguousCartogramTool {
             }
             total_value += value;
             let density = value / area;
-            for r in 0..n {
-                for c in 0..n {
+            // A feature can only cover cells inside its own extent, so clamp
+            // the loop to that box. Testing all n*n cells against every feature
+            // costs O(features × n² × vertices) — 16.7M point-in-polygon tests
+            // per feature at the maximum grid size, with nothing bounding it.
+            let (fx0, fy0, fx1, fy1) = geometry_bounds(geom);
+            let c0 = (((fx0 - gx0) / cell).floor().max(0.0) as usize).min(n - 1);
+            let c1 = (((fx1 - gx0) / cell).ceil() as i64).clamp(0, n as i64 - 1) as usize;
+            let r0 = (((fy0 - gy0) / cell).floor().max(0.0) as usize).min(n - 1);
+            let r1 = (((fy1 - gy0) / cell).ceil() as i64).clamp(0, n as i64 - 1) as usize;
+            for r in r0..=r1 {
+                for c in c0..=c1 {
                     let x = gx0 + (c as f64 + 0.5) * cell;
                     let y = gy0 + (r as f64 + 0.5) * cell;
                     if point_in_geometry(geom, x, y) {
@@ -389,11 +426,25 @@ impl Tool for ContiguousCartogramTool {
         let mut rebuilt: Vec<(Option<Geometry>, Option<f64>)> = Vec::new();
         let mut cursor = 0_usize;
         for f in layer.iter() {
-            let geom = f
-                .geometry
-                .as_ref()
-                .map(|g| rebuild_geometry(g, &pts, &mut cursor, densify_spacing * cell));
-            let value = f.attributes.get(vidx).and_then(as_f64).filter(|v| *v > 0.0);
+            let geom = match f.geometry.as_ref() {
+                Some(g) => Some(rebuild_geometry(g, &pts, &mut cursor, densify_spacing * cell)?),
+                None => None,
+            };
+            // Match the predicate `total_value` used exactly: a feature is
+            // scored only if it also contributed to the denominator. Scoring a
+            // zero-area or geometry-less feature against a total that never
+            // counted it produces a meaningless AREA_ERR.
+            let value = f
+                .attributes
+                .get(vidx)
+                .and_then(as_f64)
+                .filter(|v| *v > 0.0)
+                .filter(|_| {
+                    f.geometry
+                        .as_ref()
+                        .map(|g| polygon_area(g).abs() > 0.0)
+                        .unwrap_or(false)
+                });
             rebuilt.push((geom, value));
         }
         let out_total: f64 = rebuilt
@@ -557,42 +608,43 @@ fn rebuild_geometry(
     pts: &[(f64, f64)],
     cursor: &mut usize,
     max_seg: f64,
-) -> Geometry {
-    match geom {
+) -> Result<Geometry, ToolError> {
+    Ok(match geom {
         Geometry::Polygon {
             exterior,
             interiors,
         } => {
-            let ext = take_ring(&exterior.0, pts, cursor, max_seg);
-            let ints: Vec<Ring> = interiors
-                .iter()
-                .map(|r| Ring(take_ring(&r.0, pts, cursor, max_seg)))
-                .collect();
+            let ext = take_ring(&exterior.0, pts, cursor, max_seg)?;
+            let mut ints: Vec<Ring> = Vec::with_capacity(interiors.len());
+            for r in interiors {
+                ints.push(Ring(take_ring(&r.0, pts, cursor, max_seg)?));
+            }
             Geometry::Polygon {
                 exterior: Ring(ext),
                 interiors: ints,
             }
         }
-        Geometry::MultiPolygon(parts) => Geometry::MultiPolygon(
-            parts
-                .iter()
-                .map(|(e, hs)| {
-                    let ext = Ring(take_ring(&e.0, pts, cursor, max_seg));
-                    let holes: Vec<Ring> = hs
-                        .iter()
-                        .map(|r| Ring(take_ring(&r.0, pts, cursor, max_seg)))
-                        .collect();
-                    (ext, holes)
-                })
-                .collect(),
-        ),
-        Geometry::GeometryCollection(gs) => Geometry::GeometryCollection(
-            gs.iter()
-                .map(|g| rebuild_geometry(g, pts, cursor, max_seg))
-                .collect(),
-        ),
+        Geometry::MultiPolygon(parts) => {
+            let mut out = Vec::with_capacity(parts.len());
+            for (e, hs) in parts {
+                let ext = Ring(take_ring(&e.0, pts, cursor, max_seg)?);
+                let mut holes: Vec<Ring> = Vec::with_capacity(hs.len());
+                for r in hs {
+                    holes.push(Ring(take_ring(&r.0, pts, cursor, max_seg)?));
+                }
+                out.push((ext, holes));
+            }
+            Geometry::MultiPolygon(out)
+        }
+        Geometry::GeometryCollection(gs) => {
+            let mut out = Vec::with_capacity(gs.len());
+            for g in gs {
+                out.push(rebuild_geometry(g, pts, cursor, max_seg)?);
+            }
+            Geometry::GeometryCollection(out)
+        }
         other => other.clone(),
-    }
+    })
 }
 
 fn take_ring(
@@ -600,11 +652,26 @@ fn take_ring(
     pts: &[(f64, f64)],
     cursor: &mut usize,
     max_seg: f64,
-) -> Vec<Coord> {
+) -> Result<Vec<Coord>, ToolError> {
     let count = densify(original, max_seg).len();
+    // `collect_vertices` (via walk_rings) and `rebuild_geometry` must agree
+    // exactly on vertex count and order. They do today because both handle the
+    // same Geometry variants — but if a future change adds a variant to one and
+    // not the other, substituting a default here would place every later ring
+    // at the map origin, leaving output that is structurally valid and silently
+    // wrong. Fail instead.
+    if *cursor + count > pts.len() {
+        return Err(ToolError::Execution(format!(
+            "internal vertex-cursor desync in contiguous_cartogram: ring needs {count} vertices \
+             at offset {} but only {} were collected; collect_vertices and rebuild_geometry \
+             disagree about which geometry variants they walk",
+            *cursor,
+            pts.len()
+        )));
+    }
     let mut out = Vec::with_capacity(count);
     for k in 0..count {
-        let p = pts.get(*cursor + k).copied().unwrap_or((0.0, 0.0));
+        let p = pts[*cursor + k];
         out.push(Coord {
             x: p.0,
             y: p.1,
@@ -613,14 +680,21 @@ fn take_ring(
         });
     }
     *cursor += count;
-    // Re-close the ring: the closing vertex is displaced independently of the
-    // first, and a hair's difference leaves an unclosed polygon.
-    if out.len() >= 2 {
+    // Re-close only when the SOURCE ring was closed. The closing vertex is
+    // displaced independently of the first, so a closed ring needs its last
+    // vertex snapped back; an unclosed ring (which `ring_area` accepts via its
+    // wrap-around modulo) has a genuine distinct final vertex that this would
+    // otherwise discard.
+    let source_closed = original.len() >= 2 && {
+        let (a, b) = (&original[0], &original[original.len() - 1]);
+        a.x == b.x && a.y == b.y
+    };
+    if source_closed && out.len() >= 2 {
         let first = out[0].clone();
         let last = out.len() - 1;
         out[last] = first;
     }
-    out
+    Ok(out)
 }
 
 /// Inserts intermediate vertices so no segment exceeds `max_seg`.
@@ -728,6 +802,20 @@ fn point_in_geometry(geom: &Geometry, x: f64, y: f64) -> bool {
     crate::vector_common::geometry_contains_point(geom, x, y)
 }
 
+/// Axis-aligned extent of one geometry's rings.
+fn geometry_bounds(geom: &Geometry) -> (f64, f64, f64, f64) {
+    let mut b = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    walk_rings_ref(geom, &mut |ring, _| {
+        for c in &ring.0 {
+            b.0 = b.0.min(c.x);
+            b.1 = b.1.min(c.y);
+            b.2 = b.2.max(c.x);
+            b.3 = b.3.max(c.y);
+        }
+    });
+    b
+}
+
 fn layer_bounds(layer: &Layer) -> Option<(f64, f64, f64, f64)> {
     let mut b = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     let mut seen = false;
@@ -751,7 +839,10 @@ fn as_f64(v: &FieldValue) -> Option<f64> {
     match v {
         FieldValue::Integer(i) => Some(*i as f64),
         FieldValue::Float(f) if f.is_finite() => Some(*f),
-        FieldValue::Text(s) => s.trim().parse::<f64>().ok(),
+        // "inf" and "NaN" both parse successfully, and either would slip past
+        // the `value <= 0.0` test, poison the density field, and finally
+        // surface as the unrelated "density field is degenerate" error.
+        FieldValue::Text(s) => s.trim().parse::<f64>().ok().filter(|v| v.is_finite()),
         _ => None,
     }
 }
@@ -896,21 +987,99 @@ mod tests {
         };
         let left = verts(0);
         let right = verts(1);
-        // Every vertex of the left polygon that was on the shared edge must
-        // have an exact counterpart in the right polygon.
-        let mut matched = 0;
-        for p in &left {
-            if right
-                .iter()
-                .any(|q| (p.0 - q.0).abs() < 1e-9 && (p.1 - q.1).abs() < 1e-9)
-            {
-                matched += 1;
-            }
-        }
+        // Both polygons densify the shared x = 1 edge identically, so EVERY
+        // vertex the left polygon contributed to it must still coincide with
+        // one on the right. Counting only two matches would be satisfied by
+        // the untouched corners alone, and would pass even if every densified
+        // intermediate vertex had separated — the exact failure densification
+        // exists to prevent.
+        // Both polygons densify the shared x = 1 edge identically and the two
+        // copies of each vertex see the same velocity field, so EVERY vertex
+        // along that edge must still coincide after the distortion — not just
+        // the two original corners. A `matched >= 2` threshold would be
+        // satisfied by the corners alone and would pass even if every
+        // intermediate vertex had separated, which is the exact failure
+        // densification exists to prevent.
+        let matched = left
+            .iter()
+            .filter(|p| {
+                right
+                    .iter()
+                    .any(|q| (p.0 - q.0).abs() < 1e-9 && (p.1 - q.1).abs() < 1e-9)
+            })
+            .count();
         assert!(
-            matched >= 2,
-            "the shared border came apart: only {matched} coincident vertices"
+            matched > 10,
+            "the shared border came apart: only {matched} coincident vertices, which is close to \
+             the 2 original corners — the densified intermediates did not travel together"
         );
+    }
+
+    #[test]
+    fn a_polygon_with_a_hole_and_a_multipolygon_survive_the_vertex_cursor() {
+        // The cursor pairing between collect_vertices and rebuild_geometry is
+        // the most fragile part of this tool: walk_rings emits exterior then
+        // interiors, and take_ring must consume them in that same order across
+        // MultiPolygon parts. Every other fixture is a single-ring Polygon.
+        let mut l = Layer::new("mixed")
+            .with_geom_type(GeometryType::MultiPolygon)
+            .with_crs_epsg(3857);
+        l.add_field(FieldDef::new("pop", FieldType::Float));
+
+        let ring = |x0: f64, y0: f64, x1: f64, y1: f64| {
+            Ring(vec![
+                Coord { x: x0, y: y0, z: None, m: None },
+                Coord { x: x1, y: y0, z: None, m: None },
+                Coord { x: x1, y: y1, z: None, m: None },
+                Coord { x: x0, y: y1, z: None, m: None },
+                Coord { x: x0, y: y0, z: None, m: None },
+            ])
+        };
+        // A square with a hole.
+        l.add_feature(
+            Some(Geometry::Polygon {
+                exterior: ring(0.0, 0.0, 4.0, 4.0),
+                interiors: vec![ring(1.0, 1.0, 2.0, 2.0)],
+            }),
+            &[("pop", 10.0f64.into())],
+        )
+        .unwrap();
+        // A two-part MultiPolygon.
+        l.add_feature(
+            Some(Geometry::MultiPolygon(vec![
+                (ring(5.0, 0.0, 6.0, 1.0), Vec::new()),
+                (ring(7.0, 0.0, 8.0, 1.0), Vec::new()),
+            ])),
+            &[("pop", 4.0f64.into())],
+        )
+        .unwrap();
+
+        let (out, res) = run(json!({
+            "input": store(l), "value_field": "pop",
+            "grid_size": 64, "iterations": 8,
+        }));
+        assert_eq!(res.outputs["feature_count"], json!(2));
+
+        // Structure preserved: the hole and both parts are still there.
+        let Some(Geometry::Polygon { interiors, .. }) = out.features[0].geometry.as_ref() else {
+            panic!("expected a Polygon with a hole")
+        };
+        assert_eq!(interiors.len(), 1, "the hole was lost");
+        let Some(Geometry::MultiPolygon(parts)) = out.features[1].geometry.as_ref() else {
+            panic!("expected a MultiPolygon")
+        };
+        assert_eq!(parts.len(), 2, "a MultiPolygon part was lost");
+
+        // A cursor desync would place vertices at the map origin, so assert
+        // every part still sits in its own neighbourhood.
+        for (i, (ext, _)) in parts.iter().enumerate() {
+            let mean_x: f64 = ext.0.iter().map(|c| c.x).sum::<f64>() / ext.0.len() as f64;
+            assert!(
+                mean_x > 3.0,
+                "part {i} drifted to the origin (mean x = {mean_x}), which is what a cursor \
+                 desync looks like"
+            );
+        }
     }
 
     #[test]

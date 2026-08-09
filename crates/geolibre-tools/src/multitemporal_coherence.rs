@@ -57,6 +57,10 @@ const STATS: [&str; 5] = ["mean", "min", "max", "std", "decorrelation_slope"];
 /// quietly queue 1,770 passes.
 const MAX_PAIRS: usize = 512;
 
+/// Working-buffer budget. The complex inputs, the per-pair coherence grids and
+/// the output bands are all resident simultaneously.
+const MAX_WORKING_BYTES: u64 = 8 * (1 << 30);
+
 pub struct MultitemporalCoherenceTool;
 
 impl Tool for MultitemporalCoherenceTool {
@@ -127,6 +131,9 @@ impl Tool for MultitemporalCoherenceTool {
         }
         choice_or(args, "pairs", &PAIRS, "consecutive")?;
         bool_or(args, "bias_correction", true)?;
+        // sar_coherence::validate parses the same parameter; without this a
+        // malformed "a,b" or "1,2,3" passes validation and fails inside run.
+        parse_window(args)?;
         let stats = parse_stats(args)?;
         let dates = parse_dates(args, inputs.len())?;
         if stats.iter().any(|s| s == "decorrelation_slope") && dates.is_none() {
@@ -207,14 +214,34 @@ impl Tool for MultitemporalCoherenceTool {
                 .collect(),
             _ => (0..n - 1).map(|i| (i, i + 1)).collect(),
         };
+        let rows = rasters[0].rows;
+        let cols = rasters[0].cols;
+        let cells = rows * cols;
+
+        // MAX_PAIRS bounds the number of windowed passes, not the memory each
+        // one leaves behind. `rasters`, `iq` and `per_pair` are all live at the
+        // same time (the template borrows rasters[0] to the end), and all scale
+        // with rows*cols — so without this a large grid aborts on allocation
+        // instead of returning a validation error. Note pairs='consecutive'
+        // otherwise passes every guard for any N.
+        let f64_cells = (cells as u64)
+            .saturating_mul(pair_list.len() as u64 + 2 * n as u64)
+            .saturating_mul(std::mem::size_of::<f64>() as u64);
+        if f64_cells > MAX_WORKING_BYTES {
+            return Err(ToolError::Validation(format!(
+                "this run needs about {} GiB of working buffers ({rows}x{cols} over {} pair(s) \
+                 and {n} acquisition(s)), over the {} GiB budget; reduce the stack, use \
+                 pairs='consecutive', or tile the scene",
+                f64_cells / (1 << 30),
+                pair_list.len(),
+                MAX_WORKING_BYTES / (1 << 30)
+            )));
+        }
+
         ctx.progress.info(&format!(
             "{n} acquisition(s), {} pair(s), {win_r}x{win_a} window",
             pair_list.len()
         ));
-
-        let rows = rasters[0].rows;
-        let cols = rasters[0].cols;
-        let cells = rows * cols;
 
         // Per-pair coherence, NaN where not estimable.
         let mut per_pair: Vec<Vec<f64>> = Vec::with_capacity(pair_list.len());
@@ -246,14 +273,16 @@ impl Tool for MultitemporalCoherenceTool {
 
         let nodata = -1.0_f64;
         let mut bands: Vec<Vec<f64>> = Vec::with_capacity(stats.len());
+        // Reused across cells. A fresh Vec per statistic per cell would be
+        // stats.len() * rows * cols heap allocations — 125 million for five
+        // statistics over a 5000x5000 grid.
+        let mut vals: Vec<f64> = Vec::with_capacity(per_pair.len());
+        let mut pts: Vec<(f64, f64)> = Vec::with_capacity(per_pair.len());
         for stat in &stats {
             let mut buf = vec![nodata; cells];
             for cell in 0..cells {
-                let vals: Vec<f64> = per_pair
-                    .iter()
-                    .map(|p| p[cell])
-                    .filter(|v| v.is_finite())
-                    .collect();
+                vals.clear();
+                vals.extend(per_pair.iter().map(|p| p[cell]).filter(|v| v.is_finite()));
                 if vals.is_empty() {
                     continue;
                 }
@@ -275,18 +304,28 @@ impl Tool for MultitemporalCoherenceTool {
                         // baseline. Needs the pairs that survived at THIS cell,
                         // so the baselines are re-gathered with the same filter.
                         let Some(bl) = &baselines else { continue };
-                        let pts: Vec<(f64, f64)> = per_pair
-                            .iter()
-                            .zip(bl.iter())
-                            .filter(|(p, _)| p[cell].is_finite())
-                            .map(|(p, t)| (*t, p[cell]))
-                            .collect();
+                        pts.clear();
+                        pts.extend(
+                            per_pair
+                                .iter()
+                                .zip(bl.iter())
+                                .filter(|(p, _)| p[cell].is_finite())
+                                .map(|(p, t)| (*t, p[cell])),
+                        );
                         match slope(&pts) {
                             Some(s) => s,
                             None => continue,
                         }
                     }
-                    _ => vals.iter().sum::<f64>() / vals.len() as f64,
+                    // Named rather than folded into `_`: if STATS gains an
+                    // entry and this match does not, an unhandled statistic
+                    // would silently emit a mean band under its name.
+                    "mean" => vals.iter().sum::<f64>() / vals.len() as f64,
+                    other => {
+                        return Err(ToolError::Execution(format!(
+                            "unhandled statistic '{other}'"
+                        )))
+                    }
                 };
             }
             bands.push(buf);
@@ -298,14 +337,17 @@ impl Tool for MultitemporalCoherenceTool {
 
         // The per-pair cube is emitted unconditionally so a caller with no
         // scratch path still gets it back (the round-16 lesson).
-        let pair_bands: Vec<Vec<f64>> = per_pair
-            .iter()
-            .map(|p| {
-                p.iter()
-                    .map(|v| if v.is_finite() { *v } else { nodata })
-                    .collect()
-            })
-            .collect();
+        // `per_pair` is dead after the statistics loop, so convert in place
+        // rather than building a second full set of rows*cols buffers — that
+        // copy doubled the peak memory of the largest allocation in the run.
+        let mut pair_bands = per_pair;
+        for band in pair_bands.iter_mut() {
+            for v in band.iter_mut() {
+                if !v.is_finite() {
+                    *v = nodata;
+                }
+            }
+        }
         let pair_raster = raster_like_multiband(template, &pair_bands, nodata, DataType::F32)?;
         let pair_path =
             write_or_store_output(pair_raster, parse_optional_output(args, "output_pairs")?)?;
@@ -389,11 +431,20 @@ fn parse_stats(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
             .filter(|p| !p.is_empty())
             .map(|p| p.to_ascii_lowercase())
             .collect::<Vec<_>>(),
+        // Mirrors parse_list: a non-string entry is an error rather than being
+        // dropped, so ["mean", 5] cannot silently become ["mean"].
         Some(Value::Array(items)) => items
             .iter()
-            .filter_map(|v| v.as_str())
-            .map(|s| s.trim().to_ascii_lowercase())
-            .collect(),
+            .map(|v| {
+                v.as_str()
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .ok_or_else(|| {
+                        ToolError::Validation(
+                            "every entry of 'statistics' must be a string".to_string(),
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?,
         Some(_) => {
             return Err(ToolError::Validation(
                 "'statistics' must be a delimited string or an array of strings".to_string(),
@@ -419,21 +470,38 @@ fn parse_stats(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
 }
 
 fn parse_dates(args: &ToolArgs, n: usize) -> Result<Option<Vec<f64>>, ToolError> {
-    let Some(s) = args.get("dates").and_then(Value::as_str) else {
-        return Ok(None);
+    // Accepts a delimited string or a JSON array of numbers/strings. Reading
+    // only strings would make an array of dates vanish, and validate would then
+    // report that 'dates' is missing for a caller who supplied it.
+    let vals: Vec<f64> = match args.get("dates") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(s)) if s.trim().is_empty() => return Ok(None),
+        Some(Value::String(s)) => s
+            .split([',', ';'])
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(|t| {
+                t.parse::<f64>().map_err(|_| {
+                    ToolError::Validation(format!("'dates' entry '{t}' is not a number"))
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|t| t.trim().parse::<f64>().ok()))
+                    .ok_or_else(|| {
+                        ToolError::Validation(format!("'dates' entry {v} is not a number"))
+                    })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(other) => {
+            return Err(ToolError::Validation(format!(
+                "'dates' must be a delimited string or an array of numbers; got {other}"
+            )))
+        }
     };
-    if s.trim().is_empty() {
-        return Ok(None);
-    }
-    let vals: Vec<f64> = s
-        .split([',', ';'])
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|_| ToolError::Validation(format!("'dates' entry '{t}' is not a number")))
-        })
-        .collect::<Result<_, _>>()?;
     if vals.len() != n {
         return Err(ToolError::Validation(format!(
             "'dates' has {} value(s) but there are {n} input(s)",

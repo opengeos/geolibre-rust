@@ -19,6 +19,7 @@ const COG_SUBSET_TOOL_ID = "extract_cog_subset";
 const WMS_SUBSET_TOOL_ID = "extract_wms_subset";
 const XYZ_SUBSET_TOOL_ID = "extract_xyz_tile_subset";
 const PMTILES_EXTRACT_TOOL_ID = "pmtiles_extract";
+const OSM_DOWNLOAD_TOOL_ID = "download_osm_vector";
 // The `url` + `bbox_crs` params the JS interception adds to the WASI
 // `pmtiles_extract` tool's own manifest, so a host can extract from a remote
 // archive by byte-range (no whole-file download) and offer the same
@@ -248,11 +249,177 @@ export async function listManifests() {
  */
 export async function runTool(tool, opts = {}) {
   const { args = [], input = {} } = opts;
+  if (tool === OSM_DOWNLOAD_TOOL_ID) return runOsmDownloadTool(args, input);
   if (tool === COG_SUBSET_TOOL_ID) return runCogSubsetTool(args, input);
   if (tool === WMS_SUBSET_TOOL_ID) return runWmsSubsetTool(args);
   if (tool === XYZ_SUBSET_TOOL_ID) return runXyzTileSubsetTool(args);
   if (tool === PMTILES_EXTRACT_TOOL_ID) return runPmtilesExtractTool(args, input);
   return exec([tool, ...args], input);
+}
+
+const OSM_FILTER_PRESETS = {
+  all: [], roads: ["[highway]"], buildings: ["[building]"],
+  water: ["[waterway]", "[natural=water]"], landuse: ["[landuse]"],
+  trails: ["[highway=path]", "[highway=footway]", "[highway=cycleway]", "[highway=bridleway]"],
+  parks: ["[leisure=park]", "[boundary=national_park]", "[landuse=recreation_ground]", "[leisure=nature_reserve]"],
+  rail: ["[railway]"], amenities: ["[amenity]"], boundaries: ["[boundary]"],
+  transit: ["[public_transport]", "[railway=station]", "[highway=bus_stop]"],
+  poi: ["[amenity]", "[tourism]", "[shop]", "[leisure]"],
+};
+
+function flagBoolean(value, fallback) {
+  if (value == null) return fallback;
+  return value === true || String(value).toLowerCase() === "true";
+}
+
+function osmFilters(flags) {
+  const tags = String(flags.include_tags ?? flags.filter_key ?? "").split(";").map((v) => v.trim()).filter(Boolean);
+  const pairs = String(flags.include_key_values ?? flags.filter_key_value ?? "").split(";").map((v) => v.trim()).filter(Boolean);
+  if (!tags.length && !pairs.length) {
+    const preset = String(flags.filter_preset ?? "all").toLowerCase();
+    if (!Object.hasOwn(OSM_FILTER_PRESETS, preset)) throw new Error(`unsupported filter_preset: ${preset}`);
+    return OSM_FILTER_PRESETS[preset];
+  }
+  const quote = (value) => JSON.stringify(String(value));
+  const explicit = [];
+  for (const key of tags) explicit.push(`[${quote(key)}]`);
+  for (const pair of pairs) {
+    const pos = pair.indexOf("=");
+    const key = (pos < 0 ? pair : pair.slice(0, pos)).trim();
+    if (!key) throw new Error("Overpass tag filters require a non-empty key");
+    if (pos < 0) explicit.push(`[${quote(key)}]`);
+    else explicit.push(`[${quote(key)}=${quote(pair.slice(pos + 1).trim())}]`);
+  }
+  return [...new Set(explicit)].sort();
+}
+
+function positiveNumberFlag(raw, fallback, name) {
+  const value = raw == null || raw === "" ? fallback : Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`--${name} must be a positive number`);
+  return value;
+}
+
+function positiveIntegerFlag(raw, fallback, name, maximum = Number.MAX_SAFE_INTEGER) {
+  const value = positiveNumberFlag(raw, fallback, name);
+  if (!Number.isInteger(value)) throw new Error(`--${name} must be a positive integer`);
+  if (value > maximum) throw new Error(`--${name} must not exceed ${maximum}`);
+  return value;
+}
+
+function osmQuery([west, south, east, north], flags) {
+  const timeout = Math.max(5, positiveNumberFlag(flags.timeout_seconds, 25, "timeout_seconds"));
+  const bbox = `${south.toFixed(7)},${west.toFixed(7)},${north.toFixed(7)},${east.toFixed(7)}`;
+  const nodes = flagBoolean(flags.include_points, true);
+  const ways = flagBoolean(flags.include_lines, true) || flagBoolean(flags.include_polygons, true);
+  const relations = flagBoolean(flags.include_polygons, true);
+  const filters = osmFilters(flags);
+  const effective = filters.length ? filters : [""];
+  const parts = [];
+  for (const filter of effective) {
+    if (nodes) parts.push(`  node${filter}(${bbox});`);
+    if (ways) parts.push(`  way${filter}(${bbox});`);
+    if (relations) parts.push(`  relation${filter}(${bbox});`);
+  }
+  return `[out:json][timeout:${timeout}];\n(\n${parts.join("\n")}\n);\nout body;\n>;\nout skel qt;`;
+}
+
+function osmChunks([west, south, east, north], flags) {
+  if (!flagBoolean(flags.chunk_large_aoi, true)) return [[west, south, east, north]];
+  const maxArea = positiveNumberFlag(flags.chunk_max_area_deg2, 4, "chunk_max_area_deg2");
+  const maxChunkCount = positiveIntegerFlag(flags.max_chunk_count, 64, "max_chunk_count", 1024);
+  const width = east - west;
+  const height = north - south;
+  const area = width * height;
+  if (area <= maxArea) return [[west, south, east, north]];
+  const target = Math.max(1, Math.ceil(area / maxArea));
+  const nx = Math.max(1, Math.ceil(Math.sqrt(target * (height > 1e-12 ? width / height : 1))));
+  const ny = Math.max(1, Math.ceil(target / nx));
+  if (nx * ny > maxChunkCount) throw new Error(`chunking would require ${nx * ny} tiles`);
+  const chunks = [];
+  for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+    chunks.push([
+      west + width * ix / nx, south + height * iy / ny,
+      ix + 1 === nx ? east : west + width * (ix + 1) / nx,
+      iy + 1 === ny ? north : south + height * (iy + 1) / ny,
+    ]);
+  }
+  return chunks;
+}
+
+async function runOsmDownloadTool(args, inputFiles) {
+  const flags = parseFlagArgs(args);
+  const stdout = [];
+  try {
+    let bbox = ["west", "south", "east", "north"].map((key) => Number(flags[key]));
+    if (bbox.some((value) => !Number.isFinite(value))) throw new Error("west, south, east, and north must be numbers");
+    const inputEpsg = Number(flags.input_extent_epsg ?? 4326);
+    if (inputEpsg !== 4326) {
+      await initLibrary();
+      bbox = Array.from(transform_bbox_epsg(inputEpsg, 4326, Float64Array.from(bbox)));
+    }
+    const [west, south, east, north] = bbox;
+    if (west >= east || south >= north) throw new Error("west/east or south/north extent is reversed");
+    if (west < -180 || east > 180 || south < -90 || north > 90) {
+      throw new Error("extent must be within WGS84 longitude/latitude bounds");
+    }
+    const endpointProfiles = {
+      main: "https://overpass-api.de/api/interpreter",
+      kumi: "https://overpass.kumi.systems/api/interpreter",
+      fr: "https://overpass.openstreetmap.fr/api/interpreter",
+    };
+    const endpoint = String(flags.overpass_url || endpointProfiles[String(flags.overpass_profile ?? "main")] || endpointProfiles.main);
+    const endpointUrl = new URL(endpoint);
+    if (endpointUrl.protocol !== "https:" || endpointUrl.username || endpointUrl.password) {
+      throw new Error("Overpass endpoints must be credential-free HTTPS URLs");
+    }
+    const chunks = osmChunks(bbox, flags);
+    const input = { ...inputFiles };
+    const timeout = Math.max(5, positiveNumberFlag(flags.timeout_seconds, 25, "timeout_seconds"));
+    const concurrency = Math.min(
+      chunks.length,
+      positiveIntegerFlag(flags.chunk_parallel_requests, 1, "chunk_parallel_requests", 16),
+    );
+    const responses = new Array(chunks.length);
+    let nextChunk = 0;
+    await Promise.all(Array.from({ length: concurrency }, async () => {
+      while (nextChunk < chunks.length) {
+        const index = nextChunk++;
+        const response = await fetchOverpass(endpoint, osmQuery(chunks[index], flags), timeout);
+        responses[index] = new Uint8Array(await response.arrayBuffer());
+      }
+    }));
+    responses.forEach((bytes, index) => { input[`overpass_chunk_${index}.json`] = bytes; });
+    return exec([OSM_DOWNLOAD_TOOL_ID, ...args, "--overpass_response_prefix=/work/overpass_chunk_"], input);
+  } catch (error) {
+    const cause = error?.cause?.message ? `: ${error.cause.message}` : "";
+    stdout.push(`${String(error?.message || error)}${cause}`);
+    return { exitCode: 1, stdout, files: {} };
+  }
+}
+
+async function fetchOverpass(endpoint, query, timeoutSeconds) {
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "geolibre-wasm (https://github.com/opengeos/geolibre-rust)",
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: AbortSignal.timeout((timeoutSeconds + 5) * 1000),
+      });
+      if (response.ok) return response;
+      lastError = new Error(`Overpass returned HTTP ${response.status}`);
+      if (response.status !== 429 && response.status < 500) lastError.nonRetryable = true;
+    } catch (error) {
+      lastError = error;
+    }
+    if (lastError?.nonRetryable) throw lastError;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000 * (2 ** attempt)));
+  }
+  throw lastError || new Error("Overpass request failed");
 }
 
 function parseFlagArgs(args) {

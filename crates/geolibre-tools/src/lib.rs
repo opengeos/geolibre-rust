@@ -199,7 +199,9 @@ mod transform_fields;
 mod transform_route_events;
 mod trim_line;
 mod difference_3d;
+mod enclose_multipatch;
 mod intersect_3d;
+mod intervisibility;
 mod is_closed_3d;
 mod mesh3d;
 mod multipatch_footprint;
@@ -350,7 +352,9 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(voxel_isosurface::VoxelIsosurfaceTool),
         Box::new(inside_3d::Inside3dTool),
         Box::new(difference_3d::Difference3dTool),
+        Box::new(enclose_multipatch::EncloseMultipatchTool),
         Box::new(intersect_3d::Intersect3dTool),
+        Box::new(intervisibility::IntervisibilityTool),
         Box::new(is_closed_3d::IsClosed3dTool),
         Box::new(multipatch_footprint::MultipatchFootprintTool),
         Box::new(union_3d::Union3dTool),
@@ -775,6 +779,22 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("group_field", ToolParamSchema::string()),
             ("simplify_tolerance", float()),
+        ]),
+        "enclose_multipatch" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("skip_closed", ToolParamSchema::bool()),
+            ("drop_failed", ToolParamSchema::bool()),
+        ]),
+        "intervisibility" => schemas(&[
+            ("input", vector_in()),
+            // Comma-separated layer list, as stack_profile.surfaces does.
+            ("obstructions", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("visible_field", ToolParamSchema::string()),
+            ("observer_offset", float()),
+            ("target_offset", float()),
+            ("visible_only", ToolParamSchema::bool()),
         ]),
         "intersect_3d" => schemas(&[
             ("input", vector_in()),

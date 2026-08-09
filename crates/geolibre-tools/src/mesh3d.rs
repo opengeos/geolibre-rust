@@ -495,12 +495,29 @@ mod tests {
         open.drain(0..2);
         assert!(!topology(&open).closed);
 
+        // `reverse` is not cosmetic: boundary_loops reports each edge in its
+        // owning triangle's direction, so the cap must traverse it the other
+        // way. Capping the same way round yields a watertight but
+        // inconsistently oriented mesh whose signed volume cancels to zero.
         for ring in boundary_loops(&open) {
-            open.extend(fan_triangulate(&ring, false));
+            open.extend(fan_triangulate(&ring, true));
         }
         let capped = topology(&open);
         assert!(capped.closed, "cap left {} open edges", capped.open_edges);
+        assert!(
+            capped.consistent_winding,
+            "cap closed the mesh but flipped its orientation"
+        );
         assert!((mesh_volume(&open) - expected).abs() < 1e-9);
+
+        // And the wrong winding really does break it, so the check above is
+        // not vacuous.
+        let mut wrong = full.clone();
+        wrong.drain(0..2);
+        for ring in boundary_loops(&wrong) {
+            wrong.extend(fan_triangulate(&ring, false));
+        }
+        assert!(!topology(&wrong).consistent_winding);
     }
 
     #[test]

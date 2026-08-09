@@ -93,6 +93,7 @@ mod forest_based_forecast;
 mod compute_sar_indices;
 mod convert_sar_units;
 mod extrude_between;
+mod fence_diagram;
 mod flatten_interferogram;
 mod frequency_comparison;
 mod fuzzy_overlay;
@@ -365,6 +366,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(add_z_information::AddZInformationTool),
         Box::new(enclose_multipatch::EncloseMultipatchTool),
         Box::new(extrude_between::ExtrudeBetweenTool),
+        Box::new(fence_diagram::FenceDiagramTool),
         Box::new(generate_network_swm::GenerateNetworkSwmTool),
         Box::new(intersect_3d::Intersect3dTool),
         Box::new(intervisibility::IntervisibilityTool),
@@ -800,6 +802,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("properties", ToolParamSchema::string()),
             ("noise_filtering", float()),
+        ]),
+        "fence_diagram" => schemas(&[
+            ("input", vector_in()),
+            // Comma-separated raster list, as stack_profile.surfaces does.
+            ("surfaces", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("sample_distance", float()),
+            ("floor_height", float()),
+            ("ceiling_height", float()),
+            ("band", int()),
         ]),
         "extrude_between" => schemas(&[
             ("input", vector_in()),

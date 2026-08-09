@@ -126,6 +126,7 @@ mod idw_3d;
 mod incremental_spatial_autocorrelation;
 mod inside_3d;
 mod integrate;
+mod intersect_3d_line_with_surface;
 mod interpolate_from_spatiotemporal_points;
 mod interpolate_shape;
 mod kernel_interpolation_with_barriers;
@@ -148,6 +149,7 @@ mod near_3d;
 mod neighborhood_summary_statistics;
 mod non_maximum_suppression;
 mod optics_clustering;
+mod observer_points;
 mod optimal_corridor_connections;
 mod optimal_interpolation;
 mod path_distance;
@@ -347,6 +349,7 @@ mod hot_spot_analysis_comparison;
 mod polygon_volume;
 mod rescale_by_function;
 mod split_raster;
+mod surface_difference;
 mod surface_parameters;
 
 use std::collections::BTreeMap;
@@ -384,6 +387,9 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(dimensional_moving_statistics::DimensionalMovingStatisticsTool),
         Box::new(multidimensional_raster_correlation::MultidimensionalRasterCorrelationTool),
         Box::new(multidimensional_principal_components::MultidimensionalPrincipalComponentsTool),
+        Box::new(observer_points::ObserverPointsTool),
+        Box::new(surface_difference::SurfaceDifferenceTool),
+        Box::new(intersect_3d_line_with_surface::Intersect3dLineWithSurfaceTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -933,6 +939,48 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "intersect_3d_line_with_surface" => schemas(&[
+            ("input", vector_in()),
+            ("surface", raster_in()),
+            ("multipatch", vector_in()),
+            ("output", vector_out()),
+            ("output_points", vector_out()),
+            ("spacing", float()),
+            ("keep_above", ToolParamSchema::bool()),
+            ("keep_below", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
+        "surface_difference" => schemas(&[
+            ("input", raster_in()),
+            // Dual-typed: a reference raster path or a constant elevation, so
+            // it stays a string rather than claiming to be a raster input.
+            ("reference", ToolParamSchema::string()),
+            ("output", vector_out()),
+            ("output_raster", raster_out()),
+            ("tolerance", float()),
+            ("min_area", float()),
+            ("include_coincident", ToolParamSchema::bool()),
+            ("band", int()),
+            ("reference_band", int()),
+        ]),
+        "observer_points" => schemas(&[
+            ("input", raster_in()),
+            ("observers", vector_in()),
+            ("output", raster_out()),
+            ("output_agl", raster_out()),
+            ("output_table", table_out()),
+            (
+                "analysis_type",
+                ToolParamSchema::enum_values(&["observers", "frequency"]),
+            ),
+            ("observer_offset", float()),
+            ("observer_offset_field", ToolParamSchema::string()),
+            ("target_offset", float()),
+            ("max_distance", float()),
+            ("curvature", ToolParamSchema::bool()),
+            ("refractivity_coefficient", float()),
+            ("band", int()),
         ]),
         "multidimensional_raster_correlation" => schemas(&[
             (

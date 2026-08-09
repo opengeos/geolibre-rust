@@ -115,7 +115,13 @@ fn connected_groups(labels: &[f64], rows: usize, cols: usize) -> Vec<Group> {
 fn trace_rings(cells: &[usize], cols: usize) -> Vec<Vec<Vertex>> {
     let cellset: std::collections::HashSet<usize> = cells.iter().copied().collect();
     let in_group = |r: i64, c: i64| -> bool {
-        if r < 0 || c < 0 {
+        // `c >= cols` must be rejected explicitly: without it the flat index
+        // `r * cols + c` wraps onto the FIRST cell of the next row, so a cell
+        // in the last column would see that unrelated cell as its right-hand
+        // neighbour. When it happens to belong to the same group the right
+        // boundary edge is suppressed, the ring never closes, and the traversal
+        // below panics looking for an outgoing edge that was never emitted.
+        if r < 0 || c < 0 || c >= cols as i64 {
             return false;
         }
         cellset.contains(&(r as usize * cols + c as usize))
@@ -398,5 +404,73 @@ mod tests {
             .collect();
         // Exterior ring must be counterclockwise (positive signed area).
         assert!(signed_area(&pts[..pts.len() - 1]) > 0.0);
+    }
+
+    /// Regression: a region reaching the last column used to read the NEXT
+    /// row's first cell as its right-hand neighbour, because the flat index
+    /// `r * cols + c` wraps when `c == cols`. With the two cells in the same
+    /// group the right boundary edge was suppressed, the ring never closed and
+    /// the tracer panicked. A fully-covered grid is the simplest case that
+    /// triggers it.
+    #[test]
+    fn region_touching_the_right_edge_closes() {
+        let (rows, cols) = (3usize, 3usize);
+        let labels = vec![1.0f64; rows * cols];
+        let props: HashMap<i64, Map<String, Value>> = HashMap::new();
+        let geojson = polygonize_to_geojson(&PolygonizeParams {
+            labels: &labels,
+            rows,
+            cols,
+            x_min: 0.0,
+            y_max: 3.0,
+            cell_size_x: 1.0,
+            cell_size_y: 1.0,
+            epsg: None,
+            props_by_id: &props,
+        });
+        let v = parse(&geojson);
+        let feats = v["features"].as_array().unwrap();
+        assert_eq!(feats.len(), 1, "the whole grid is one region");
+        let ring = feats[0]["geometry"]["coordinates"][0].as_array().unwrap();
+        let pts: Vec<[f64; 2]> = ring
+            .iter()
+            .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+            .collect();
+        // The outline is the 3x3 square: area 9, closed, counterclockwise.
+        assert_eq!(pts.first(), pts.last(), "ring must be closed");
+        let area = signed_area(&pts[..pts.len() - 1]);
+        assert!((area - 9.0).abs() < 1e-9, "expected area 9, got {area}");
+    }
+
+    /// The same wrap could also merge two regions that only touch across the
+    /// row boundary: the last cell of one row and the first of the next are not
+    /// neighbours, so they must stay separate features.
+    #[test]
+    fn row_wrap_does_not_merge_regions() {
+        let (rows, cols) = (2usize, 3usize);
+        let mut labels = vec![0.0f64; rows * cols];
+        labels[2] = 1.0; // row 0, last column
+        labels[3] = 1.0; // row 1, first column
+        let props: HashMap<i64, Map<String, Value>> = HashMap::new();
+        let geojson = polygonize_to_geojson(&PolygonizeParams {
+            labels: &labels,
+            rows,
+            cols,
+            x_min: 0.0,
+            y_max: 2.0,
+            cell_size_x: 1.0,
+            cell_size_y: 1.0,
+            epsg: None,
+            props_by_id: &props,
+        });
+        let v = parse(&geojson);
+        // One group id, but its two cells are not connected, so the trace must
+        // yield two separate rings rather than one impossible ring.
+        let feats = v["features"].as_array().unwrap();
+        let rings: usize = feats
+            .iter()
+            .map(|f| f["geometry"]["coordinates"].as_array().unwrap().len())
+            .sum();
+        assert_eq!(rings, 2, "the two diagonal cells must trace two rings");
     }
 }

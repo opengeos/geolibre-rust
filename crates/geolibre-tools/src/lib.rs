@@ -90,6 +90,9 @@ mod flip_line;
 mod focal_flow;
 mod focal_statistics;
 mod forest_based_forecast;
+mod compute_sar_indices;
+mod convert_sar_units;
+mod frequency_comparison;
 mod fuzzy_overlay;
 mod gaussian_geostatistical_simulations;
 mod generate_breach_lines;
@@ -195,6 +198,7 @@ mod transform_features;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
+mod raster_stack;
 mod union_3d;
 mod vector_common;
 mod vector_convert;
@@ -244,6 +248,9 @@ mod align_features;
 mod analyze_changes_ccdc;
 mod band_collection_statistics;
 mod calculate_polygon_main_angle;
+mod args_common;
+mod apply_radiometric_calibration;
+mod cell_position_statistics;
 mod cell_statistics;
 mod collapse_road_detail;
 mod compute_accuracy_for_object_detection;
@@ -462,6 +469,9 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(snap_tracks::SnapTracksTool),
         Box::new(remove_overlap_multiple::RemoveOverlapMultipleTool),
         Box::new(forest_based_forecast::ForestBasedForecastTool),
+        Box::new(compute_sar_indices::ComputeSarIndicesTool),
+        Box::new(convert_sar_units::ConvertSarUnitsTool),
+        Box::new(frequency_comparison::FrequencyComparisonTool),
         Box::new(fuzzy_overlay::FuzzyOverlayTool),
         Box::new(aggregate_points::AggregatePointsTool),
         Box::new(generate_od_links::GenerateOdLinksTool),
@@ -552,6 +562,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(detect_incidents::DetectIncidentsTool),
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
         Box::new(las_height_metrics::LasHeightMetricsTool),
+        Box::new(apply_radiometric_calibration::ApplyRadiometricCalibrationTool),
+        Box::new(cell_position_statistics::CellPositionStatisticsTool),
         Box::new(cell_statistics::CellStatisticsTool),
         Box::new(multidimensional_anomaly::MultidimensionalAnomalyTool),
         Box::new(propagate_displacement::PropagateDisplacementTool),
@@ -2826,6 +2838,106 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_height", float()),
             ("min_points", int()),
             ("cell_size", float()),
+        ]),
+        "convert_sar_units" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "conversion",
+                ToolParamSchema::enum_values(&[
+                    "linear_to_db",
+                    "db_to_linear",
+                    "amplitude_to_intensity",
+                    "intensity_to_amplitude",
+                    "complex_to_intensity",
+                    "phase_to_displacement",
+                ]),
+            ),
+            ("wavelength", float()),
+            ("band", int()),
+        ]),
+        "compute_sar_indices" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "index",
+                ToolParamSchema::enum_values(&["rvi", "rfdi", "csi", "dpsvi"]),
+            ),
+            ("polarization_bands", ToolParamSchema::string()),
+            (
+                "input_units",
+                ToolParamSchema::enum_values(&["linear", "db"]),
+            ),
+        ]),
+        "apply_radiometric_calibration" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "calibration_type",
+                ToolParamSchema::enum_values(&["sigma0", "beta0", "gamma0"]),
+            ),
+            ("calibration_constant", float()),
+            ("calibration_lut", raster_in()),
+            // Dual-typed: a constant in degrees or a raster path.
+            ("incidence_angle", ToolParamSchema::string()),
+            (
+                "input_units",
+                ToolParamSchema::enum_values(&["dn", "amplitude", "intensity", "db"]),
+            ),
+            (
+                "output_units",
+                ToolParamSchema::enum_values(&["linear", "db"]),
+            ),
+            ("band", int()),
+        ]),
+        "cell_position_statistics" => schemas(&[
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "highest_position",
+                    "lowest_position",
+                    "popularity",
+                    "rank",
+                ]),
+            ),
+            // Dual-typed: a raster path or a bare constant, so it stays a
+            // string rather than claiming to be a raster input.
+            ("selector", ToolParamSchema::string()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            (
+                "process_as_multiband",
+                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
+            ),
+        ]),
+        "frequency_comparison" => schemas(&[
+            ("value_raster", raster_in()),
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            (
+                "comparison",
+                ToolParamSchema::enum_values(&[
+                    "equal",
+                    "not_equal",
+                    "greater",
+                    "greater_equal",
+                    "less",
+                    "less_equal",
+                ]),
+            ),
+            ("tolerance", float()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            (
+                "process_as_multiband",
+                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
+            ),
         ]),
         "cell_statistics" => schemas(&[
             (

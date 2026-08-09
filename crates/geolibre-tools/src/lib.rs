@@ -86,6 +86,7 @@ mod extract_locations_from_text;
 mod extract_sinks;
 mod feature_vertices_to_points;
 mod features_to_gpx;
+mod features_to_kml;
 mod features_to_gtfs;
 mod fill;
 mod fill_missing_values;
@@ -211,6 +212,7 @@ mod summary_statistics;
 mod surface_volume;
 mod tabulate_intersection;
 mod thin_road_network;
+mod tile_grid_polygons;
 mod time_series_clustering;
 mod time_series_smoothing;
 mod trace_proximity_events;
@@ -389,6 +391,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(create_accuracy_assessment_points::CreateAccuracyAssessmentPointsTool),
         Box::new(composite_bands::CompositeBandsTool),
         Box::new(transpose_fields::TransposeFieldsTool),
+        Box::new(features_to_kml::FeaturesToKmlTool),
+        Box::new(tile_grid_polygons::TileGridPolygonsTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -764,6 +768,27 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "tile_grid_polygons" => schemas(&[
+            ("zoom", int()),
+            ("max_zoom", int()),
+            ("extent", vector_in()),
+            ("bbox", ToolParamSchema::string()),
+            ("scheme", ToolParamSchema::enum_values(&["xyz", "tms"])),
+            ("output_crs", ToolParamSchema::enum_values(&["EPSG:3857", "EPSG:4326"])),
+            ("max_tiles", int()),
+            ("output", vector_out()),
+        ]),
+        "features_to_kml" => schemas(&[
+            ("input", vector_in()),
+            ("output", file_out()),
+            ("name_field", ToolParamSchema::string()),
+            ("description_field", ToolParamSchema::string()),
+            ("z_field", ToolParamSchema::string()),
+            ("altitude_mode", ToolParamSchema::enum_values(&["clampToGround", "relativeToGround", "absolute"])),
+            ("color", ToolParamSchema::string()),
+            ("line_width", float()),
+            ("fill_color", ToolParamSchema::string()),
         ]),
         "transpose_fields" => schemas(&[
             ("input", vector_in()),

@@ -37,7 +37,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::DataType;
+use wbraster::{DataType, Raster};
 
 use crate::args_common::{band_index, choice_or};
 use crate::common::{load_input_raster, parse_optional_output, write_or_store_output};
@@ -127,10 +127,14 @@ impl Tool for CompositeBandsTool {
         let mut widest = first.data_type;
 
         for (i, path) in inputs.iter().enumerate() {
-            let raster = if i == 0 {
-                first.clone()
+            // Borrow input 0 rather than cloning it: a clone would double peak
+            // memory for that band with no functional benefit.
+            let loaded;
+            let raster: &Raster = if i == 0 {
+                &first
             } else {
-                load_input_raster(path)?
+                loaded = load_input_raster(path)?;
+                &loaded
             };
             // Compare against the reference explicitly rather than via
             // check_alignment_refs, so the message can name the offending file.
@@ -241,20 +245,65 @@ fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
     }
 }
 
-/// Ranks the data types by representable range so a stack never narrows below
-/// its widest contributor.
+/// The narrowest type that represents **every** value of both inputs exactly.
+///
+/// A plain severity ranking is wrong here, and subtly so. Ranking `I32` below
+/// `F32` makes an `I32`+`F32` stack come out `F32`, and `F32` stops
+/// representing integers exactly at 2^24 — the precise rounding the module doc
+/// promises this tool prevents. Likewise `U8` and `I8` are not interchangeable:
+/// their union is [-128, 255], which only `I16` holds.
+///
+/// So the combination is computed from the actual value ranges. Integers
+/// combine into the smallest integer type covering the union of both ranges;
+/// mixing a float with an integer wider than the float's exact-integer limit
+/// promotes to `F64`.
 fn wider(a: DataType, b: DataType) -> DataType {
-    let rank = |d: DataType| match d {
-        DataType::U8 | DataType::I8 => 0,
-        DataType::U16 | DataType::I16 => 1,
-        DataType::U32 | DataType::I32 => 2,
-        DataType::F32 => 3,
-        _ => 4,
+    // Inclusive value range, and whether the type is integral.
+    let info = |d: DataType| -> (f64, f64, bool) {
+        match d {
+            DataType::U8 => (0.0, u8::MAX as f64, true),
+            DataType::I8 => (i8::MIN as f64, i8::MAX as f64, true),
+            DataType::U16 => (0.0, u16::MAX as f64, true),
+            DataType::I16 => (i16::MIN as f64, i16::MAX as f64, true),
+            DataType::U32 => (0.0, u32::MAX as f64, true),
+            DataType::I32 => (i32::MIN as f64, i32::MAX as f64, true),
+            DataType::U64 => (0.0, u64::MAX as f64, true),
+            DataType::I64 => (i64::MIN as f64, i64::MAX as f64, true),
+            // The exact-integer limits, which is what matters for widening.
+            DataType::F32 => (-(2f64.powi(24)), 2f64.powi(24), false),
+            DataType::F64 => (-(2f64.powi(53)), 2f64.powi(53), false),
+        }
     };
-    if rank(b) > rank(a) {
-        b
+    let (a_lo, a_hi, a_int) = info(a);
+    let (b_lo, b_hi, b_int) = info(b);
+    let (lo, hi) = (a_lo.min(b_lo), a_hi.max(b_hi));
+
+    if a_int && b_int {
+        // Both integral: the smallest integer type covering the union.
+        for cand in [
+            DataType::U8,
+            DataType::I8,
+            DataType::U16,
+            DataType::I16,
+            DataType::U32,
+            DataType::I32,
+            DataType::U64,
+            DataType::I64,
+        ] {
+            let (c_lo, c_hi, _) = info(cand);
+            if c_lo <= lo && c_hi >= hi {
+                return cand;
+            }
+        }
+        return DataType::F64;
+    }
+    // At least one float. F32 only suffices when the whole union fits inside
+    // its exact-integer window; otherwise the integer side would round.
+    let (f32_lo, f32_hi, _) = info(DataType::F32);
+    if f32_lo <= lo && f32_hi >= hi {
+        DataType::F32
     } else {
-        a
+        DataType::F64
     }
 }
 
@@ -262,7 +311,7 @@ fn wider(a: DataType, b: DataType) -> DataType {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbraster::{CrsInfo, Raster, RasterConfig};
+    use wbraster::{CrsInfo, RasterConfig};
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -410,6 +459,29 @@ mod tests {
         let b = raster_at(1, 2, &[3.0, 4.0], 0.0, 1.0, DataType::F64, Some(4326));
         let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         assert!(CompositeBandsTool.run(&args, &ctx()).is_err());
+    }
+
+    #[test]
+    fn an_i32_band_beside_an_f32_band_widens_to_f64() {
+        // The trap a plain severity ranking falls into: F32 "outranks" I32 but
+        // cannot hold it exactly above 2^24, so ranking would pick F32 and
+        // round the class codes. The union needs F64.
+        let a = raster_at(1, 1, &[20_000_001.0], 0.0, 1.0, DataType::I32, Some(3857));
+        let b = raster_at(1, 1, &[0.5], 0.0, 1.0, DataType::F32, Some(3857));
+        let (out, res) = run(json!({"inputs": format!("{a},{b}")}));
+        assert_eq!(res.outputs["data_type"], json!("F64"));
+        assert_eq!(out.get(0, 0, 0), 20_000_001.0);
+        assert_eq!(out.get(1, 0, 0), 0.5);
+    }
+
+    #[test]
+    fn mixing_u8_and_i8_widens_to_a_type_holding_both_ranges() {
+        // Their union is [-128, 255]; neither input type covers it.
+        let a = raster_at(1, 1, &[200.0], 0.0, 1.0, DataType::U8, Some(3857));
+        let b = raster_at(1, 1, &[-100.0], 0.0, 1.0, DataType::I8, Some(3857));
+        let (out, _) = run(json!({"inputs": format!("{a},{b}")}));
+        assert_eq!(out.get(0, 0, 0), 200.0);
+        assert_eq!(out.get(1, 0, 0), -100.0);
     }
 
     #[test]

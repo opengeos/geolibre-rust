@@ -197,6 +197,10 @@ impl Tool for TileGridPolygonsTool {
         layer.add_field(FieldDef::new("y", FieldType::Integer));
         layer.add_field(FieldDef::new("quadkey", FieldType::Text));
         layer.add_field(FieldDef::new("tile_id", FieldType::Text));
+        // The count is already bounded by max_tiles above, so reserving up
+        // front avoids repeated reallocation of a large feature vector.
+        layer.features.reserve(total as usize);
+        let mut next_fid = 0_u64;
 
         for (z, x0, x1, y0, y1) in ranges {
             let n = 1_u64 << z;
@@ -212,8 +216,14 @@ impl Tool for TileGridPolygonsTool {
                     let (east, south) = tile_nw(x + 1, y + 1, z, epsg);
                     let out_y = if scheme == "tms" { n - 1 - y } else { y };
 
+                    // wbvector's add_feature derives fid from the feature
+                    // count; this path pushes Feature values directly, so the
+                    // id has to be assigned here or every tile would share 0
+                    // and the writer would emit duplicate identifiers.
+                    let fid = next_fid;
+                    next_fid += 1;
                     layer.push(Feature {
-                        fid: 0,
+                        fid,
                         geometry: Some(Geometry::polygon(
                             vec![
                                 Coord::xy(west, south),
@@ -325,6 +335,15 @@ fn parse_bbox(s: &str) -> Result<(f64, f64, f64, f64), ToolError> {
         ));
     }
     let (a, b, c, d) = (parts[0], parts[1], parts[2], parts[3]);
+    // NaN and inf both parse as valid f64, and every comparison against NaN is
+    // false, so the ordering guard below would wave them through. A NaN then
+    // reaches `NaN.floor().max(0.0)`, which f64::max resolves to 0.0 — the tool
+    // would emit tile (0,0) and report success on a silently wrong grid.
+    if let Some(bad) = [a, b, c, d].into_iter().find(|v| !v.is_finite()) {
+        return Err(ToolError::Validation(format!(
+            "'bbox' contains a non-finite value ({bad}); all four bounds must be finite numbers"
+        )));
+    }
     if a >= c || b >= d {
         return Err(ToolError::Validation(format!(
             "'bbox' is empty or inverted: min ({a}, {b}) must be strictly below max ({c}, {d})"
@@ -379,9 +398,16 @@ fn extent_bounds(spec: &str) -> Result<(f64, f64, f64, f64), ToolError> {
             mercator_y_to_lat(max_y),
         )),
         Some(4326) | None => {
-            if !(-180.0..=180.0).contains(&min_x) || !(-90.0..=90.0).contains(&min_y) {
+            // Both corners, not just the minimum: an extent running from
+            // (0, 0) to (5_000_000, 4_000_000) has a perfectly innocent-looking
+            // minimum, and checking only that lets projected metres through as
+            // degrees — the exact failure this guard exists to catch.
+            let bad = [(min_x, min_y), (max_x, max_y)]
+                .into_iter()
+                .find(|(x, y)| !(-180.0..=180.0).contains(x) || !(-90.0..=90.0).contains(y));
+            if let Some((x, y)) = bad {
                 return Err(ToolError::Validation(format!(
-                    "'extent' has coordinates ({min_x:.3}, {min_y:.3}) outside the lon/lat range \
+                    "'extent' has coordinates ({x:.3}, {y:.3}) outside the lon/lat range \
                      but declares no usable CRS; reproject it to EPSG:4326 or EPSG:3857 first"
                 )));
             }
@@ -596,6 +622,44 @@ mod tests {
         let bbox = res.outputs["bbox"].as_array().unwrap();
         // 111319.5 m easting is 1 degree of longitude.
         assert!((bbox[0].as_f64().unwrap() - 1.0).abs() < 1e-3, "{bbox:?}");
+    }
+
+    #[test]
+    fn an_undeclared_projected_extent_is_caught_by_its_max_corner() {
+        // The minimum corner sits at (0, 0) — inside the degree range — so a
+        // check that inspects only the minimum lets projected metres through.
+        let mut l = Layer::new("e").with_geom_type(GeometryType::Point);
+        l.add_feature(Some(Geometry::point(0.0, 0.0)), &[]).unwrap();
+        l.add_feature(Some(Geometry::point(5_000_000.0, 4_000_000.0)), &[])
+            .unwrap();
+        let id = wbvector::memory_store::put_vector(l);
+        let path = wbvector::memory_store::make_vector_memory_path(&id);
+        let args: ToolArgs =
+            serde_json::from_value(json!({"zoom": 4, "extent": path})).unwrap();
+        let err = TileGridPolygonsTool.run(&args, &ctx()).unwrap_err();
+        assert!(format!("{err}").contains("lon/lat range"), "{err}");
+    }
+
+    #[test]
+    fn a_non_finite_bbox_is_refused_rather_than_collapsing_to_tile_zero() {
+        // NaN defeats the ordering guard (every NaN comparison is false) and
+        // then f64::max turns it into 0.0, so the tool would emit tile (0,0)
+        // and report success on a grid the caller never asked for.
+        for bad in ["nan,0,10,10", "0,0,inf,10", "-inf,-inf,inf,inf"] {
+            let args: ToolArgs =
+                serde_json::from_value(json!({"zoom": 2, "bbox": bad})).unwrap();
+            assert!(
+                TileGridPolygonsTool.validate(&args).is_err(),
+                "bbox '{bad}' should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn every_tile_gets_a_distinct_feature_id() {
+        let (layer, _) = run(json!({"zoom": 2}));
+        let ids: std::collections::HashSet<u64> = layer.iter().map(|f| f.fid).collect();
+        assert_eq!(ids.len(), layer.features.len(), "duplicate fids emitted");
     }
 
     #[test]

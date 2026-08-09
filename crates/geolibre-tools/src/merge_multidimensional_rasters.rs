@@ -40,7 +40,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::{DataType, Raster};
+use wbraster::Raster;
 
 use crate::args_common::choice_or;
 use crate::common::{load_input_raster, parse_optional_output, write_or_store_output};
@@ -226,7 +226,10 @@ impl Tool for MergeMultidimensionalRastersTool {
         }
 
         let out_coords: Vec<f64> = groups.iter().map(|(c, _)| *c).collect();
-        let out = raster_like_multiband(template, &bands, nodata, DataType::F32)?;
+        // Merging joins slices; it never changes values (except where an
+        // overlap rule averages them), so the output carries the template's
+        // type rather than a hard-coded F32.
+        let out = raster_like_multiband(template, &bands, nodata, template.data_type)?;
         let out_path = write_or_store_output(out, parse_optional_output(args, "output")?)?;
 
         let mut outputs = BTreeMap::new();
@@ -316,7 +319,7 @@ fn parse_coords(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cube::test_support::cube_raster;
+    use crate::cube::test_support::{cube_raster, cube_raster_typed};
     use wbcore::{AllowAllCapabilities, ProgressSink};
 
     struct NullProgress;
@@ -460,6 +463,19 @@ mod tests {
             20.0,
             "the gap is filled from the other cube"
         );
+    }
+
+    #[test]
+    fn full_precision_values_survive_the_merge() {
+        // An F64 cube narrowed to F32 on output would lose the low bits.
+        let v = 1.234_567_890_123_456_7_f64;
+        let a = cube_raster_typed(1, 1, &[vec![v]], wbraster::DataType::F64);
+        let b = cube_raster_typed(1, 1, &[vec![2.0 * v]], wbraster::DataType::F64);
+        let (out, _) = run(json!({
+            "inputs": format!("{a},{b}"), "dimension_values": "1,2",
+        }));
+        assert_eq!(out.get(0, 0, 0), v);
+        assert_eq!(out.get(1, 0, 0), 2.0 * v);
     }
 
     #[test]

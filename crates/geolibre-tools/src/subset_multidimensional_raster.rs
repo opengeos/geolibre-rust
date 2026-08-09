@@ -33,7 +33,6 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::DataType;
 
 use crate::args_common::usize_or;
 use crate::common::{parse_optional_output, write_or_store_output};
@@ -201,7 +200,10 @@ impl Tool for SubsetMultidimensionalRasterTool {
         }
 
         let kept_coords: Vec<f64> = keep.iter().map(|&i| cube.coord(i)).collect();
-        let out = raster_like_multiband(template, &bands, nodata, DataType::F32)?;
+        // Subsetting selects slices; it never changes values, so the output
+        // must carry the template's type. Hard-coding F32 would quietly round an
+        // I32 cube above 2^24 and truncate an F64 one.
+        let out = raster_like_multiband(template, &bands, nodata, template.data_type)?;
         let out_path = write_or_store_output(out, parse_optional_output(args, "output")?)?;
 
         let mut outputs = BTreeMap::new();
@@ -279,7 +281,7 @@ fn parse_indices(s: &str) -> Result<Vec<usize>, ToolError> {
 mod tests {
     use super::*;
     use crate::common::load_input_raster;
-    use crate::cube::test_support::cube_raster;
+    use crate::cube::test_support::{cube_raster, cube_raster_typed};
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::Raster;
 
@@ -379,6 +381,20 @@ mod tests {
         let (out, _) = run(json!({"input": path, "indices": "0"}));
         assert_eq!(out.get(0, 0, 0), 1.0);
         assert_eq!(out.get(0, 0, 1), out.nodata);
+    }
+
+    #[test]
+    fn a_high_magnitude_integer_survives_the_subset() {
+        // Hard-coding F32 on the output would round this to 20000000, silently
+        // corrupting an I32 class-code cube.
+        let path = cube_raster_typed(
+            1,
+            1,
+            &[vec![20_000_001.0], vec![7.0]],
+            wbraster::DataType::I32,
+        );
+        let (out, _) = run(json!({"input": path, "indices": "0"}));
+        assert_eq!(out.get(0, 0, 0), 20_000_001.0);
     }
 
     #[test]

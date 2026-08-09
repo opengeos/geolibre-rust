@@ -184,6 +184,17 @@ pub(crate) mod test_support {
 
     /// Builds an in-memory cube raster from per-slice, row-major buffers.
     pub(crate) fn cube_raster(cols: usize, rows: usize, slices: &[Vec<f64>]) -> String {
+        cube_raster_typed(cols, rows, slices, DataType::F32)
+    }
+
+    /// As [`cube_raster`], with an explicit data type — needed to test that a
+    /// tool preserves precision rather than narrowing to F32.
+    pub(crate) fn cube_raster_typed(
+        cols: usize,
+        rows: usize,
+        slices: &[Vec<f64>],
+        data_type: DataType,
+    ) -> String {
         let mut r = Raster::new(RasterConfig {
             cols,
             rows,
@@ -193,7 +204,7 @@ pub(crate) mod test_support {
             cell_size: 1.0,
             cell_size_y: None,
             nodata: -9999.0,
-            data_type: DataType::F32,
+            data_type,
             crs: CrsInfo {
                 epsg: Some(3857),
                 wkt: None,

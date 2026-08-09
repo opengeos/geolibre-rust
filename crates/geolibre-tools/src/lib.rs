@@ -202,6 +202,7 @@ mod trim_line;
 mod cost_back_link;
 mod difference_3d;
 mod enclose_multipatch;
+mod generate_network_swm;
 mod intersect_3d;
 mod intervisibility;
 mod is_closed_3d;
@@ -361,6 +362,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(difference_3d::Difference3dTool),
         Box::new(add_z_information::AddZInformationTool),
         Box::new(enclose_multipatch::EncloseMultipatchTool),
+        Box::new(generate_network_swm::GenerateNetworkSwmTool),
         Box::new(intersect_3d::Intersect3dTool),
         Box::new(intervisibility::IntervisibilityTool),
         Box::new(is_closed_3d::IsClosed3dTool),
@@ -829,6 +831,22 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", raster_out()),
             ("out_distance", raster_out()),
             ("max_distance", float()),
+        ]),
+        "generate_network_swm" => schemas(&[
+            ("input", vector_in()),
+            ("network", vector_in()),
+            ("output", table_out()),
+            ("id_field", ToolParamSchema::string()),
+            ("impedance_field", ToolParamSchema::string()),
+            ("distance_cutoff", float()),
+            ("max_neighbors", int()),
+            (
+                "conceptualization",
+                ToolParamSchema::enum_values(&["fixed", "inverse"]),
+            ),
+            ("exponent", float()),
+            ("row_standardization", ToolParamSchema::bool()),
+            ("search_tolerance", float()),
         ]),
         "intersect_3d" => schemas(&[
             ("input", vector_in()),

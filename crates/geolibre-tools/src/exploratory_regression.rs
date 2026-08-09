@@ -620,10 +620,10 @@ fn evaluate_model(
 
 // ── OLS core (reuses `solve`/`invert` from generalized_linear_regression) ───
 
-struct OlsFit {
-    beta: Vec<f64>,
-    residual: Vec<f64>,
-    xtx_inv: Vec<Vec<f64>>,
+pub(crate) struct OlsFit {
+    pub(crate) beta: Vec<f64>,
+    pub(crate) residual: Vec<f64>,
+    pub(crate) xtx_inv: Vec<Vec<f64>>,
 }
 
 /// Exact one-step normal-equation OLS solve — the same computation as the
@@ -631,7 +631,7 @@ struct OlsFit {
 /// directly here since that function isn't itself reusable (it also runs
 /// IRLS for the other GLM families we don't need).
 #[allow(clippy::needless_range_loop)]
-fn ols_fit(xs: &[Vec<f64>], ys: &[f64], p: usize) -> Option<OlsFit> {
+pub(crate) fn ols_fit(xs: &[Vec<f64>], ys: &[f64], p: usize) -> Option<OlsFit> {
     let n = xs.len();
     let mut xtx = vec![vec![0.0; p]; p];
     let mut xty = vec![0.0; p];

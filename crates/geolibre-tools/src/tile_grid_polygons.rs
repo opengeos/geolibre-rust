@@ -415,7 +415,6 @@ fn geometry_coords(g: &Geometry) -> Vec<(f64, f64)> {
             .flat_map(|(e, _)| e.0.iter().map(|c| (c.x, c.y)))
             .collect(),
         Geometry::GeometryCollection(gs) => gs.iter().flat_map(geometry_coords).collect(),
-        _ => Vec::new(),
     }
 }
 

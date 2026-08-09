@@ -175,6 +175,7 @@ mod reconstruct_tracks;
 mod regions;
 mod regularize_adjacent_building_footprint;
 mod reduce_point_density;
+mod regression_kriging;
 mod regularize_building_footprints;
 mod remove_overlap_multiple;
 mod render;
@@ -407,6 +408,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(extract_spectra_from_image::ExtractSpectraFromImageTool),
         Box::new(multitemporal_coherence::MultitemporalCoherenceTool),
         Box::new(extract_ocean_winds::ExtractOceanWindsTool),
+        Box::new(regression_kriging::RegressionKrigingTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -782,6 +784,17 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "regression_kriging" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("covariates", ToolParamSchema::string()),
+            ("variogram_model", ToolParamSchema::enum_values(&["spherical", "exponential", "gaussian"])),
+            ("lag_count", int()),
+            ("max_neighbors", int()),
+            ("bilinear", ToolParamSchema::bool()),
+            ("output", raster_out()),
+            ("output_error", raster_out()),
         ]),
         "extract_ocean_winds" => schemas(&[
             ("input", raster_in()),

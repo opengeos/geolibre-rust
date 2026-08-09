@@ -334,14 +334,12 @@ fn serialize_kml(layer: &Layer, style: &Style) -> Result<(Vec<u8>, Counts), quic
 
     let mut counts = Counts::default();
     for feature in layer.iter() {
+        // Every Geometry variant is writable as KML, so the only feature that
+        // cannot be emitted is one carrying no geometry at all.
         let Some(geom) = feature.geometry.as_ref() else {
             counts.skipped += 1;
             continue;
         };
-        if !writable(geom) {
-            counts.skipped += 1;
-            continue;
-        }
         let z = style
             .z_field
             .as_ref()
@@ -369,19 +367,6 @@ fn serialize_kml(layer: &Layer, style: &Style) -> Result<(Vec<u8>, Counts), quic
     w.write_event(Event::End(BytesEnd::new("Document")))?;
     w.write_event(Event::End(BytesEnd::new("kml")))?;
     Ok((w.into_inner(), counts))
-}
-
-fn writable(geom: &Geometry) -> bool {
-    matches!(
-        geom,
-        Geometry::Point(_)
-            | Geometry::MultiPoint(_)
-            | Geometry::LineString(_)
-            | Geometry::MultiLineString(_)
-            | Geometry::Polygon { .. }
-            | Geometry::MultiPolygon(_)
-            | Geometry::GeometryCollection(_)
-    )
 }
 
 fn write_geometry(
@@ -439,13 +424,10 @@ fn write_geometry(
         Geometry::GeometryCollection(gs) => {
             w.write_event(Event::Start(BytesStart::new("MultiGeometry")))?;
             for g in gs {
-                if writable(g) {
-                    write_geometry(w, g, style, z, counts)?;
-                }
+                write_geometry(w, g, style, z, counts)?;
             }
             w.write_event(Event::End(BytesEnd::new("MultiGeometry")))?;
         }
-        _ => {}
     }
     Ok(())
 }

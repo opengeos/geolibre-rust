@@ -143,7 +143,9 @@ impl Tool for ExtractSpectraFromImageTool {
         let raster = load_input_raster(&input)?;
         let bands = raster.bands;
         if bands == 0 {
-            return Err(ToolError::Execution("input raster has no bands".to_string()));
+            return Err(ToolError::Execution(
+                "input raster has no bands".to_string(),
+            ));
         }
         let wavelengths = parse_wavelengths(args, "wavelengths", bands)?;
 
@@ -321,13 +323,7 @@ impl Tool for ExtractSpectraFromImageTool {
 /// Returns false (contributing nothing) when **any** band is no-data at that
 /// cell: a pixel missing one band is not a valid spectrum, and letting it
 /// through would make the bands of one "spectrum" come from different cells.
-fn push_cell(
-    raster: &Raster,
-    bands: usize,
-    r: usize,
-    c: usize,
-    entry: &mut [Vec<f64>],
-) -> bool {
+fn push_cell(raster: &Raster, bands: usize, r: usize, c: usize, entry: &mut [Vec<f64>]) -> bool {
     let mut vals = Vec::with_capacity(bands);
     for b in 0..bands {
         let v = raster.get(b as isize, r as isize, c as isize);
@@ -498,8 +494,13 @@ mod tests {
                 for col in 0..4 {
                     // Left half = 1.0, right half = 5.0, plus the band offset.
                     let base = if col < 2 { 1.0 } else { 5.0 };
-                    r.set(b as isize, row as isize, col as isize, base + 10.0 * b as f64)
-                        .unwrap();
+                    r.set(
+                        b as isize,
+                        row as isize,
+                        col as isize,
+                        base + 10.0 * b as f64,
+                    )
+                    .unwrap();
                 }
             }
         }

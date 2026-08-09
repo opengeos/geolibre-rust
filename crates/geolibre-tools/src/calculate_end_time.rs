@@ -406,10 +406,10 @@ mod tests {
         assert_eq!(
             col(&layer, "END_TIME"),
             vec![
-                FieldValue::Null,        // a30 is a's last
+                FieldValue::Null,         // a30 is a's last
                 FieldValue::Float(300.0), // b100 -> b300
                 FieldValue::Float(20.0),  // a10 -> a20
-                FieldValue::Null,        // b300 is b's last
+                FieldValue::Null,         // b300 is b's last
                 FieldValue::Float(30.0),  // a20 -> a30
             ]
         );
@@ -586,9 +586,13 @@ mod tests {
         };
         assert!(bad(json!({})));
         assert!(bad(json!({"input": "a.shp"})));
-        assert!(bad(json!({"input": "a.shp", "start_field": "t", "last_record": "next"})));
+        assert!(bad(
+            json!({"input": "a.shp", "start_field": "t", "last_record": "next"})
+        ));
         // 'duration' without a duration would silently mean 'same_as_start'.
-        assert!(bad(json!({"input": "a.shp", "start_field": "t", "last_record": "duration"})));
+        assert!(bad(
+            json!({"input": "a.shp", "start_field": "t", "last_record": "duration"})
+        ));
         assert!(bad(json!({
             "input": "a.shp", "start_field": "t", "last_record": "duration",
             "default_duration": -5,

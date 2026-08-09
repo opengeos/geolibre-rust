@@ -260,9 +260,7 @@ impl Tool for RegressionKrigingTool {
         // Largest diagonal of (X'X)^-1 scaled by the column norms is a cheap
         // collinearity signal; a huge value means the coefficients are unstable
         // even though the solve succeeded.
-        let max_xtx_inv_diag = (0..p)
-            .map(|i| fit.xtx_inv[i][i])
-            .fold(0.0_f64, f64::max);
+        let max_xtx_inv_diag = (0..p).map(|i| fit.xtx_inv[i][i]).fold(0.0_f64, f64::max);
 
         ctx.progress.info(&format!(
             "{} sample(s), {} covariate(s), R2 = {r2:.3}",
@@ -335,8 +333,7 @@ impl Tool for RegressionKrigingTool {
                 err[r * cols + c] = sd;
                 valid += 1;
             }
-            ctx.progress
-                .progress((r as f64 + 1.0) / rows.max(1) as f64);
+            ctx.progress.progress((r as f64 + 1.0) / rows.max(1) as f64);
         }
 
         let pred_raster = raster_like_with_data(template, pred, nodata, DataType::F32)?;
@@ -354,7 +351,10 @@ impl Tool for RegressionKrigingTool {
         outputs.insert("covariate_count".to_string(), json!(cov_paths.len()));
         outputs.insert("coefficients".to_string(), json!(fit.beta));
         outputs.insert("r_squared".to_string(), json!(r2));
-        outputs.insert("residual_variance".to_string(), json!(ss_res / ys.len() as f64));
+        outputs.insert(
+            "residual_variance".to_string(),
+            json!(ss_res / ys.len() as f64),
+        );
         outputs.insert("variogram_model".to_string(), json!(vg.model.label()));
         outputs.insert("nugget".to_string(), json!(vg.nugget));
         outputs.insert("partial_sill".to_string(), json!(vg.partial_sill));
@@ -398,13 +398,7 @@ fn nearest(
 /// `None` means outside the grid; `Some(None)` means inside but no-data. The
 /// two are distinguished so the caller can report them separately — they mean
 /// different things about the user's inputs.
-fn sample(
-    r: &Raster,
-    y_max: f64,
-    x: f64,
-    y: f64,
-    bilinear: bool,
-) -> Option<Option<f64>> {
+fn sample(r: &Raster, y_max: f64, x: f64, y: f64, bilinear: bool) -> Option<Option<f64>> {
     let fc = (x - r.x_min) / r.cell_size_x - 0.5;
     let fr = (y_max - y) / r.cell_size_y - 0.5;
     let ci = (x - r.x_min) / r.cell_size_x;
@@ -624,7 +618,10 @@ mod tests {
                 }
             }
         }
-        assert!(any_positive, "a noisy fit should report non-zero uncertainty");
+        assert!(
+            any_positive,
+            "a noisy fit should report non-zero uncertainty"
+        );
     }
 
     #[test]
@@ -860,7 +857,10 @@ mod tests {
         }))
         .unwrap();
         let err = RegressionKrigingTool.run(&args, &ctx()).unwrap_err();
-        assert!(format!("{err}").contains("more samples than terms"), "{err}");
+        assert!(
+            format!("{err}").contains("more samples than terms"),
+            "{err}"
+        );
     }
 
     #[test]

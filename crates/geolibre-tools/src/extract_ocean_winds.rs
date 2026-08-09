@@ -324,9 +324,7 @@ impl Field {
                 .as_f64()
                 .filter(|v| v.is_finite())
                 .map(Field::Constant)
-                .ok_or_else(|| {
-                    ToolError::Validation(format!("'{key}' must be a finite number"))
-                }),
+                .ok_or_else(|| ToolError::Validation(format!("'{key}' must be a finite number"))),
             Some(Value::String(s)) => {
                 let t = s.trim();
                 if t.is_empty() {
@@ -623,7 +621,10 @@ mod tests {
             for phi in [0.0, 45.0, 90.0, 135.0, 180.0, 270.0] {
                 for v in [0.2, 1.0, 10.0, 25.0, 50.0] {
                     let s = cmod5n_forward(v, phi, theta);
-                    assert!(s.is_finite() && s >= 0.0, "v={v} phi={phi} theta={theta}: {s}");
+                    assert!(
+                        s.is_finite() && s >= 0.0,
+                        "v={v} phi={phi} theta={theta}: {s}"
+                    );
                 }
             }
         }
@@ -676,7 +677,11 @@ mod tests {
         assert_eq!(res.outputs["valid_cells"], json!(4));
         for r in 0..2 {
             for c in 0..2 {
-                assert!((out.get(0, r, c) - truth).abs() < 0.05, "{}", out.get(0, r, c));
+                assert!(
+                    (out.get(0, r, c) - truth).abs() < 0.05,
+                    "{}",
+                    out.get(0, r, c)
+                );
             }
         }
     }
@@ -741,8 +746,16 @@ mod tests {
             "wind_direction": raster(1, 2, &[0.0, 0.0]),
             "look_direction": 0.0,
         }));
-        assert!((out.get(0, 0, 0) - 6.0).abs() < 0.05, "{}", out.get(0, 0, 0));
-        assert!((out.get(0, 0, 1) - 14.0).abs() < 0.05, "{}", out.get(0, 0, 1));
+        assert!(
+            (out.get(0, 0, 0) - 6.0).abs() < 0.05,
+            "{}",
+            out.get(0, 0, 0)
+        );
+        assert!(
+            (out.get(0, 0, 1) - 14.0).abs() < 0.05,
+            "{}",
+            out.get(0, 0, 1)
+        );
     }
 
     #[test]

@@ -284,7 +284,10 @@ fn tile_nw(x: u64, y: u64, z: usize, epsg: u32) -> (f64, f64) {
         // WebMercator tile bounds are exact linear divisions of the extent, so
         // no trigonometry is involved and no precision is lost.
         let span = 2.0 * HALF_EXTENT / n;
-        (-HALF_EXTENT + x as f64 * span, HALF_EXTENT - y as f64 * span)
+        (
+            -HALF_EXTENT + x as f64 * span,
+            HALF_EXTENT - y as f64 * span,
+        )
     }
 }
 
@@ -312,9 +315,8 @@ fn parse_bbox(s: &str) -> Result<(f64, f64, f64, f64), ToolError> {
         .map(str::trim)
         .filter(|p| !p.is_empty())
         .map(|p| {
-            p.parse::<f64>().map_err(|_| {
-                ToolError::Validation(format!("'bbox' entry '{p}' is not a number"))
-            })
+            p.parse::<f64>()
+                .map_err(|_| ToolError::Validation(format!("'bbox' entry '{p}' is not a number")))
         })
         .collect::<Result<_, _>>()?;
     if parts.len() != 4 {
@@ -406,9 +408,10 @@ fn geometry_coords(g: &Geometry) -> Vec<(f64, f64)> {
         Geometry::Point(p) => vec![(p.x, p.y)],
         Geometry::MultiPoint(ps) => ps.iter().map(|p| (p.x, p.y)).collect(),
         Geometry::LineString(cs) => cs.iter().map(|c| (c.x, c.y)).collect(),
-        Geometry::MultiLineString(ls) => {
-            ls.iter().flat_map(|l| l.iter().map(|c| (c.x, c.y))).collect()
-        }
+        Geometry::MultiLineString(ls) => ls
+            .iter()
+            .flat_map(|l| l.iter().map(|c| (c.x, c.y)))
+            .collect(),
         Geometry::Polygon { exterior, .. } => exterior.0.iter().map(|c| (c.x, c.y)).collect(),
         Geometry::MultiPolygon(ps) => ps
             .iter()
@@ -604,8 +607,7 @@ mod tests {
             .unwrap();
         let id = wbvector::memory_store::put_vector(l);
         let path = wbvector::memory_store::make_vector_memory_path(&id);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"zoom": 4, "extent": path})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"zoom": 4, "extent": path})).unwrap();
         let err = TileGridPolygonsTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("EPSG:32610"), "{err}");
     }

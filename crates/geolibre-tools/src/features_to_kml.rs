@@ -164,7 +164,10 @@ impl Tool for FeaturesToKmlTool {
             )?),
             color: parse_optional_str(args, "color")?.map(str::to_string),
             fill_color: parse_optional_str(args, "fill_color")?.map(str::to_string),
-            line_width: args.get("line_width").and_then(Value::as_f64).unwrap_or(1.0),
+            line_width: args
+                .get("line_width")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0),
         };
 
         let layer = load_input_layer(input)?;
@@ -285,9 +288,9 @@ fn out_of_degree_range(layer: &Layer) -> Option<(f64, f64)> {
                 exterior,
                 interiors,
             }) => check(&exterior.0).or_else(|| interiors.iter().find_map(|r| check(&r.0))),
-            Some(Geometry::MultiPolygon(ps)) => ps.iter().find_map(|(e, hs)| {
-                check(&e.0).or_else(|| hs.iter().find_map(|r| check(&r.0)))
-            }),
+            Some(Geometry::MultiPolygon(ps)) => ps
+                .iter()
+                .find_map(|(e, hs)| check(&e.0).or_else(|| hs.iter().find_map(|r| check(&r.0)))),
             _ => None,
         };
         if hit.is_some() {
@@ -444,7 +447,11 @@ fn write_polygon(
 
     w.write_event(Event::Start(BytesStart::new("outerBoundaryIs")))?;
     w.write_event(Event::Start(BytesStart::new("LinearRing")))?;
-    text_el(w, "coordinates", &coord_str(&oriented(&exterior.0, true), z))?;
+    text_el(
+        w,
+        "coordinates",
+        &coord_str(&oriented(&exterior.0, true), z),
+    )?;
     w.write_event(Event::End(BytesEnd::new("LinearRing")))?;
     w.write_event(Event::End(BytesEnd::new("outerBoundaryIs")))?;
 
@@ -860,9 +867,15 @@ mod tests {
         assert!(bad(json!({})));
         assert!(bad(json!({"input": "a.shp"})));
         assert!(bad(json!({"input": "a.shp", "output": "a.shp"})));
-        assert!(bad(json!({"input": "a.shp", "output": "a.kml", "altitude_mode": "sky"})));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "a.kml", "altitude_mode": "sky"})
+        ));
         // #rrggbb would swap red and blue against KML's aabbggrr order.
-        assert!(bad(json!({"input": "a.shp", "output": "a.kml", "color": "#ff0000"})));
-        assert!(bad(json!({"input": "a.shp", "output": "a.kml", "line_width": 0})));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "a.kml", "color": "#ff0000"})
+        ));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "a.kml", "line_width": 0})
+        ));
     }
 }

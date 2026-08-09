@@ -197,9 +197,14 @@ impl Tool for MultitemporalCoherenceTool {
                          stack"
                     )));
                 }
-                (0..n).flat_map(|a| ((a + 1)..n).map(move |b| (a, b))).collect()
+                (0..n)
+                    .flat_map(|a| ((a + 1)..n).map(move |b| (a, b)))
+                    .collect()
             }
-            "reference" => (0..n).filter(|&i| i != reference_index).map(|i| (reference_index, i)).collect(),
+            "reference" => (0..n)
+                .filter(|&i| i != reference_index)
+                .map(|i| (reference_index, i))
+                .collect(),
             _ => (0..n - 1).map(|i| (i, i + 1)).collect(),
         };
         ctx.progress.info(&format!(
@@ -232,9 +237,12 @@ impl Tool for MultitemporalCoherenceTool {
         }
 
         // Temporal baseline per pair, for the slope fit.
-        let baselines: Option<Vec<f64>> = dates
-            .as_ref()
-            .map(|d| pair_list.iter().map(|&(a, b)| (d[b] - d[a]).abs()).collect());
+        let baselines: Option<Vec<f64>> = dates.as_ref().map(|d| {
+            pair_list
+                .iter()
+                .map(|&(a, b)| (d[b] - d[a]).abs())
+                .collect()
+        });
 
         let nodata = -1.0_f64;
         let mut bands: Vec<Vec<f64>> = Vec::with_capacity(stats.len());
@@ -448,7 +456,11 @@ fn parse_window(args: &ToolArgs) -> Result<(usize, usize), ToolError> {
         let w = usize_or(args, "window_size", 5)?.max(1);
         return Ok((w | 1, w | 1));
     };
-    let parts: Vec<&str> = s.split([',', ';']).map(str::trim).filter(|p| !p.is_empty()).collect();
+    let parts: Vec<&str> = s
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
     let nums: Vec<usize> = parts
         .iter()
         .map(|p| {
@@ -484,7 +496,13 @@ mod tests {
 
     /// A 4x4 complex scene whose phase at every cell is `phase`, amplitude 1.
     fn scene(phase: f64) -> String {
-        complex(4, 4, &(0..16).map(|_| (phase.cos(), phase.sin())).collect::<Vec<_>>())
+        complex(
+            4,
+            4,
+            &(0..16)
+                .map(|_| (phase.cos(), phase.sin()))
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// A 4x4 scene whose per-cell phase varies pseudo-randomly with `seed`,
@@ -611,7 +629,10 @@ mod tests {
         }));
         assert_eq!(res.outputs["statistics"], json!(["mean", "min", "max"]));
         let (mean, min, max) = (out.get(0, 2, 2), out.get(1, 2, 2), out.get(2, 2, 2));
-        assert!(min <= mean + 1e-9 && mean <= max + 1e-9, "{min} {mean} {max}");
+        assert!(
+            min <= mean + 1e-9 && mean <= max + 1e-9,
+            "{min} {mean} {max}"
+        );
         assert!(min < max, "a mixed stack should have spread");
     }
 
@@ -689,7 +710,9 @@ mod tests {
             "reference": a, "secondary": b, "window_size": "3",
         }))
         .unwrap();
-        let res = crate::sar_coherence::SarCoherenceTool.run(&args, &ctx()).unwrap();
+        let res = crate::sar_coherence::SarCoherenceTool
+            .run(&args, &ctx())
+            .unwrap();
         let single = load_input_raster(res.outputs["output"].as_str().unwrap()).unwrap();
         for r in 0..4 {
             for c in 0..4 {
@@ -703,8 +726,7 @@ mod tests {
     fn the_pair_cube_is_produced_without_a_path() {
         let a = scene(0.0);
         let b = scene(0.5);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         let res = MultitemporalCoherenceTool.run(&args, &ctx()).unwrap();
         let p = res.outputs["output_pairs"].as_str().unwrap();
         assert!(load_input_raster(p).is_ok());
@@ -762,7 +784,9 @@ mod tests {
         assert!(bad(json!({})));
         assert!(bad(json!({"inputs": "a.tif"})));
         assert!(bad(json!({"inputs": "a.tif,b.tif", "pairs": "sequential"})));
-        assert!(bad(json!({"inputs": "a.tif,b.tif", "statistics": "median"})));
+        assert!(bad(
+            json!({"inputs": "a.tif,b.tif", "statistics": "median"})
+        ));
         // A slope against acquisition index is not a slope against time.
         assert!(bad(json!({
             "inputs": "a.tif,b.tif", "statistics": "decorrelation_slope",

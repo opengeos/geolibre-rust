@@ -126,7 +126,9 @@ impl Tool for TransposeFieldsTool {
             .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".into()))?;
         let fields = parse_list(args, "transpose_fields")?;
         let labels = parse_list(args, "field_labels")?;
-        let value_name = parse_optional_str(args, "value_field")?.unwrap_or("VALUE").to_string();
+        let value_name = parse_optional_str(args, "value_field")?
+            .unwrap_or("VALUE")
+            .to_string();
         let field_name = parse_optional_str(args, "transposed_field")?
             .unwrap_or("FIELD")
             .to_string();
@@ -141,7 +143,9 @@ impl Tool for TransposeFieldsTool {
         let mut t_idx = Vec::with_capacity(fields.len());
         for f in &fields {
             let i = layer.schema.field_index(f).ok_or_else(|| {
-                ToolError::Validation(format!("transpose field '{f}' not found in the input layer"))
+                ToolError::Validation(format!(
+                    "transpose field '{f}' not found in the input layer"
+                ))
             })?;
             t_idx.push(i);
         }
@@ -190,7 +194,7 @@ impl Tool for TransposeFieldsTool {
             fields.len()
         ));
 
-        let mut out = Layer::new(&format!("{}_long", layer.name));
+        let mut out = Layer::new(format!("{}_long", layer.name));
         if let Some(gt) = layer.geom_type {
             out = out.with_geom_type(gt);
         }
@@ -207,7 +211,11 @@ impl Tool for TransposeFieldsTool {
         let mut dropped = 0_u64;
         for (src_fid, feature) in layer.iter().enumerate() {
             for (k, &fi) in t_idx.iter().enumerate() {
-                let raw = feature.attributes.get(fi).cloned().unwrap_or(FieldValue::Null);
+                let raw = feature
+                    .attributes
+                    .get(fi)
+                    .cloned()
+                    .unwrap_or(FieldValue::Null);
                 if drop_nulls && matches!(raw, FieldValue::Null) {
                     dropped += 1;
                     continue;
@@ -216,7 +224,11 @@ impl Tool for TransposeFieldsTool {
                 let mut attrs: Vec<FieldValue> = retain
                     .iter()
                     .map(|(_, i, _)| {
-                        feature.attributes.get(*i).cloned().unwrap_or(FieldValue::Null)
+                        feature
+                            .attributes
+                            .get(*i)
+                            .cloned()
+                            .unwrap_or(FieldValue::Null)
                     })
                     .collect();
                 attrs.push(FieldValue::Text(label));
@@ -289,9 +301,9 @@ fn unified_value_type(layer: &Layer, t_idx: &[usize]) -> FieldType {
 fn coerce(v: FieldValue, target: FieldType) -> FieldValue {
     match (target, &v) {
         (_, FieldValue::Null) => FieldValue::Null,
-        (FieldType::Integer, _) => as_f64(&v).map_or(FieldValue::Null, |f| {
-            FieldValue::Integer(f.round() as i64)
-        }),
+        (FieldType::Integer, _) => {
+            as_f64(&v).map_or(FieldValue::Null, |f| FieldValue::Integer(f.round() as i64))
+        }
         (FieldType::Float, _) => as_f64(&v).map_or(FieldValue::Null, FieldValue::Float),
         (FieldType::Text, FieldValue::Text(s)) => FieldValue::Text(s.clone()),
         (FieldType::Text, _) => FieldValue::Text(display(&v)),
@@ -580,7 +592,9 @@ mod tests {
             "value_field": "VALUE",
         }))
         .unwrap();
-        let res = crate::pivot_table::PivotTableTool.run(&args, &ctx()).unwrap();
+        let res = crate::pivot_table::PivotTableTool
+            .run(&args, &ctx())
+            .unwrap();
         let wide_again = load_input_layer(res.outputs["output"].as_str().unwrap()).unwrap();
         assert_eq!(wide_again.features.len(), 2);
         let i = wide_again.schema.field_index("POP_2010").unwrap();

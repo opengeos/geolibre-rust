@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 
 use kdtree::distance::squared_euclidean;
 use kdtree::KdTree;
-use serde_json::{json, Value};
+use serde_json::json;
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
@@ -157,18 +157,17 @@ impl Tool for ReducePointDensityTool {
         // output type ambiguous, so it is an error rather than a silent copy.
         let mut pts: Vec<Pt> = Vec::with_capacity(layer.features.len());
         for (fid, f) in layer.iter().enumerate() {
-            let (x, y) = match f.geometry.as_ref() {
-                Some(Geometry::Point(p)) => (p.x, p.y),
-                Some(Geometry::MultiPoint(ps)) if ps.len() == 1 => (ps[0].x, ps[0].y),
-                Some(_) => {
-                    return Err(ToolError::Validation(
+            let (x, y) =
+                match f.geometry.as_ref() {
+                    Some(Geometry::Point(p)) => (p.x, p.y),
+                    Some(Geometry::MultiPoint(ps)) if ps.len() == 1 => (ps[0].x, ps[0].y),
+                    Some(_) => return Err(ToolError::Validation(
                         "reduce_point_density expects a point layer; feature geometry is not a \
                          single point"
                             .to_string(),
-                    ))
-                }
-                None => continue,
-            };
+                    )),
+                    None => continue,
+                };
             if !x.is_finite() || !y.is_finite() {
                 continue;
             }
@@ -352,6 +351,7 @@ fn truthy(v: &FieldValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbvector::{FieldDef, FieldType, GeometryType};
 
@@ -591,6 +591,8 @@ mod tests {
         assert!(bad(json!({"input": "p.shp", "min_distance": -1})));
         assert!(bad(json!({"input": "p.shp"})));
         assert!(bad(json!({"input": "p.shp", "method": "bin"})));
-        assert!(bad(json!({"input": "p.shp", "method": "grid", "bin_size": 1})));
+        assert!(bad(
+            json!({"input": "p.shp", "method": "grid", "bin_size": 1})
+        ));
     }
 }

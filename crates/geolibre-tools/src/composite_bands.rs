@@ -37,7 +37,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::{DataType, Raster};
+use wbraster::DataType;
 
 use crate::args_common::{band_index, choice_or};
 use crate::common::{load_input_raster, parse_optional_output, write_or_store_output};
@@ -262,7 +262,7 @@ fn wider(a: DataType, b: DataType) -> DataType {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbraster::{CrsInfo, RasterConfig};
+    use wbraster::{CrsInfo, Raster, RasterConfig};
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -374,7 +374,11 @@ mod tests {
             "inputs": format!("{a},{b}"), "nodata_policy": "all",
         }));
         assert_eq!(out.get(1, 0, 1), 7.0);
-        assert_eq!(out.get(0, 0, 1), out.nodata, "the missing band stays no-data");
+        assert_eq!(
+            out.get(0, 0, 1),
+            out.nodata,
+            "the missing band stays no-data"
+        );
         assert_eq!(res.outputs["masked_cells"], json!(0));
     }
 
@@ -382,8 +386,7 @@ mod tests {
     fn a_grid_mismatch_names_the_offending_input() {
         let a = raster(1, 2, &[1.0, 2.0]);
         let b = raster(2, 2, &[1.0, 2.0, 3.0, 4.0]);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         let err = CompositeBandsTool.run(&args, &ctx()).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("input 1"), "got: {msg}");
@@ -396,8 +399,7 @@ mod tests {
         // misregister every band by a cell.
         let a = raster_at(1, 2, &[1.0, 2.0], 0.0, 1.0, DataType::F64, Some(3857));
         let b = raster_at(1, 2, &[3.0, 4.0], 5.0, 1.0, DataType::F64, Some(3857));
-        let args: ToolArgs =
-            serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         let err = CompositeBandsTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err}").contains("origin or cell size"), "{err}");
     }
@@ -406,8 +408,7 @@ mod tests {
     fn a_crs_mismatch_is_rejected() {
         let a = raster_at(1, 2, &[1.0, 2.0], 0.0, 1.0, DataType::F64, Some(3857));
         let b = raster_at(1, 2, &[3.0, 4.0], 0.0, 1.0, DataType::F64, Some(4326));
-        let args: ToolArgs =
-            serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         assert!(CompositeBandsTool.run(&args, &ctx()).is_err());
     }
 

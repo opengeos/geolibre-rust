@@ -137,7 +137,8 @@ impl Tool for CreateAccuracyAssessmentPointsTool {
 
         // Candidate locations, bucketed by class. Raster and vector inputs
         // differ only in how the buckets are filled.
-        let (buckets, epsg, source_kind) = collect_candidates(&input, class_field.as_deref(), band)?;
+        let (buckets, epsg, source_kind) =
+            collect_candidates(&input, class_field.as_deref(), band)?;
         if buckets.is_empty() {
             return Err(ToolError::Execution(
                 "the input contained no valid classified cells or features".to_string(),
@@ -152,7 +153,8 @@ impl Tool for CreateAccuracyAssessmentPointsTool {
         let allocation = allocate(&buckets, num_points, strategy, min_per_class);
 
         let mut rng = Rng::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xDEAD_BEEF);
-        let mut layer = Layer::new("accuracy_assessment_points").with_geom_type(GeometryType::Point);
+        let mut layer =
+            Layer::new("accuracy_assessment_points").with_geom_type(GeometryType::Point);
         if let Some(e) = epsg {
             layer = layer.with_crs_epsg(e);
         }
@@ -305,11 +307,7 @@ fn allocate(
 /// Draws `take` distinct entries from `pool` using partial Fisher-Yates over an
 /// index set, so no candidate is selected twice and the cost is O(take) rather
 /// than O(pool) shuffling.
-fn sample_without_replacement(
-    pool: &[(f64, f64)],
-    take: usize,
-    rng: &mut Rng,
-) -> Vec<(f64, f64)> {
+fn sample_without_replacement(pool: &[(f64, f64)], take: usize, rng: &mut Rng) -> Vec<(f64, f64)> {
     if take >= pool.len() {
         return pool.to_vec();
     }
@@ -381,7 +379,9 @@ fn collect_candidates(
         )
     })?;
     let fidx = layer.schema.field_index(field).ok_or_else(|| {
-        ToolError::Validation(format!("class_field '{field}' not found in the input layer"))
+        ToolError::Validation(format!(
+            "class_field '{field}' not found in the input layer"
+        ))
     })?;
     for feature in layer.iter() {
         let Some(class) = feature.attributes.get(fidx).and_then(field_as_i64) else {
@@ -502,7 +502,9 @@ mod tests {
 
     fn run(args: Value) -> (Layer, ToolRunResult) {
         let args: ToolArgs = serde_json::from_value(args).unwrap();
-        let res = CreateAccuracyAssessmentPointsTool.run(&args, &ctx()).unwrap();
+        let res = CreateAccuracyAssessmentPointsTool
+            .run(&args, &ctx())
+            .unwrap();
         let layer = load_input_layer(res.outputs["output"].as_str().unwrap()).unwrap();
         (layer, res)
     }
@@ -726,7 +728,9 @@ mod tests {
         };
         assert!(bad(json!({})));
         assert!(bad(json!({"input": r.clone(), "num_points": 0})));
-        assert!(bad(json!({"input": r.clone(), "sampling_strategy": "nope"})));
+        assert!(bad(
+            json!({"input": r.clone(), "sampling_strategy": "nope"})
+        ));
         // band is 1-based; 0 is a common off-by-one and must not silently pass.
         assert!(bad(json!({"input": r, "band": 0})));
     }

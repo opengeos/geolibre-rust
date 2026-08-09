@@ -301,6 +301,7 @@ mod cell_position_statistics;
 mod cell_statistics;
 mod collapse_road_detail;
 mod compute_accuracy_for_object_detection;
+mod contiguous_cartogram;
 mod contour_list;
 mod contour_with_barriers;
 mod convert_coordinate_notation;
@@ -411,6 +412,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(extract_ocean_winds::ExtractOceanWindsTool),
         Box::new(regression_kriging::RegressionKrigingTool),
         Box::new(multipatch_to_mesh::MultipatchToMeshTool),
+        Box::new(contiguous_cartogram::ContiguousCartogramTool),
         Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
         Box::new(coregister_rasters::CoregisterRastersTool),
         Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
@@ -786,6 +788,16 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("max_constraint", float()),
             ("scale_data", ToolParamSchema::bool()),
             ("output_table", table_out()),
+        ]),
+        "contiguous_cartogram" => schemas(&[
+            ("input", vector_in()),
+            ("value_field", ToolParamSchema::string()),
+            ("grid_size", int()),
+            ("iterations", int()),
+            ("blur", float()),
+            ("sea_density", ToolParamSchema::enum_values(&["mean", "min"])),
+            ("densify_spacing", float()),
+            ("output", vector_out()),
         ]),
         "multipatch_to_mesh" => schemas(&[
             ("input", vector_in()),

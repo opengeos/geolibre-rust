@@ -445,21 +445,17 @@ fn pack(mesh: &Mesh, offset: [f64; 3], y_up: bool) -> Packed {
 
     for t in &mesh.tris {
         let n = face_normal(t);
-        let n = if y_up {
-            [n[0], n[2], -n[1]]
-        } else {
-            n
-        };
+        let n = if y_up { [n[0], n[2], -n[1]] } else { n };
         for v in t {
             let p = transform(*v, offset, y_up);
-            for k in 0..3 {
+            for (k, lo) in min.iter_mut().enumerate() {
                 let f = p[k] as f32;
-                min[k] = min[k].min(f);
+                *lo = lo.min(f);
                 max[k] = max[k].max(f);
                 positions.extend_from_slice(&f.to_le_bytes());
             }
-            for k in 0..3 {
-                normals.extend_from_slice(&(n[k] as f32).to_le_bytes());
+            for nk in n {
+                normals.extend_from_slice(&(nk as f32).to_le_bytes());
             }
             indices.extend_from_slice(&idx.to_le_bytes());
             idx += 1;
@@ -498,7 +494,7 @@ fn build_gltf_parts(
         // each section starts on a multiple of 4 — asserted rather than assumed,
         // because a misaligned view parses but renders nothing.
         let mut push_view = |data: &[u8], target: u64, buffer: &mut Vec<u8>| -> usize {
-            while buffer.len() % 4 != 0 {
+            while !buffer.len().is_multiple_of(4) {
                 buffer.push(0);
             }
             let offset = buffer.len();
@@ -555,7 +551,7 @@ fn build_gltf_parts(
     }
 
     // The buffer's own length must also be 4-byte aligned for GLB.
-    while buffer.len() % 4 != 0 {
+    while !buffer.len().is_multiple_of(4) {
         buffer.push(0);
     }
 
@@ -602,11 +598,11 @@ fn build_glb(meshes: &[Mesh], offset: [f64; 3], y_up: bool) -> Result<Vec<u8>, T
     let (doc, buffer) = build_gltf_parts(meshes, offset, y_up)?;
     let mut json_bytes = serde_json::to_vec(&doc)
         .map_err(|e| ToolError::Execution(format!("failed serializing glTF JSON: {e}")))?;
-    while json_bytes.len() % 4 != 0 {
+    while !json_bytes.len().is_multiple_of(4) {
         json_bytes.push(b' ');
     }
     let mut bin = buffer;
-    while bin.len() % 4 != 0 {
+    while !bin.len().is_multiple_of(4) {
         bin.push(0);
     }
 
@@ -692,10 +688,30 @@ mod tests {
 
     fn tri(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> (Ring, Vec<Ring>) {
         let ring = Ring(vec![
-            Coord { x: a[0], y: a[1], z: Some(a[2]), m: None },
-            Coord { x: b[0], y: b[1], z: Some(b[2]), m: None },
-            Coord { x: c[0], y: c[1], z: Some(c[2]), m: None },
-            Coord { x: a[0], y: a[1], z: Some(a[2]), m: None },
+            Coord {
+                x: a[0],
+                y: a[1],
+                z: Some(a[2]),
+                m: None,
+            },
+            Coord {
+                x: b[0],
+                y: b[1],
+                z: Some(b[2]),
+                m: None,
+            },
+            Coord {
+                x: c[0],
+                y: c[1],
+                z: Some(c[2]),
+                m: None,
+            },
+            Coord {
+                x: a[0],
+                y: a[1],
+                z: Some(a[2]),
+                m: None,
+            },
         ]);
         (ring, Vec::new())
     }
@@ -757,9 +773,8 @@ mod tests {
         assert_eq!(&bytes[16..20], b"JSON");
         assert_eq!(json_len % 4, 0, "JSON chunk must be 4-byte aligned");
         let bin_start = 20 + json_len;
-        let bin_len = u32::from_le_bytes(
-            bytes[bin_start..bin_start + 4].try_into().unwrap(),
-        ) as usize;
+        let bin_len =
+            u32::from_le_bytes(bytes[bin_start..bin_start + 4].try_into().unwrap()) as usize;
         assert_eq!(&bytes[bin_start + 4..bin_start + 8], b"BIN\0");
         assert_eq!(bin_len % 4, 0, "BIN chunk must be 4-byte aligned");
         assert_eq!(bin_start + 8 + bin_len, bytes.len());
@@ -828,7 +843,10 @@ mod tests {
             "input": square_layer(500_000.0, Some(32610)), "output": tmp("prec", "glb"),
         }));
         let offset = res.outputs["origin_offset"].as_array().unwrap();
-        assert!(offset[0].as_f64().unwrap() > 400_000.0, "origin not applied");
+        assert!(
+            offset[0].as_f64().unwrap() > 400_000.0,
+            "origin not applied"
+        );
 
         let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
         let doc: Value = serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
@@ -865,7 +883,10 @@ mod tests {
             .unwrap() as usize;
         let min = &doc["accessors"][pos_acc]["min"];
         for k in 0..3 {
-            assert!(min[k].as_f64().unwrap().abs() < 1e-6, "min not at origin: {min}");
+            assert!(
+                min[k].as_f64().unwrap().abs() < 1e-6,
+                "min not at origin: {min}"
+            );
         }
     }
 
@@ -1016,8 +1037,14 @@ mod tests {
         assert!(bad(json!({"input": "a.shp"})));
         // An unknown extension with no explicit format is ambiguous.
         assert!(bad(json!({"input": "a.shp", "output": "mesh.dae"})));
-        assert!(bad(json!({"input": "a.shp", "output": "m.glb", "format": "collada"})));
-        assert!(bad(json!({"input": "a.shp", "output": "m.glb", "origin": "corner"})));
-        assert!(bad(json!({"input": "a.shp", "output": "m.glb", "y_up": "yes"})));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "m.glb", "format": "collada"})
+        ));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "m.glb", "origin": "corner"})
+        ));
+        assert!(bad(
+            json!({"input": "a.shp", "output": "m.glb", "y_up": "yes"})
+        ));
     }
 }

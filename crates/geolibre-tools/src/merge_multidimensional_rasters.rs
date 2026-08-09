@@ -412,7 +412,9 @@ mod tests {
             "resolve_overlap": "error",
         }))
         .unwrap();
-        let err = MergeMultidimensionalRastersTool.run(&args, &ctx()).unwrap_err();
+        let err = MergeMultidimensionalRastersTool
+            .run(&args, &ctx())
+            .unwrap_err();
         assert!(format!("{err}").contains("resolve_overlap"), "{err}");
     }
 
@@ -453,15 +455,18 @@ mod tests {
             "resolve_overlap": "mean",
         }));
         assert_eq!(out.get(0, 0, 0), 10.0);
-        assert_eq!(out.get(0, 0, 1), 20.0, "the gap is filled from the other cube");
+        assert_eq!(
+            out.get(0, 0, 1),
+            20.0,
+            "the gap is filled from the other cube"
+        );
     }
 
     #[test]
     fn a_grid_mismatch_is_refused() {
         let a = cube_raster(1, 1, &[vec![1.0]]);
         let b = cube_raster(2, 2, &[vec![1.0, 2.0, 3.0, 4.0]]);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"inputs": format!("{a},{b}")})).unwrap();
         assert!(MergeMultidimensionalRastersTool.run(&args, &ctx()).is_err());
     }
 
@@ -503,7 +508,9 @@ mod tests {
         assert!(bad(json!({})));
         // A single cube is not a merge.
         assert!(bad(json!({"inputs": a})));
-        assert!(bad(json!({"inputs": "a.tif,b.tif", "resolve_overlap": "average"})));
+        assert!(bad(
+            json!({"inputs": "a.tif,b.tif", "resolve_overlap": "average"})
+        ));
         assert!(bad(json!({"inputs": "a.tif,b.tif", "tolerance": -1})));
     }
 
@@ -515,7 +522,9 @@ mod tests {
             "inputs": format!("{a},{b}"), "dimension_values": "1,2",
         }))
         .unwrap();
-        let err = MergeMultidimensionalRastersTool.run(&args, &ctx()).unwrap_err();
+        let err = MergeMultidimensionalRastersTool
+            .run(&args, &ctx())
+            .unwrap_err();
         assert!(format!("{err}").contains("3 slice(s)"), "{err}");
     }
 }

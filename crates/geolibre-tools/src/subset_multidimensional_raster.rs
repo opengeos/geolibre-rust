@@ -215,10 +215,7 @@ impl Tool for SubsetMultidimensionalRasterTool {
             "coord_max".to_string(),
             json!(kept_coords[kept_coords.len() - 1]),
         );
-        outputs.insert(
-            "has_coordinates".to_string(),
-            json!(cube.coords.is_some()),
-        );
+        outputs.insert("has_coordinates".to_string(), json!(cube.coords.is_some()));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -246,7 +243,7 @@ fn parse_range(s: &str) -> Result<(f64, f64), ToolError> {
             "'dimension_range' must be 'min,max'".to_string(),
         ));
     }
-    if !(parts[0] <= parts[1]) {
+    if parts[0] > parts[1] || !parts[0].is_finite() || !parts[1].is_finite() {
         return Err(ToolError::Validation(format!(
             "'dimension_range' min ({}) must not exceed max ({})",
             parts[0], parts[1]
@@ -261,8 +258,11 @@ fn parse_indices(s: &str) -> Result<Vec<usize>, ToolError> {
         .map(str::trim)
         .filter(|p| !p.is_empty())
         .map(|p| {
-            p.parse::<usize>()
-                .map_err(|_| ToolError::Validation(format!("'indices' entry '{p}' is not a non-negative integer")))
+            p.parse::<usize>().map_err(|_| {
+                ToolError::Validation(format!(
+                    "'indices' entry '{p}' is not a non-negative integer"
+                ))
+            })
         })
         .collect::<Result<_, _>>()?;
     if v.is_empty() {
@@ -385,7 +385,9 @@ mod tests {
     fn an_out_of_range_index_is_reported_not_clamped() {
         let args: ToolArgs =
             serde_json::from_value(json!({"input": five(), "indices": "0,9"})).unwrap();
-        let err = SubsetMultidimensionalRasterTool.run(&args, &ctx()).unwrap_err();
+        let err = SubsetMultidimensionalRasterTool
+            .run(&args, &ctx())
+            .unwrap_err();
         assert!(format!("{err}").contains("out of range"), "{err}");
     }
 
@@ -396,7 +398,9 @@ mod tests {
             "dimension_range": "3000,3001",
         }))
         .unwrap();
-        let err = SubsetMultidimensionalRasterTool.run(&args, &ctx()).unwrap_err();
+        let err = SubsetMultidimensionalRasterTool
+            .run(&args, &ctx())
+            .unwrap_err();
         assert!(format!("{err}").contains("no slices"), "{err}");
     }
 
@@ -444,7 +448,9 @@ mod tests {
         assert!(bad(json!({})));
         assert!(bad(json!({"input": "a.tif", "step": 0})));
         assert!(bad(json!({"input": "a.tif", "dimension_range": "5"})));
-        assert!(bad(json!({"input": "a.tif", "dimension_range": "9,1", "dimension_values": "1,2"})));
+        assert!(bad(
+            json!({"input": "a.tif", "dimension_range": "9,1", "dimension_values": "1,2"})
+        ));
         // Mutually exclusive selectors.
         assert!(bad(json!({
             "input": "a.tif", "indices": "0", "dimension_range": "1,2",

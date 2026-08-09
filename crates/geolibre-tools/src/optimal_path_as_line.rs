@@ -120,9 +120,7 @@ impl Tool for OptimalPathAsLineTool {
         req_str(args, "destination")?;
         req_str(args, "backlink")?;
         let path_type = choice_or(args, "path_type", &PATH_TYPES, "each_cell")?;
-        if matches!(path_type, "each_zone" | "best_single")
-            && args.get("accumulation").is_none()
-        {
+        if matches!(path_type, "each_zone" | "best_single") && args.get("accumulation").is_none() {
             return Err(ToolError::Validation(format!(
                 "path_type '{path_type}' ranks destinations by cost, so 'accumulation' is required"
             )));
@@ -291,9 +289,8 @@ fn trace(
     rows: usize,
     cols: usize,
 ) -> Result<Option<Vec<usize>>, ToolError> {
-    let code_at = |idx: usize| -> f64 {
-        backlink.get(0, (idx / cols) as isize, (idx % cols) as isize)
-    };
+    let code_at =
+        |idx: usize| -> f64 { backlink.get(0, (idx / cols) as isize, (idx % cols) as isize) };
     let first = code_at(start);
     if first == backlink.nodata || !first.is_finite() {
         return Ok(None);
@@ -383,7 +380,9 @@ fn load_destinations(
     let layer = load_input_layer(spec)?;
     let zone_idx = match zone_field {
         Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
-            ToolError::Validation(format!("zone_field '{f}' not found in the destination layer"))
+            ToolError::Validation(format!(
+                "zone_field '{f}' not found in the destination layer"
+            ))
         })?),
         None => None,
     };
@@ -497,7 +496,10 @@ mod tests {
         };
         // Four cell centres, destination first, source last.
         assert_eq!(coords.len(), 4);
-        assert!((coords[0].x - 3.5).abs() < 1e-9, "starts at the destination");
+        assert!(
+            (coords[0].x - 3.5).abs() < 1e-9,
+            "starts at the destination"
+        );
         assert!((coords[3].x - 0.5).abs() < 1e-9, "ends at the source");
     }
 
@@ -645,7 +647,9 @@ mod tests {
         };
         assert!(bad(json!({})));
         assert!(bad(json!({"destination": r.clone()})));
-        assert!(bad(json!({"destination": r.clone(), "backlink": r.clone(), "path_type": "nope"})));
+        assert!(bad(
+            json!({"destination": r.clone(), "backlink": r.clone(), "path_type": "nope"})
+        ));
         // each_zone and best_single rank by cost, so accumulation is required.
         assert!(bad(
             json!({"destination": r.clone(), "backlink": r.clone(), "path_type": "each_zone"})

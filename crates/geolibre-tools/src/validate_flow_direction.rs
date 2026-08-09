@@ -36,7 +36,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{json, Value};
+use serde_json::json;
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
@@ -398,6 +398,7 @@ mod tests {
     use crate::vector_common::load_input_layer;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::{CrsInfo, DataType, Raster, RasterConfig};
+    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -499,10 +500,11 @@ mod tests {
         // (2,1)->N->(1,1).
         let (rows, cols) = (4, 4);
         let mut v = vec![1.0; rows * cols];
-        v[1 * cols + 1] = 1.0; // east
-        v[1 * cols + 2] = 4.0; // south
-        v[2 * cols + 2] = 16.0; // west
-        v[2 * cols + 1] = 64.0; // north
+        let at = |r: usize, c: usize| r * cols + c;
+        v[at(1, 1)] = 1.0; // east
+        v[at(1, 2)] = 4.0; // south
+        v[at(2, 2)] = 16.0; // west
+        v[at(2, 1)] = 64.0; // north
         let (layer, outputs) = run(json!({ "input": raster_of(cols, rows, &v) }));
         let found = problems(&layer);
         let cycle: Vec<&(i64, i64, String)> = found
@@ -522,8 +524,8 @@ mod tests {
     fn two_cell_loop_is_a_cycle() {
         let (rows, cols) = (3, 4);
         let mut v = vec![1.0; rows * cols];
-        v[1 * cols + 1] = 1.0; // east
-        v[1 * cols + 2] = 16.0; // west, straight back
+        v[cols + 1] = 1.0; // east
+        v[cols + 2] = 16.0; // west, straight back
         let (layer, _) = run(json!({ "input": raster_of(cols, rows, &v) }));
         let found = problems(&layer);
         assert_eq!(
@@ -619,8 +621,8 @@ mod tests {
     fn circular_check_can_be_disabled() {
         let (rows, cols) = (3, 4);
         let mut v = vec![1.0; rows * cols];
-        v[1 * cols + 1] = 1.0;
-        v[1 * cols + 2] = 16.0;
+        v[cols + 1] = 1.0;
+        v[cols + 2] = 16.0;
         let (off, _) = run(json!({
             "input": raster_of(cols, rows, &v), "check_circular": false
         }));

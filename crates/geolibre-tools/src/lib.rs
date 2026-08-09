@@ -78,6 +78,7 @@ mod excel_to_table;
 mod euclidean_direction;
 mod expand_shrink;
 mod exploratory_interpolation;
+mod evaluate_variable_influence;
 mod exploratory_regression;
 mod extract_locations_from_text;
 mod extract_sinks;
@@ -398,6 +399,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(contour_list::ContourListTool),
         Box::new(raster_to_weighted_points::RasterToWeightedPointsTool),
         Box::new(validate_flow_direction::ValidateFlowDirectionTool),
+        Box::new(evaluate_variable_influence::EvaluateVariableInfluenceTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -947,6 +949,22 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "evaluate_variable_influence" => schemas(&[
+            ("input", vector_in()),
+            ("dependent_field", ToolParamSchema::string()),
+            ("explanatory_fields", ToolParamSchema::string()),
+            ("output", table_out()),
+            ("output_partial_dependence", table_out()),
+            (
+                "model_type",
+                ToolParamSchema::enum_values(&["regression", "classification"]),
+            ),
+            ("number_of_trees", int()),
+            ("max_depth", int()),
+            ("min_samples_leaf", int()),
+            ("grid_points", int()),
+            ("permutation_repeats", int()),
         ]),
         "raster_domain" => schemas(&[
             ("input", raster_in()),

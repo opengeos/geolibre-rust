@@ -124,6 +124,7 @@ impl Tool for MultidimensionalRasterCorrelationTool {
         Ok(())
     }
 
+    #[allow(clippy::needless_range_loop)] // slice i of one cube pairs with i+lag of the other
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let prm = parse_params(args)?;
         let output = parse_optional_output(args, "output")?;

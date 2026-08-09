@@ -44,7 +44,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::{DataType, Raster};
+use wbraster::DataType;
 use wbvector::{Feature, FieldDef, FieldType, FieldValue, GeometryType, Layer};
 
 use crate::args_common::{band_index, f64_or, opt_f64, opt_positive_f64, req_str, usize_or};
@@ -328,8 +328,8 @@ impl Tool for ExtractWaterSarTool {
 
         let cell_area = raster.cell_size_x * raster.cell_size_y;
         let geoms = regions_to_geometries(&raster, &regions, rows, cols)?;
-        let mut fid = 0u64;
-        for (idx, geom) in geoms {
+        for (fid, (idx, geom)) in geoms.into_iter().enumerate() {
+            let fid = fid as u64;
             let reg = &regions[idx];
             let mut f = Feature::with_geometry(fid, geom, layer.schema.len());
             f.set_by_index(0, FieldValue::Integer(fid as i64));
@@ -338,7 +338,6 @@ impl Tool for ExtractWaterSarTool {
             f.set_by_index(3, FieldValue::Float(reg.mean()));
             f.set_by_index(4, FieldValue::Float(threshold));
             layer.push(f);
-            fid += 1;
         }
         let total_area = regions
             .iter()
@@ -422,6 +421,7 @@ mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::{CrsInfo, RasterConfig};
+    use wbraster::Raster;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

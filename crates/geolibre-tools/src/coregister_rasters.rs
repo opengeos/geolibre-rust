@@ -707,6 +707,7 @@ fn fit_transform(
 
 /// Solves `A x = b` in the least-squares sense via the normal equations with
 /// Gaussian elimination and partial pivoting.
+#[allow(clippy::needless_range_loop)] // elimination indexes rows/cols directly
 fn solve_least_squares(a: &[Vec<f64>], b: &[f64], n: usize) -> Result<Vec<f64>, ToolError> {
     // Normal equations: (A^T A) x = A^T b.
     let mut ata = vec![vec![0.0f64; n]; n];
@@ -859,10 +860,7 @@ struct Params {
 }
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
-    let band = match crate::args_common::opt_usize(args, "band")? {
-        None => None,
-        Some(b) => Some(b as isize),
-    };
+    let band = crate::args_common::opt_usize(args, "band")?.map(|b| b as isize);
     let transform = match choice_or(
         args,
         "transform",

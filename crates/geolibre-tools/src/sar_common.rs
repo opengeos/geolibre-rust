@@ -78,6 +78,7 @@ pub(crate) fn power_to_db(p: f64) -> Option<f64> {
 /// Used to split a bimodal backscatter histogram (dark water against bright
 /// land, or a dark slick against the surrounding sea) without a hand-tuned
 /// constant. Returns `None` if there is no spread to split.
+#[allow(clippy::needless_range_loop)] // the bin index is the histogram's x axis
 pub(crate) fn otsu_threshold(values: &[f64], bins: usize) -> Option<f64> {
     let bins = bins.max(2);
     let mut lo = f64::INFINITY;

@@ -41,7 +41,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{json, Value};
+use serde_json::json;
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
@@ -122,6 +122,7 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
         Ok(())
     }
 
+    #[allow(clippy::needless_range_loop)] // covariance/eigenvector maths indexes by slice
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let prm = parse_params(args)?;
         let output = parse_optional_output(args, "output")?;
@@ -430,6 +431,7 @@ mod tests {
     use wbvector::Feature;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::Raster;
+    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

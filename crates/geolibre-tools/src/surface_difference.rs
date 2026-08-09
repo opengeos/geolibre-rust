@@ -39,7 +39,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbraster::{DataType, Raster};
+use wbraster::DataType;
 use wbvector::{Feature, FieldDef, FieldType, FieldValue, GeometryType, Layer};
 
 use crate::args_common::{band_index, f64_or, opt_f64, req_str};
@@ -362,7 +362,7 @@ fn components_of(
         while let Some(i) = stack.pop() {
             cells.push(i);
             let (r, c) = (i / cols, i % cols);
-            let mut push = |rr: usize, cc: usize, st: &mut Vec<usize>, sn: &mut Vec<bool>| {
+            let push = |rr: usize, cc: usize, st: &mut Vec<usize>, sn: &mut Vec<bool>| {
                 let j = rr * cols + cc;
                 if !sn[j] && labels[j] == code {
                     sn[j] = true;
@@ -511,6 +511,7 @@ mod tests {
     use crate::vector_common::load_input_layer;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::{CrsInfo, RasterConfig};
+    use wbraster::Raster;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -626,7 +627,7 @@ mod tests {
         let before = vec![50.0; rows * cols];
         let mut after = before.clone();
         // Two disconnected mounds of different heights.
-        after[1 * cols + 1] = 51.0;
+        after[cols + 1] = 51.0;
         for r in 6..8 {
             for c in 6..8 {
                 after[r * cols + c] = 54.0;

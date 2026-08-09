@@ -789,7 +789,7 @@ mod tests {
         }));
         // The contour is interrupted by the hole, so it comes out in pieces
         // rather than crossing invented ground.
-        assert!(layer.len() >= 1);
+        assert!(!layer.is_empty());
         for f in layer.iter() {
             let Some(Geometry::LineString(cs)) = f.geometry.as_ref() else {
                 panic!()

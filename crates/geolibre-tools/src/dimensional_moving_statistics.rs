@@ -37,7 +37,7 @@
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
 
-use serde_json::{json, Value};
+use serde_json::json;
 use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
@@ -409,6 +409,7 @@ mod tests {
     use crate::cube::test_support::cube_raster;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::Raster;
+    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

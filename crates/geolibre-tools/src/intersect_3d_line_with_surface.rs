@@ -174,7 +174,7 @@ impl Tool for Intersect3dLineWithSurfaceTool {
                 None => mesh_spacing(mesh.as_deref()),
             },
         };
-        if !(spacing > 0.0) {
+        if spacing <= 0.0 || !spacing.is_finite() {
             return Err(ToolError::Execution(
                 "could not determine a densification spacing; supply 'spacing'".to_string(),
             ));

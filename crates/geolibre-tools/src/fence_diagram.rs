@@ -161,8 +161,10 @@ impl Tool for FenceDiagramTool {
         out.geom_type = Some(GeometryType::MultiPolygon);
         out.crs = lines.crs.clone();
         out.add_field(FieldDef::new("SRC_FID", FieldType::Integer));
-        out.add_field(FieldDef::new("SURFACE_TOP", FieldType::Integer));
-        out.add_field(FieldDef::new("SURFACE_BOTTOM", FieldType::Integer));
+        // LEVEL indices, not surface indices: a ceiling_height shifts every
+        // surface by one, so these count bounding levels top to bottom.
+        out.add_field(FieldDef::new("LEVEL_TOP", FieldType::Integer));
+        out.add_field(FieldDef::new("LEVEL_BOTTOM", FieldType::Integer));
         out.add_field(FieldDef::new("PANEL_AREA", FieldType::Float));
         out.add_field(FieldDef::new("STATIONS", FieldType::Integer));
         out.add_field(FieldDef::new("INVERTED", FieldType::Boolean));
@@ -172,74 +174,93 @@ impl Tool for FenceDiagramTool {
         let total = lines.iter().count().max(1);
 
         for (fid, feature) in lines.iter().enumerate() {
-            let Some(coords) = line_coords(feature.geometry.as_ref()) else {
-                continue;
-            };
-            let stations = densify(&coords, spacing);
-            if stations.len() < 2 {
-                continue;
-            }
+            for coords in line_parts(feature.geometry.as_ref()) {
+                let stations = densify(&coords, spacing);
+                if stations.len() < 2 {
+                    continue;
+                }
 
-            // Sample every level at every station once, reusing the columns
-            // across all panel pairs.
-            let columns: Vec<Vec<Option<f64>>> = levels
-                .iter()
-                .map(|lv| {
-                    stations
-                        .iter()
-                        .map(|(x, y)| match lv {
-                            Level::Constant(z) => Some(*z),
-                            Level::Surface(i) => sample_bilinear(&rasters[*i], band, *x, *y),
-                        })
-                        .collect()
-                })
-                .collect();
+                // Sample every level at every station once, reusing the columns
+                // across all panel pairs.
+                let columns: Vec<Vec<Option<f64>>> = levels
+                    .iter()
+                    .map(|lv| {
+                        stations
+                            .iter()
+                            .map(|(x, y)| match lv {
+                                Level::Constant(z) => Some(*z),
+                                Level::Surface(i) => sample_bilinear(&rasters[*i], band, *x, *y),
+                            })
+                            .collect()
+                    })
+                    .collect();
 
-            for pair in 0..levels.len().saturating_sub(1) {
-                // Keep only stations where BOTH levels are defined, so a gap in
-                // one surface truncates the panel instead of tearing it.
-                let mut upper: Vec<[f64; 3]> = Vec::new();
-                let mut lower: Vec<[f64; 3]> = Vec::new();
-                let mut inverted = false;
-                for (s, (x, y)) in stations.iter().enumerate() {
-                    let (Some(zu), Some(zl)) = (columns[pair][s], columns[pair + 1][s]) else {
-                        continue;
-                    };
-                    if zl > zu {
-                        inverted = true;
+                for pair in 0..levels.len().saturating_sub(1) {
+                    // Split into CONTIGUOUS runs of stations where both levels are
+                    // defined. Simply skipping undefined stations would bridge an
+                    // interior hole in a surface, drawing a panel across ground the
+                    // data does not cover.
+                    let mut runs: Vec<(Vec<[f64; 3]>, Vec<[f64; 3]>, bool)> = Vec::new();
+                    let mut upper: Vec<[f64; 3]> = Vec::new();
+                    let mut lower: Vec<[f64; 3]> = Vec::new();
+                    let mut inverted = false;
+                    for (s_i, (x, y)) in stations.iter().enumerate() {
+                        match (columns[pair][s_i], columns[pair + 1][s_i]) {
+                            (Some(zu), Some(zl)) => {
+                                if zl > zu {
+                                    inverted = true;
+                                }
+                                upper.push([*x, *y, zu]);
+                                lower.push([*x, *y, zl]);
+                            }
+                            _ => {
+                                if upper.len() >= 2 {
+                                    runs.push((
+                                        std::mem::take(&mut lower),
+                                        std::mem::take(&mut upper),
+                                        inverted,
+                                    ));
+                                } else {
+                                    upper.clear();
+                                    lower.clear();
+                                }
+                                inverted = false;
+                            }
+                        }
                     }
-                    upper.push([*x, *y, zu]);
-                    lower.push([*x, *y, zl]);
-                }
-                if upper.len() < 2 {
-                    continue;
-                }
-                let tris = strip(&lower, &upper, false);
-                if tris.is_empty() {
-                    continue;
-                }
-                let area: f64 = tris.iter().map(tri_area).sum();
-                if area <= 0.0 {
-                    // Two coincident levels produce a degenerate ribbon with no
-                    // section to show.
-                    continue;
-                }
+                    if upper.len() >= 2 {
+                        runs.push((lower, upper, inverted));
+                    }
 
-                out.add_feature(
-                    Some(triangles_to_geometry(&tris)),
-                    &[
-                        ("SRC_FID", FieldValue::Integer(fid as i64)),
-                        ("SURFACE_TOP", FieldValue::Integer(pair as i64)),
-                        ("SURFACE_BOTTOM", FieldValue::Integer(pair as i64 + 1)),
-                        ("PANEL_AREA", FieldValue::Float(area)),
-                        ("STATIONS", FieldValue::Integer(upper.len() as i64)),
-                        ("INVERTED", FieldValue::Boolean(inverted)),
-                    ],
-                )
-                .map_err(|e| ToolError::Execution(e.to_string()))?;
-                panels += 1;
-                if inverted {
-                    inverted_panels += 1;
+                    for (lower, upper, inverted) in runs {
+                        let tris = strip(&lower, &upper, false);
+                        if tris.is_empty() {
+                            continue;
+                        }
+                        let area: f64 = tris.iter().map(tri_area).sum();
+                        if area <= 0.0 {
+                            // Two coincident levels give a degenerate ribbon with
+                            // no section to show.
+                            continue;
+                        }
+
+                        out.add_feature(
+                            Some(triangles_to_geometry(&tris)),
+                            &[
+                                ("SRC_FID", FieldValue::Integer(fid as i64)),
+                                ("LEVEL_TOP", FieldValue::Integer(pair as i64)),
+                                ("LEVEL_BOTTOM", FieldValue::Integer(pair as i64 + 1)),
+                                ("PANEL_AREA", FieldValue::Float(area)),
+                                ("STATIONS", FieldValue::Integer(upper.len() as i64)),
+                                ("INVERTED", FieldValue::Boolean(inverted)),
+                            ],
+                        )
+                        .map_err(|e| ToolError::Execution(e.to_string()))?;
+                        panels += 1;
+                        if inverted {
+                            inverted_panels += 1;
+                        }
+                    }
                 }
             }
             ctx.progress.progress((fid as f64 + 1.0) / total as f64);
@@ -273,11 +294,13 @@ enum Level {
     Constant(f64),
 }
 
-fn line_coords(geom: Option<&Geometry>) -> Option<Vec<Coord>> {
-    match geom? {
-        Geometry::LineString(cs) => Some(cs.clone()),
-        Geometry::MultiLineString(parts) => parts.first().cloned(),
-        _ => None,
+/// Every part of a line feature, so a MultiLineString trace is sectioned in
+/// full rather than only along its first part.
+fn line_parts(geom: Option<&Geometry>) -> Vec<Vec<Coord>> {
+    match geom {
+        Some(Geometry::LineString(cs)) => vec![cs.clone()],
+        Some(Geometry::MultiLineString(parts)) => parts.clone(),
+        _ => Vec::new(),
     }
 }
 
@@ -382,9 +405,9 @@ mod tests {
             "sample_distance": 10.0,
         }));
         assert_eq!(res.outputs["panel_count"], json!(2));
-        assert_eq!(num(&out, 0, "SURFACE_TOP"), 0.0);
-        assert_eq!(num(&out, 0, "SURFACE_BOTTOM"), 1.0);
-        assert_eq!(num(&out, 1, "SURFACE_TOP"), 1.0);
+        assert_eq!(num(&out, 0, "LEVEL_TOP"), 0.0);
+        assert_eq!(num(&out, 0, "LEVEL_BOTTOM"), 1.0);
+        assert_eq!(num(&out, 1, "LEVEL_TOP"), 1.0);
         // Each 10-unit-thick layer over 80 units is 800.
         assert!((num(&out, 0, "PANEL_AREA") - 800.0).abs() < 1.0);
         assert!((num(&out, 1, "PANEL_AREA") - 800.0).abs() < 1.0);

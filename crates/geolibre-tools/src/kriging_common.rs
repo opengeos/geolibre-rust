@@ -130,7 +130,7 @@ pub(crate) fn fit_variogram(
             if h <= 0.0 || h > cutoff {
                 continue;
             }
-            let b = (((h / width).floor() as usize).min(bins - 1));
+            let b = ((h / width).floor() as usize).min(bins - 1);
             sum[b] += 0.5 * (values[i] - values[j]).powi(2);
             count[b] += 1;
         }
@@ -240,7 +240,11 @@ where
         return None;
     }
     if n == 1 {
-        return Some((values[0], (c00 - rhs(0)).max(0.0)));
+        // Ordinary kriging with a single datum: the unbiasedness constraint
+        // forces weight 1, so the variance is C(0) - 2*C_10 + C_11, not the
+        // simple-kriging form C(0) - C_10.
+        let var = (c00 - 2.0 * rhs(0) + cov(0, 0)).max(0.0);
+        return Some((values[0], var));
     }
     let m = n + 1;
     let mut a = vec![0.0_f64; m * m];

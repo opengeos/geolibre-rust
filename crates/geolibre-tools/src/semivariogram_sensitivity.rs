@@ -180,19 +180,29 @@ impl Tool for SemivariogramSensitivityTool {
             .map(|t| ordinary_kriging(&coords, &values, *t, &baseline))
             .collect();
 
+        // Absolute scale for dimensions whose baseline is zero.
+        let fallback = (baseline.partial_sill + baseline.nugget).max(1e-12);
         let grid = |value: f64, span_key: &str, step_key: &str| -> Result<Vec<f64>, ToolError> {
             let span = f64_or(args, span_key, 10.0)? / 100.0;
             let steps = usize_or(args, step_key, 3)?;
-            Ok(if steps == 1 {
-                vec![value]
+            if steps == 1 {
+                return Ok(vec![value]);
+            }
+            // A relative span collapses when the baseline is zero (a fitted
+            // nugget of 0 is common), which would silently drop that dimension
+            // from the factorial. Fall back to an absolute span scaled off the
+            // baseline sill so the perturbation stays meaningful.
+            let half = if value.abs() > 1e-12 {
+                value * span
             } else {
-                (0..steps)
-                    .map(|i| {
-                        let t = i as f64 / (steps - 1) as f64; // 0..1
-                        value * (1.0 - span + 2.0 * span * t)
-                    })
-                    .collect()
-            })
+                fallback * span
+            };
+            Ok((0..steps)
+                .map(|i| {
+                    let t = i as f64 / (steps - 1) as f64; // 0..1
+                    (value - half + 2.0 * half * t).max(0.0)
+                })
+                .collect())
         };
         let nuggets = grid(baseline.nugget, "nugget_span_percent", "nugget_steps")?;
         let sills = grid(

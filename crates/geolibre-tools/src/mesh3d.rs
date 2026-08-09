@@ -308,7 +308,9 @@ pub(crate) fn grid_for(
 ) -> (usize, usize, usize, f64, [f64; 3]) {
     let span = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
     let longest = span[0].max(span[1]).max(span[2]);
-    if longest <= 0.0 {
+    // A zero resolution would divide by zero; every tool validates it, but the
+    // helper is crate-visible so it defends itself.
+    if longest <= 0.0 || resolution == 0 {
         return (0, 0, 0, 0.0, [0.0; 3]);
     }
     let h = longest / resolution as f64;

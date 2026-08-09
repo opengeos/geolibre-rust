@@ -34,7 +34,9 @@ use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, Layer};
 use crate::args_common::{bool_or, f64_or, req_str};
 use crate::inside_3d::{collect_triangles, Solid};
 use crate::mesh3d::segment_triangle;
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    load_input_layer, parse_optional_str, reject_field_collisions, write_or_store_layer,
+};
 
 pub struct IntervisibilityTool;
 
@@ -142,6 +144,15 @@ impl Tool for IntervisibilityTool {
             lines.iter().count()
         ));
 
+        reject_field_collisions(
+            &lines,
+            &[
+                visible_field.as_str(),
+                "BLOCKED_BY",
+                "BLOCKED_LAYER",
+                "BLOCK_FRACTION",
+            ],
+        )?;
         let mut out = Layer::new("intervisibility");
         out.geom_type = lines.geom_type;
         out.crs = lines.crs.clone();

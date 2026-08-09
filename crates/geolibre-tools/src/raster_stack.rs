@@ -130,6 +130,11 @@ pub(crate) fn load_stack(
     policy: BandPolicy,
     min_layers: usize,
 ) -> Result<Stack, ToolError> {
+    if paths.is_empty() {
+        return Err(ToolError::Validation(
+            "no input rasters were supplied".to_string(),
+        ));
+    }
     let rasters: Vec<Raster> = paths
         .iter()
         .map(|p| crate::common::load_input_raster(p))
@@ -187,8 +192,14 @@ pub(crate) fn load_stack(
 /// Cell values are combined position-by-position, so same-size rasters from
 /// different geotransforms would otherwise be silently blended under the first
 /// raster's geometry — the check `cell_statistics` already performs.
-pub(crate) fn check_alignment(rasters: &[Raster]) -> Result<(), ToolError> {
-    let base = &rasters[0];
+///
+/// Takes references: the check reads only headers, and an owning signature
+/// would force every ad-hoc two-raster caller to `clone()` both operands,
+/// doubling peak memory exactly where the tools allocate their working buffers.
+pub(crate) fn check_alignment_refs(rasters: &[&Raster]) -> Result<(), ToolError> {
+    let Some(base) = rasters.first() else {
+        return Ok(());
+    };
     let (rows, cols) = (base.rows, base.cols);
     let aligned = |a: f64, b: f64| (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0);
     for (i, r) in rasters.iter().enumerate().skip(1) {
@@ -216,6 +227,12 @@ pub(crate) fn check_alignment(rasters: &[Raster]) -> Result<(), ToolError> {
         }
     }
     Ok(())
+}
+
+/// Owning-slice wrapper over [`check_alignment_refs`], for callers that already
+/// hold a `Vec<Raster>`.
+pub(crate) fn check_alignment(rasters: &[Raster]) -> Result<(), ToolError> {
+    check_alignment_refs(&rasters.iter().collect::<Vec<_>>())
 }
 
 /// Builds an output raster with `bands` bands from `template`'s geometry.

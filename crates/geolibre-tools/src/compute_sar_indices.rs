@@ -118,9 +118,11 @@ impl Tool for ComputeSarIndicesTool {
                     index.example_mapping()
                 ))
             })?;
-        for pol in satisfied.iter() {
-            let band = map[*pol];
-            if band >= raster.bands {
+        // Every mapped band, not just the satisfied form's: RVI probes hh/vv/hv
+        // before falling back to the dual-pol arm, so an unused but
+        // out-of-range entry would still be fetched during the cell loop.
+        for (pol, band) in &map {
+            if *band >= raster.bands {
                 return Err(ToolError::Validation(format!(
                     "polarization {pol} maps to band {} but '{input}' has {} band(s)",
                     band + 1,
@@ -128,6 +130,7 @@ impl Tool for ComputeSarIndicesTool {
                 )));
             }
         }
+        let _ = satisfied;
 
         ctx.progress.info(&format!(
             "{rows}x{cols}, index {}, {} input",

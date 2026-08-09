@@ -103,7 +103,7 @@ impl Tool for ArealInterpolationTool {
                 },
                 ToolParamSpec {
                     name: "preserve_total",
-                    description: "Rescale count predictions so the target total matches the source total (default true for 'count', always off for 'average').",
+                    description: "Rescale count predictions so the target total matches the source total (default true for 'count', always off for 'average'). Only applied when the targets cover the sources — the applied factor is reported as 'mass_scale' so a partial-coverage run is visible.",
                     required: false,
                 },
             ],
@@ -165,7 +165,7 @@ impl Tool for ArealInterpolationTool {
             let Some(geom) = feature.geometry.as_ref() else {
                 continue;
             };
-            let Some(value) = numeric(&feature.attributes[field_idx]) else {
+            let Some(value) = feature.attributes.get(field_idx).and_then(numeric) else {
                 continue;
             };
             let pts = discretize(geom, discretization);
@@ -281,7 +281,15 @@ impl Tool for ArealInterpolationTool {
         // reaggregation that invents or loses people is worse than useless.
         let source_total: f64 = totals.iter().sum();
         let predicted_total: f64 = raw.iter().flatten().sum();
-        let scale = if preserve_total && predicted_total.abs() > 1e-12 {
+        // Only rescale when it is meaningful: a predicted total near zero, or
+        // one whose sign differs from the source, would turn the correction
+        // into an arbitrary (possibly sign-flipping) multiplier. Rescaling is
+        // also only valid when the targets actually cover the sources — the
+        // factor is reported so a caller can see when it is far from 1.
+        let scale = if preserve_total
+            && predicted_total.abs() > 1e-12
+            && predicted_total.signum() == source_total.signum()
+        {
             source_total / predicted_total
         } else {
             1.0

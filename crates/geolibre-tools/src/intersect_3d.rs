@@ -145,6 +145,13 @@ impl Tool for Intersect3dTool {
         out.add_field(FieldDef::new("VOLUME", FieldType::Float));
         out.add_field(FieldDef::new("RESOLUTION", FieldType::Integer));
 
+        // Exact per-solid volumes, computed once rather than per pair.
+        let a_vol: Vec<f64> = a_solids.iter().map(|s| mesh_volume(&s.tris)).collect();
+        let b_vol: Vec<f64> = b_solids
+            .as_ref()
+            .map(|b| b.iter().map(|s| mesh_volume(&s.tris)).collect())
+            .unwrap_or_default();
+
         let mut hits = 0_u64;
         let mut total_volume = 0.0_f64;
         let total = pairs.len().max(1);
@@ -173,8 +180,15 @@ impl Tool for Intersect3dTool {
                 &[
                     ("SRC_FID_1", FieldValue::Integer(sa.fid as i64)),
                     ("SRC_FID_2", FieldValue::Integer(sb.fid as i64)),
-                    ("VOLUME_1", FieldValue::Float(mesh_volume(&sa.tris))),
-                    ("VOLUME_2", FieldValue::Float(mesh_volume(&sb.tris))),
+                    ("VOLUME_1", FieldValue::Float(a_vol[*i])),
+                    (
+                        "VOLUME_2",
+                        FieldValue::Float(if b_solids.is_some() {
+                            b_vol[*j]
+                        } else {
+                            a_vol[*j]
+                        }),
+                    ),
                     ("VOLUME", FieldValue::Float(volume)),
                     ("RESOLUTION", FieldValue::Integer(resolution as i64)),
                 ],
@@ -185,8 +199,6 @@ impl Tool for Intersect3dTool {
             ctx.progress.progress((n as f64 + 1.0) / total as f64);
         }
 
-        // The effective cell size of the last-sized grid is a useful accuracy
-        // hint, so report it rather than leaving `resolution` unitless.
         let out_path = write_or_store_layer(out, output)?;
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));

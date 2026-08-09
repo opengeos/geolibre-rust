@@ -38,7 +38,9 @@ use wbvector::{FieldDef, FieldType, FieldValue, Layer};
 use crate::args_common::req_str;
 use crate::inside_3d::collect_triangles;
 use crate::mesh3d::{mesh_volume, topology};
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    load_input_layer, parse_optional_str, reject_field_collisions, write_or_store_layer,
+};
 
 pub struct IsClosed3dTool;
 
@@ -83,6 +85,17 @@ impl Tool for IsClosed3dTool {
 
         let layer = load_input_layer(input)?;
 
+        reject_field_collisions(
+            &layer,
+            &[
+                "IS_CLOSED",
+                "OPEN_EDGES",
+                "NONMANIFOLD_EDGES",
+                "CONSISTENT_WINDING",
+                "TRI_COUNT",
+                "VOLUME",
+            ],
+        )?;
         let mut out = Layer::new("is_closed_3d");
         out.geom_type = layer.geom_type;
         out.crs = layer.crs.clone();

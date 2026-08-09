@@ -25,6 +25,13 @@
 //!
 //! Volume is exact (signed-tetrahedron summation), not sampled: unlike the 3D
 //! overlay tools there is no boolean here, so no approximation is needed.
+//!
+//! ## Footprint scope, deliberately
+//!
+//! Each solid is built from the **exterior ring of the first part** only.
+//! Holes and additional parts are ignored rather than silently approximated,
+//! because a shell around a holed footprint needs an inner wall the centroid
+//! fan cannot produce. Split multipart footprints first.
 
 use std::collections::BTreeMap;
 
@@ -40,10 +47,11 @@ use crate::args_common::{band_index, opt_positive_f64, req_str};
 use crate::common::load_input_raster;
 use crate::inside_3d::Tri;
 use crate::mesh3d::{mesh_volume, topology, triangles_to_geometry};
-use crate::raster_stack::check_alignment;
+use crate::raster_stack::check_alignment_refs;
 use crate::surface_solid::{default_spacing, densify, sample_bilinear};
 use crate::vector_common::{
-    geometry_contains_point, load_input_layer, parse_optional_str, write_or_store_layer,
+    geometry_contains_point, load_input_layer, parse_optional_str, reject_field_collisions,
+    write_or_store_layer,
 };
 
 pub struct ExtrudeBetweenTool;
@@ -59,7 +67,7 @@ impl Tool for ExtrudeBetweenTool {
             params: vec![
                 ToolParamSpec {
                     name: "input",
-                    description: "Polygon footprints defining each solid's lateral extent.",
+                    description: "Polygon footprints defining each solid's lateral extent. Only the FIRST ring of the first part is used: interior holes and additional parts of a MultiPolygon are ignored, so pre-split multipart footprints and fill holes before extruding.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -104,7 +112,7 @@ impl Tool for ExtrudeBetweenTool {
         let input = req_str(args, "input")?;
         let upper = load_input_raster(req_str(args, "surface_upper")?)?;
         let lower = load_input_raster(req_str(args, "surface_lower")?)?;
-        check_alignment(&[upper.clone(), lower.clone()])?;
+        check_alignment_refs(&[&upper, &lower])?;
         let band = band_index(args, "band")?;
         let output = parse_optional_str(args, "output")?;
         let spacing = match opt_positive_f64(args, "sample_distance")? {
@@ -113,6 +121,10 @@ impl Tool for ExtrudeBetweenTool {
         };
 
         let layer = load_input_layer(input)?;
+        reject_field_collisions(
+            &layer,
+            &["SRC_FID", "VOLUME", "SAMPLE_DISTANCE", "WATERTIGHT"],
+        )?;
         let mut out = Layer::new("extrude_between");
         out.geom_type = Some(GeometryType::MultiPolygon);
         out.crs = layer.crs.clone();

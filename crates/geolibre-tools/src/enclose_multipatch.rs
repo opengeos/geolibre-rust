@@ -98,6 +98,7 @@ impl Tool for EncloseMultipatchTool {
         let mut enclosed = 0_u64;
         let mut already = 0_u64;
         let mut failed = 0_u64;
+        let mut non_mesh = 0_u64;
         let total = layer.iter().count().max(1);
 
         for (fid, feature) in layer.iter().enumerate() {
@@ -107,6 +108,8 @@ impl Tool for EncloseMultipatchTool {
                 .map(collect_triangles)
                 .unwrap_or_default();
             if tris.is_empty() {
+                // Not a mesh at all (a point, a 2D line): nothing to enclose.
+                non_mesh += 1;
                 continue;
             }
 
@@ -165,7 +168,8 @@ impl Tool for EncloseMultipatchTool {
         }
 
         ctx.progress.info(&format!(
-            "{enclosed} enclosed, {already} already closed, {failed} could not be capped"
+            "{enclosed} enclosed, {already} already closed, {failed} could not be capped, \
+             {non_mesh} non-mesh"
         ));
 
         let out_path = write_or_store_layer(out, output)?;
@@ -174,6 +178,7 @@ impl Tool for EncloseMultipatchTool {
         outputs.insert("enclosed_count".to_string(), json!(enclosed));
         outputs.insert("already_closed_count".to_string(), json!(already));
         outputs.insert("failed_count".to_string(), json!(failed));
+        outputs.insert("non_mesh_count".to_string(), json!(non_mesh));
         Ok(ToolRunResult { outputs })
     }
 }

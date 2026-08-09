@@ -43,7 +43,7 @@ use crate::args_common::{f64_or, opt_f64, opt_positive_f64, req_str};
 use crate::common::{
     load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
 };
-use crate::raster_stack::check_alignment;
+use crate::raster_stack::check_alignment_refs;
 use crate::vector_common::parse_optional_str;
 
 /// Sentinel-1 C-band wavelength in metres.
@@ -102,7 +102,7 @@ impl Tool for FlattenInterferogramTool {
                 },
                 ToolParamSpec {
                     name: "out_topographic_phase",
-                    description: "Simulated topographic phase raster. Always produced; falls back to an in-memory handle when no path is given.",
+                    description: "Simulated topographic phase raster, WRAPPED to (-pi, pi] like the flattened output — not the absolute simulated phase. Always produced; falls back to an in-memory handle when no path is given.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -142,11 +142,21 @@ impl Tool for FlattenInterferogramTool {
 
         let phase_raster = load_input_raster(&input)?;
         let dem = load_input_raster(&dem_path)?;
-        check_alignment(&[phase_raster.clone(), dem.clone()])?;
+        check_alignment_refs(&[&phase_raster, &dem])?;
 
-        // A two-band input is an I/Q interferogram; recover its argument.
-        let complex_input = phase_raster.bands >= 2;
+        // A two-band input is an I/Q interferogram; recover its argument. The
+        // auto-detection applies ONLY when the caller did not name a band —
+        // otherwise a multi-band real-phase stack with band = 2 would silently
+        // return atan2(band1, band0) instead, which looks plausible and is
+        // wrong. An explicit band on exactly two bands is ambiguous, so it is
+        // rejected rather than guessed.
+        let band_given = crate::args_common::opt_usize(args, "band")?.is_some();
+        let complex_input = phase_raster.bands >= 2 && !band_given;
         let (rows, cols) = (phase_raster.rows, phase_raster.cols);
+        if band_given && phase_raster.bands >= 2 {
+            ctx.progress
+                .info("'band' was supplied, so the input is read as real phase rather than I/Q");
+        }
         if !complex_input && band as usize >= phase_raster.bands {
             return Err(ToolError::Validation(format!(
                 "'band' {} is out of range; '{input}' has {} band(s)",
@@ -162,12 +172,18 @@ impl Tool for FlattenInterferogramTool {
         let incidence_raster = match incidence_path {
             Some(p) => {
                 let r = load_input_raster(p)?;
-                check_alignment(&[phase_raster.clone(), r.clone()])?;
+                check_alignment_refs(&[&phase_raster, &r])?;
                 Some(r)
             }
             None => None,
         };
-        let incidence_const = f64_or(args, "incidence_angle", 39.0)?;
+        // Only read the scalar form when no raster was supplied: `f64_or` would
+        // otherwise re-parse the raster path as a number and fail the run.
+        let incidence_const = if incidence_raster.is_some() {
+            f64::NAN // unused; every cell reads the raster
+        } else {
+            f64_or(args, "incidence_angle", 39.0)?
+        };
 
         // Reference elevation: the DEM mean unless told otherwise, so the
         // flattened field is centred rather than offset by an arbitrary datum.
@@ -481,6 +497,40 @@ mod tests {
         let res = FlattenInterferogramTool.run(&args, &ctx()).unwrap();
         let p = res.outputs["out_topographic_phase"].as_str().unwrap();
         assert!(load_input_raster(p).is_ok());
+    }
+
+    #[test]
+    fn a_raster_incidence_angle_is_accepted() {
+        // Regression: `f64_or` ran unconditionally on `incidence_angle`, so a
+        // raster path was re-parsed as a number and the whole run failed —
+        // the documented raster form was entirely unusable.
+        let heights = vec![0.0, 100.0, 200.0];
+        let (flat, _, _) = run(json!({
+            "input": raster(1, 3, vec![vec![0.0, 0.0, 0.0]]),
+            "dem": raster(1, 3, vec![heights]),
+            "perpendicular_baseline": BPERP,
+            "incidence_angle": raster(1, 3, vec![vec![30.0, 39.0, 45.0]]),
+        }));
+        for c in 0..3 {
+            assert_ne!(flat.get(0, 0, c), flat.nodata, "cell {c} unresolved");
+        }
+    }
+
+    #[test]
+    fn an_explicit_band_is_honoured_on_a_multiband_input() {
+        // Regression: bands >= 2 was treated as I/Q unconditionally, so a
+        // real-phase stack silently returned atan2 of two unrelated bands.
+        let (flat, _, _) = run(json!({
+            "input": raster(1, 1, vec![vec![0.0], vec![0.25]]),
+            "dem": raster(1, 1, vec![vec![100.0]]),
+            "perpendicular_baseline": BPERP,
+            "band": 2,
+        }));
+        assert!(
+            (flat.get(0, 0, 0) - 0.25).abs() < 1e-5,
+            "band 2 was not read as real phase: {}",
+            flat.get(0, 0, 0)
+        );
     }
 
     #[test]

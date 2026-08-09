@@ -31,7 +31,9 @@ use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, Layer};
 use crate::args_common::{f64_or, req_str};
 use crate::inside_3d::collect_triangles;
 use crate::mesh3d::{mesh_area, mesh_volume, topology, tri_area, tri_normal};
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    load_input_layer, parse_optional_str, reject_field_collisions, write_or_store_layer,
+};
 
 /// Every property this tool can compute, in output order.
 const ALL: &[&str] = &[
@@ -62,7 +64,7 @@ impl Tool for AddZInformationTool {
             params: vec![
                 ToolParamSpec {
                     name: "input",
-                    description: "3D point, line, polygon or multipatch features.",
+                    description: "3D point, line, polygon or multipatch features. Note that a Z of zero is indistinguishable from an absent Z, so 'features_with_z' is a hint rather than a guarantee.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -103,6 +105,11 @@ impl Tool for AddZInformationTool {
         let noise = f64_or(args, "noise_filtering", 0.0)?;
 
         let layer = load_input_layer(input)?;
+        let appended: Vec<String> = props.iter().map(|p| p.to_uppercase()).collect();
+        reject_field_collisions(
+            &layer,
+            &appended.iter().map(String::as_str).collect::<Vec<_>>(),
+        )?;
         let mut out = Layer::new("add_z_information");
         out.geom_type = layer.geom_type;
         out.crs = layer.crs.clone();
@@ -198,6 +205,9 @@ impl ZStats {
         if verts.is_empty() {
             return s;
         }
+        // Z presence is read from the coordinates, which cannot distinguish an
+        // absent Z from a genuine Z of zero — a flat layer at sea level reads
+        // as 2D. The count is a hint, not a guarantee.
         s.has_z = verts.iter().any(|v| v[2] != 0.0);
         s.spot_z = Some(verts[0][2]);
 
@@ -212,7 +222,15 @@ impl ZStats {
         s.min_z = Some(zs[lo]);
         s.max_z = Some(zs[hi - 1]);
 
-        s.length_3d = Some(length_3d(geom));
+        // Only linear geometries have a 3D length; leave it null elsewhere
+        // rather than reporting a meaningless zero.
+        s.length_3d = matches!(
+            geom,
+            Geometry::LineString(_)
+                | Geometry::MultiLineString(_)
+                | Geometry::GeometryCollection(_)
+        )
+        .then(|| length_3d(geom));
 
         // Mesh measures only make sense for triangle meshes, and volume only
         // for closed ones — reporting a volume for an open surface is the

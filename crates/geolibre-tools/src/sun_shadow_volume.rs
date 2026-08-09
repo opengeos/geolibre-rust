@@ -368,7 +368,25 @@ fn parse_datetime(s: &str) -> Result<(i64, f64), ToolError> {
     let year: i64 = d[0].parse().map_err(|_| bad())?;
     let month: i64 = d[1].parse().map_err(|_| bad())?;
     let day: i64 = d[2].parse().map_err(|_| bad())?;
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+    if !(1..=12).contains(&month) {
+        return Err(bad());
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_len = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ][(month - 1) as usize];
+    if !(1..=month_len).contains(&day) {
         return Err(bad());
     }
 
@@ -387,7 +405,6 @@ fn parse_datetime(s: &str) -> Result<(i64, f64), ToolError> {
         return Err(bad());
     }
 
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
     let cumulative = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     let mut doy = cumulative[(month - 1) as usize] + day;
     if leap && month > 2 {

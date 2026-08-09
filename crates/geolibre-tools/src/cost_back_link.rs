@@ -46,7 +46,7 @@ use crate::args_common::{opt_positive_f64, req_str};
 use crate::common::{
     load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
 };
-use crate::raster_stack::check_alignment;
+use crate::raster_stack::check_alignment_refs;
 use crate::vector_common::{load_input_layer, parse_optional_str};
 
 /// Neighbour offsets in ArcGIS backlink order: 1 = east, counter-clockwise.
@@ -141,7 +141,7 @@ impl Tool for CostBackLinkTool {
             .or(surface.as_ref())
             .ok_or_else(|| ToolError::Validation("supply 'cost' or 'surface'".to_string()))?;
         if let (Some(c), Some(s)) = (&cost, &surface) {
-            check_alignment(&[c.clone(), s.clone()])?;
+            check_alignment_refs(&[c, s])?;
         }
 
         let rows = template.rows;
@@ -298,8 +298,11 @@ fn load_sources(spec: &str, template: &Raster) -> Result<Vec<usize>, ToolError> 
     let cols = template.cols;
     let rows = template.rows;
 
+    // Probe as a raster first. A raster that loads but fails alignment is a
+    // real error and must surface as one — falling through to the vector path
+    // would replace it with a misleading "not a vector layer" message.
     if let Ok(raster) = load_input_raster(spec) {
-        check_alignment(&[template.clone(), raster.clone()])?;
+        check_alignment_refs(&[template, &raster])?;
         let mut out = Vec::new();
         for r in 0..rows {
             for c in 0..cols {
@@ -497,6 +500,17 @@ mod tests {
         let p = res.outputs["out_distance"].as_str().unwrap();
         assert!(!p.is_empty());
         assert!(load_input_raster(p).is_ok());
+    }
+
+    #[test]
+    fn diagonal_steps_use_the_diagonal_codes() {
+        // Covers codes 2/4/6/8, which the axis-aligned tests never exercise.
+        // Source at the north-west corner of a 2x2 grid: the opposite corner
+        // steps back north-west, which is code 4.
+        let src = raster(2, 2, &[1.0, 0.0, 0.0, 0.0]);
+        let cost = raster(2, 2, &[1.0, 1.0, 1.0, 1.0]);
+        let (link, _, _) = run(json!({"source": src, "cost": cost}));
+        assert_eq!(link.get(0, 1, 1), 4.0, "expected a north-west backlink");
     }
 
     #[test]

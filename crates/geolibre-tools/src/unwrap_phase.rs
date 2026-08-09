@@ -39,6 +39,11 @@
 //! The solution is fixed only up to an additive constant — that is inherent to
 //! unwrapping, not a limitation here — so a reference pixel is pinned to zero
 //! and reported.
+//!
+//! One consequence of that: only the connected component containing the
+//! reference pixel is pinned. If masking splits the valid pixels into several
+//! components, each of the others keeps its own arbitrary constant, so values
+//! are comparable *within* a component but not *across* components.
 
 use std::collections::BTreeMap;
 
@@ -54,7 +59,7 @@ use crate::common::{
     load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
 };
 use crate::flatten_interferogram::wrap;
-use crate::raster_stack::check_alignment;
+use crate::raster_stack::check_alignment_refs;
 use crate::vector_common::parse_optional_str;
 
 pub struct UnwrapPhaseTool;
@@ -90,7 +95,7 @@ impl Tool for UnwrapPhaseTool {
                 },
                 ToolParamSpec {
                     name: "coherence_threshold",
-                    description: "Mask out pixels whose coherence falls below this (default 0.3). Ignored when no coherence raster is given.",
+                    description: "Mask out pixels whose coherence falls below this (default 0.3). Ignored when no coherence raster is given. Masking that splits the valid pixels into disconnected components leaves each component other than the reference pixel's with its own arbitrary additive constant.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -149,7 +154,12 @@ impl Tool for UnwrapPhaseTool {
 
         let raster = load_input_raster(&input)?;
         let (rows, cols) = (raster.rows, raster.cols);
-        let complex_input = raster.bands >= 2;
+        // I/Q auto-detection applies only when the caller did not name a band.
+        // Without that guard a three-band phase stack, or two unrelated phase
+        // images, would be read as interleaved I and Q and the tool would
+        // return atan2 of two unrelated phases rather than failing.
+        let band_given = opt_usize(args, "band")?.is_some();
+        let complex_input = raster.bands >= 2 && !band_given;
         if !complex_input && band as usize >= raster.bands {
             return Err(ToolError::Validation(format!(
                 "'band' {} is out of range; '{input}' has {} band(s)",
@@ -161,7 +171,7 @@ impl Tool for UnwrapPhaseTool {
         let coherence = match parse_optional_str(args, "coherence")? {
             Some(p) => {
                 let c = load_input_raster(p)?;
-                check_alignment(&[raster.clone(), c.clone()])?;
+                check_alignment_refs(&[&raster, &c])?;
                 Some(c)
             }
             None => None,
@@ -213,6 +223,15 @@ impl Tool for UnwrapPhaseTool {
         let mut out = vec![nodata; rows * cols];
         for i in 0..rows * cols {
             if weight[i] > 0.0 {
+                if !solution[i].is_finite() {
+                    // A breakdown that still produced non-finite values must
+                    // not be published as a phase field.
+                    return Err(ToolError::Execution(
+                        "the least-squares solve did not produce a finite field; try a larger \
+                         'tolerance', fewer masked pixels, or a different reference pixel"
+                            .to_string(),
+                    ));
+                }
                 out[i] = solution[i];
             }
         }
@@ -350,6 +369,9 @@ fn solve(
             break; // exhausted the Krylov space
         }
         let alpha = rz / pap;
+        if !alpha.is_finite() {
+            break;
+        }
         for i in 0..n {
             x[i] += alpha * p[i];
             r[i] -= alpha * ap[i];
@@ -358,6 +380,15 @@ fn solve(
             z[i] = r[i] / diag[i];
         }
         let rz_next: f64 = (0..n).map(|i| r[i] * z[i]).sum();
+        // The system is indefinite (masked rows are zero, the pinned row is
+        // +1 identity, the rest are a negated Laplacian), so the Jacobi
+        // preconditioner mixes signs and `rz` is not guaranteed positive. A
+        // zero here would make beta inf/NaN, poison x, and — because
+        // `NaN > tolerance` is false — exit the loop quietly and write NaN
+        // into the output raster.
+        if rz.abs() < 1e-300 || !rz_next.is_finite() {
+            break;
+        }
         let beta = rz_next / rz;
         for i in 0..n {
             p[i] = z[i] + beta * p[i];
@@ -603,6 +634,30 @@ mod tests {
         .unwrap();
         let err = UnwrapPhaseTool.run(&args, &ctx()).unwrap_err();
         assert!(format!("{err:?}").contains("masked"), "got {err:?}");
+    }
+
+    #[test]
+    fn a_mask_that_splits_the_grid_leaves_each_component_self_consistent() {
+        // Only the reference pixel's component is pinned; the others keep an
+        // arbitrary constant. Values must still be continuous WITHIN each side.
+        let cols = 7;
+        let truth: Vec<f64> = (0..cols).map(|i| 1.1 * i as f64).collect();
+        let wrapped: Vec<f64> = truth.iter().map(|v| wrap(*v)).collect();
+        // Column 3 is masked out, splitting the row in two.
+        let coh: Vec<f64> = (0..cols).map(|i| if i == 3 { 0.0 } else { 0.9 }).collect();
+        let (out, res) = run(json!({
+            "input": raster(1, cols, vec![wrapped]),
+            "coherence": raster(1, cols, vec![coh]),
+            "coherence_threshold": 0.5,
+            "max_iterations": 2000,
+        }));
+        assert_eq!(res.outputs["valid_cells"], json!(6));
+        assert_eq!(out.get(0, 0, 3), out.nodata);
+        // Within each component the gradient is recovered.
+        for (a, b) in [(0, 1), (1, 2), (4, 5), (5, 6)] {
+            let d = out.get(0, 0, b) - out.get(0, 0, a);
+            assert!((d - 1.1).abs() < 1e-2, "gap {a}->{b} gave {d}");
+        }
     }
 
     #[test]

@@ -44,7 +44,9 @@ use wbcore::{
 use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, Layer, Ring};
 
 use crate::args_common::{bool_or, opt_positive_f64, req_str, usize_or};
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    load_input_layer, parse_optional_str, reject_field_collisions, write_or_store_layer,
+};
 
 pub struct SimplifyByTangentSegmentsTool;
 
@@ -69,7 +71,7 @@ impl Tool for SimplifyByTangentSegmentsTool {
                 },
                 ToolParamSpec {
                     name: "max_offset",
-                    description: "Maximum perpendicular deviation from the original, in CRS UNITS. On EPSG:4326 this is degrees, so metre-scale work needs roughly 2e-5, not 2.0.",
+                    description: "Maximum perpendicular deviation from the original, in CRS UNITS. On EPSG:4326 this is degrees, so metre-scale work needs roughly 2e-5, not 2.0. The bound is enforced against each fitted line, so the emitted chain can exceed it slightly near a joint where consecutive segments meet.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -130,6 +132,7 @@ impl Tool for SimplifyByTangentSegmentsTool {
         };
 
         let layer = load_input_layer(input)?;
+        reject_field_collisions(&layer, &["ORIG_VERTS", "OUT_VERTS", "MAX_OFFSET"])?;
         let mut out = Layer::new("simplify_by_tangent_segments");
         out.geom_type = layer.geom_type;
         out.crs = layer.crs.clone();
@@ -204,31 +207,58 @@ struct Options {
 fn simplify_geometry(geom: &Geometry, opts: &Options) -> (Option<Geometry>, usize, usize) {
     let mut before = 0usize;
     let mut after = 0usize;
-    let mut run = |cs: &[Coord]| {
+    // One closure, because two would both need `&mut` on the counters.
+    // `closed` pins the endpoints regardless of `preserve_endpoints`: rings are
+    // closed geometry, so their two seam vertices must not move independently
+    // or the ring comes apart at an arbitrary seam.
+    let mut simplify = |cs: &[Coord], closed: bool| {
         before += cs.len();
-        let simplified = simplify_run(cs, opts);
+        let simplified = if closed && !opts.preserve_endpoints {
+            let pinned = Options {
+                max_offset: opts.max_offset,
+                anchor_tol: opts.anchor_tol,
+                min_run: opts.min_run,
+                preserve_endpoints: true,
+                anchors: opts.anchors.clone(),
+            };
+            simplify_run(cs, &pinned)
+        } else {
+            simplify_run(cs, opts)
+        };
         after += simplified.len();
         simplified
     };
+    let mut run = |cs: &[Coord]| simplify(cs, false);
+
     let g = match geom {
         Geometry::LineString(cs) => Some(Geometry::LineString(run(cs))),
         Geometry::MultiLineString(parts) => Some(Geometry::MultiLineString(
             parts.iter().map(|cs| run(cs)).collect(),
         )),
+        // Rings are CLOSED geometry, so their two seam vertices must not move
+        // independently — `simplify_run` is an open-polyline simplifier and
+        // `preserve_endpoints: false` would otherwise let the ring come apart
+        // at an arbitrary seam.
         Geometry::Polygon {
             exterior,
             interiors,
         } => Some(Geometry::Polygon {
-            exterior: Ring::new(run(&exterior.0)),
-            interiors: interiors.iter().map(|r| Ring::new(run(&r.0))).collect(),
+            exterior: Ring::new(simplify(&exterior.0, true)),
+            interiors: interiors
+                .iter()
+                .map(|r| Ring::new(simplify(&r.0, true)))
+                .collect(),
         }),
         Geometry::MultiPolygon(parts) => Some(Geometry::MultiPolygon(
             parts
                 .iter()
                 .map(|(ext, holes)| {
                     (
-                        Ring::new(run(&ext.0)),
-                        holes.iter().map(|r| Ring::new(run(&r.0))).collect(),
+                        Ring::new(simplify(&ext.0, true)),
+                        holes
+                            .iter()
+                            .map(|r| Ring::new(simplify(&r.0, true)))
+                            .collect(),
                     )
                 })
                 .collect(),
@@ -316,12 +346,22 @@ fn simplify_run(cs: &[Coord], opts: &Options) -> Vec<Coord> {
     };
     out.push(first);
     for w in 0..lines.len().saturating_sub(1) {
+        let seam = spans[w].1;
+        // An anchor must survive EXACTLY. The tangent joint is generally not
+        // an input vertex, so pinning is the only way to honour the parameter
+        // on curved input; on straight input the two fitted lines are
+        // collinear and the intersection already degenerates to the vertex,
+        // which is why a straight-line test could not catch this.
+        if anchor_at[seam] {
+            out.push(pts[seam]);
+            continue;
+        }
         let joint = lines[w]
             .intersect(&lines[w + 1])
             // Near-parallel neighbours have no usable intersection; fall back
             // to the shared input vertex rather than emitting a wild point.
-            .filter(|p| hypot(p.0 - pts[spans[w].1].0, p.1 - pts[spans[w].1].1) <= far_limit(opts))
-            .unwrap_or(pts[spans[w].1]);
+            .filter(|p| hypot(p.0 - pts[seam].0, p.1 - pts[seam].1) <= far_limit(opts))
+            .unwrap_or(pts[seam]);
         out.push(joint);
     }
     let last_pt = pts[pts.len() - 1];
@@ -617,6 +657,74 @@ mod tests {
                 .any(|p| (p.0 - 5.0).abs() < 1e-6 && p.1.abs() < 1e-6),
             "anchor was dropped: {got:?}"
         );
+    }
+
+    #[test]
+    fn an_anchor_survives_on_curved_input() {
+        // Regression: joints are the intersection of two fitted lines, which
+        // is generally NOT an input vertex. The straight-line test could not
+        // catch this because collinear lines make the intersection degenerate
+        // and fall back to the vertex.
+        let arc: Vec<(f64, f64)> = (0..=60)
+            .map(|i| {
+                let t = i as f64 / 60.0 * std::f64::consts::FRAC_PI_2;
+                (10.0 * t.cos(), 10.0 * t.sin())
+            })
+            .collect();
+        let anchor = arc[30];
+        let (out, _) = run(json!({
+            "input": lines(vec![arc]),
+            "max_offset": 0.5,
+            "anchor_points": points(vec![anchor]),
+        }));
+        let got = out_coords(&out, 0);
+        assert!(
+            got.iter()
+                .any(|p| hypot(p.0 - anchor.0, p.1 - anchor.1) < 1e-9),
+            "anchor {anchor:?} drifted; got {got:?}"
+        );
+    }
+
+    #[test]
+    fn a_polygon_ring_stays_closed() {
+        // A ring is closed geometry: simplifying it as an open polyline could
+        // move its two seam vertices independently and open it up.
+        let mut ring: Vec<Coord> = Vec::new();
+        for i in 0..40 {
+            let t = i as f64 / 40.0 * std::f64::consts::TAU;
+            ring.push(Coord::xy(20.0 * t.cos(), 20.0 * t.sin()));
+        }
+        let mut l = Layer::new("poly");
+        l.geom_type = Some(GeometryType::Polygon);
+        l.add_feature(
+            Some(Geometry::Polygon {
+                exterior: Ring::new(ring),
+                interiors: vec![],
+            }),
+            &[],
+        )
+        .unwrap();
+        let id = memory_store::put_vector(l);
+        let path = memory_store::make_vector_memory_path(&id);
+
+        for preserve in [true, false] {
+            let args: ToolArgs = serde_json::from_value(json!({
+                "input": path, "max_offset": 1.0, "preserve_endpoints": preserve,
+            }))
+            .unwrap();
+            let res = SimplifyByTangentSegmentsTool.run(&args, &ctx()).unwrap();
+            let out = load_input_layer(res.outputs["output"].as_str().unwrap()).unwrap();
+            let geom = out.iter().next().unwrap().geometry.clone().unwrap();
+            match geom {
+                Geometry::Polygon { exterior, .. } => {
+                    assert!(
+                        exterior.0.len() >= 3,
+                        "ring collapsed with preserve_endpoints={preserve}"
+                    );
+                }
+                other => panic!("expected a polygon, got {other:?}"),
+            }
+        }
     }
 
     #[test]

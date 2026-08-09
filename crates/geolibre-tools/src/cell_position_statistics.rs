@@ -38,7 +38,7 @@ use wbraster::{DataType, Raster};
 use crate::args_common::{bool_or, choice_or, opt_f64};
 use crate::common::{load_input_raster, parse_optional_output};
 use crate::raster_stack::{
-    check_alignment, load_stack, parse_band_policy, parse_input_paths, write_stack_result,
+    check_alignment_refs, load_stack, parse_band_policy, parse_input_paths, write_stack_result,
 };
 
 pub struct CellPositionStatisticsTool;
@@ -90,7 +90,15 @@ impl Tool for CellPositionStatisticsTool {
         let stat = parse_statistic(args)?;
         parse_input_paths(args, "inputs")?;
         parse_band_policy(args, "process_as_multiband")?;
-        if stat.needs_selector() && args.get("selector").and_then(Value::as_str).is_none() {
+        // Presence, not string-ness: `run` accepts a bare number through
+        // `opt_f64`, and the parameter is documented as "a raster path, or a
+        // constant number". Testing `as_str` alone rejected `{"selector": 3}`.
+        let selector_given = match args.get("selector") {
+            None | Some(Value::Null) => false,
+            Some(Value::String(s)) => !s.trim().is_empty(),
+            Some(_) => true,
+        };
+        if stat.needs_selector() && !selector_given {
             return Err(ToolError::Validation(format!(
                 "statistic '{}' requires 'selector' (a raster path or a constant number)",
                 stat.label()
@@ -311,7 +319,7 @@ fn parse_selector(
     // The selector is read cell-by-cell against the stack grid, so it has to be
     // on that grid; without this check a mismatched selector would silently
     // sample the wrong location.
-    check_alignment(&[stack.template().clone(), raster.clone()])?;
+    check_alignment_refs(&[stack.template(), &raster])?;
     Ok(Selector::Raster(Box::new(raster)))
 }
 
@@ -552,6 +560,19 @@ mod tests {
         assert_eq!(res.outputs["bands"], json!(2));
         assert_eq!(out.get(0, 0, 0), 1.0);
         assert_eq!(out.get(1, 0, 0), 2.0);
+    }
+
+    #[test]
+    fn a_numeric_selector_passes_validation() {
+        // Regression: validate() tested Value::as_str, so a JSON number was
+        // rejected even though run() accepts it through opt_f64.
+        let a = raster(&[1.0], 1, 1);
+        let b = raster(&[2.0], 1, 1);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "inputs": format!("{a},{b}"), "statistic": "rank", "selector": 1,
+        }))
+        .unwrap();
+        assert!(CellPositionStatisticsTool.validate(&args).is_ok());
     }
 
     #[test]

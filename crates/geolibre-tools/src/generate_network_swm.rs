@@ -102,6 +102,11 @@ impl Tool for GenerateNetworkSwmTool {
                     required: false,
                 },
                 ToolParamSpec {
+                    name: "snap_tolerance",
+                    description: "Distance within which two network vertices are welded into one node, in CRS units (default 1e-6). A network whose segments almost meet would otherwise disconnect silently, and every affected origin would emit zero rows.",
+                    required: false,
+                },
+                ToolParamSpec {
                     name: "search_tolerance",
                     description: "Maximum snapping distance from a point to the network. Points further away are reported as unsnapped rather than silently attached to a distant node.",
                     required: false,
@@ -135,10 +140,11 @@ impl Tool for GenerateNetworkSwmTool {
         let max_neighbors = opt_usize(args, "max_neighbors")?.unwrap_or(usize::MAX);
         let row_standardize = bool_or(args, "row_standardization", false)?;
         let tolerance = opt_positive_f64(args, "search_tolerance")?.unwrap_or(f64::INFINITY);
+        let snap = opt_positive_f64(args, "snap_tolerance")?.unwrap_or(1e-6);
 
         let network = load_input_layer(network_path)?;
         let impedance_field = parse_optional_str(args, "impedance_field")?;
-        let graph = Graph::build(&network, impedance_field)?;
+        let graph = Graph::build(&network, impedance_field, snap)?;
         if graph.nodes.is_empty() {
             return Err(ToolError::Execution(
                 "'network' holds no line geometry".to_string(),
@@ -209,11 +215,12 @@ impl Tool for GenerateNetworkSwmTool {
             let dist = graph.dijkstra(*origin_node, cutoff);
 
             // Collect reachable destinations, nearest first.
+            // Scan the snapped destinations, not the reachability map: `dist`
+            // holds every node within the cutoff (up to the whole network),
+            // while `by_node` holds at most one entry per input point.
             let mut found: Vec<(usize, f64)> = Vec::new();
-            for (node, d) in &dist {
-                let Some(members) = by_node.get(node) else {
-                    continue;
-                };
+            for (node, members) in &by_node {
+                let Some(d) = dist.get(node) else { continue };
                 for &j in members {
                     if j != i {
                         found.push((j, *d));
@@ -285,7 +292,7 @@ struct Graph {
 }
 
 impl Graph {
-    fn build(layer: &Layer, impedance_field: Option<&str>) -> Result<Graph, ToolError> {
+    fn build(layer: &Layer, impedance_field: Option<&str>, snap: f64) -> Result<Graph, ToolError> {
         let imp_idx = match impedance_field {
             Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
                 ToolError::Validation(format!(
@@ -298,18 +305,34 @@ impl Graph {
         let mut nodes: Vec<(f64, f64)> = Vec::new();
         let mut index: BTreeMap<(i64, i64), usize> = BTreeMap::new();
         let mut adjacency: Vec<Vec<(usize, f64)>> = Vec::new();
-        // Quantise vertices so two segments meeting at a shared endpoint are
-        // actually connected despite float noise.
+        // Weld vertices onto a `snap`-sized grid so two segments meeting at a
+        // shared endpoint connect. Neighbouring buckets are probed too:
+        // quantisation alone still splits any pair straddling a bucket edge,
+        // which would disconnect the network silently. A 1e-9 grid — the
+        // previous behaviour — is effectively exact coordinate equality and
+        // tolerates no float noise at all.
+        let cell = snap.max(f64::MIN_POSITIVE);
         let mut node_of = |x: f64,
                            y: f64,
                            nodes: &mut Vec<(f64, f64)>,
                            adjacency: &mut Vec<Vec<(usize, f64)>>| {
-            let key = ((x / 1e-9).round() as i64, (y / 1e-9).round() as i64);
-            *index.entry(key).or_insert_with(|| {
-                nodes.push((x, y));
-                adjacency.push(Vec::new());
-                nodes.len() - 1
-            })
+            let kx = (x / cell).round() as i64;
+            let ky = (y / cell).round() as i64;
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if let Some(&existing) = index.get(&(kx + dx, ky + dy)) {
+                        let (nx, ny) = nodes[existing];
+                        if ((nx - x).powi(2) + (ny - y).powi(2)).sqrt() <= snap {
+                            return existing;
+                        }
+                    }
+                }
+            }
+            nodes.push((x, y));
+            adjacency.push(Vec::new());
+            let id = nodes.len() - 1;
+            index.insert((kx, ky), id);
+            id
         };
 
         for feature in layer.iter() {
@@ -320,9 +343,28 @@ impl Graph {
             };
             // A feature-level impedance is apportioned across its segments by
             // length, so a long polyline is not charged the same as a short one.
-            let declared = imp_idx.and_then(|i| field_to_f64(&feature.attributes[i]));
+            let declared = imp_idx
+                .and_then(|i| feature.attributes.get(i))
+                .and_then(field_to_f64);
+            // Dijkstra is undefined for non-positive edges. On a cyclic network
+            // — the normal case for streets and streams — relaxation keeps
+            // succeeding around the cycle until the cost underflows, so the
+            // tool would hang on user data rather than return an error.
+            if let Some(d) = declared {
+                if d <= 0.0 || !d.is_finite() {
+                    return Err(ToolError::Validation(format!(
+                        "impedance value {d} is not positive; network costs must be > 0"
+                    )));
+                }
+            }
+            // Apportion a FEATURE-level impedance across the feature's WHOLE
+            // length, not each part's: otherwise a two-part feature declared as
+            // 100 contributes 200 of traversal cost.
+            let total: f64 = parts
+                .iter()
+                .map(|cs| cs.windows(2).map(seg_len).sum::<f64>())
+                .sum();
             for cs in parts {
-                let total: f64 = cs.windows(2).map(seg_len).sum();
                 for w in cs.windows(2) {
                     let len = seg_len(w);
                     if len <= 0.0 {
@@ -679,6 +721,62 @@ mod tests {
         assert!(rows(&out)
             .iter()
             .any(|(o, n, _)| o == "west" && n == "east"));
+    }
+
+    #[test]
+    fn a_multilinestring_impedance_is_shared_across_its_parts() {
+        // Regression: `total` was computed per part, so each part received the
+        // whole declared impedance and a two-part feature cost double.
+        let mut l = Layer::new("net");
+        l.geom_type = Some(GeometryType::MultiLineString);
+        l.add_field(FieldDef::new("minutes", FieldType::Float));
+        l.add_feature(
+            Some(Geometry::MultiLineString(vec![
+                vec![Coord::xy(0.0, 0.0), Coord::xy(5.0, 0.0)],
+                vec![Coord::xy(5.0, 0.0), Coord::xy(10.0, 0.0)],
+            ])),
+            &[("minutes", FieldValue::Float(10.0))],
+        )
+        .unwrap();
+        let id = memory_store::put_vector(l);
+        let net = memory_store::make_vector_memory_path(&id);
+
+        // The whole feature costs 10, so end-to-end is reachable at a cutoff
+        // of 12. Charging each part 10 would make it 20 and find nothing.
+        let (out, _) = run(json!({
+            "input": points(vec![(0.0, 0.0), (10.0, 0.0)]),
+            "network": net,
+            "impedance_field": "minutes",
+            "distance_cutoff": 12.0,
+        }));
+        assert_eq!(rows(&out).len(), 2, "feature impedance was not apportioned");
+    }
+
+    #[test]
+    fn a_non_positive_impedance_is_rejected_rather_than_hanging() {
+        // Dijkstra is undefined for negative edges; on a cyclic network the
+        // relaxation would loop until the cost underflows.
+        let mut l = Layer::new("net");
+        l.geom_type = Some(GeometryType::LineString);
+        l.add_field(FieldDef::new("minutes", FieldType::Float));
+        l.add_feature(
+            Some(Geometry::LineString(vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(10.0, 0.0),
+            ])),
+            &[("minutes", FieldValue::Float(-5.0))],
+        )
+        .unwrap();
+        let id = memory_store::put_vector(l);
+        let net = memory_store::make_vector_memory_path(&id);
+
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": points(vec![(0.0, 0.0), (10.0, 0.0)]),
+            "network": net,
+            "impedance_field": "minutes",
+        }))
+        .unwrap();
+        assert!(GenerateNetworkSwmTool.run(&args, &ctx()).is_err());
     }
 
     #[test]

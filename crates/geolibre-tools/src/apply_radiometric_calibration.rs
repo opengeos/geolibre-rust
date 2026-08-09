@@ -44,7 +44,7 @@ use crate::args_common::{band_index, choice_or, opt_f64, req_str};
 use crate::common::{
     load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
 };
-use crate::raster_stack::check_alignment;
+use crate::raster_stack::check_alignment_refs;
 
 pub struct ApplyRadiometricCalibrationTool;
 
@@ -256,7 +256,10 @@ fn to_power(v: f64, units: &str) -> Option<f64> {
         // DN and amplitude are both field quantities: power is their square.
         "dn" | "amplitude" => Some(v * v),
         "intensity" => (v >= 0.0).then_some(v),
-        _ => Some(10.0_f64.powf(v / 10.0)),
+        "db" => Some(10.0_f64.powf(v / 10.0)),
+        // `choice_or` has already rejected anything else, so this is
+        // unreachable; returning None beats silently treating a new unit as dB.
+        _ => None,
     }
 }
 
@@ -339,7 +342,7 @@ fn parse_cell_source(
         let raster = load_input_raster(path)?;
         // Read cell-by-cell against the input grid, so a mismatched grid would
         // silently calibrate against the wrong locations.
-        check_alignment(&[template.clone(), raster.clone()])?;
+        check_alignment_refs(&[template, &raster])?;
         return Ok(Some(CellSource::Raster(Box::new(raster))));
     }
     Ok(opt_f64(args, constant_key)?.map(CellSource::Constant))

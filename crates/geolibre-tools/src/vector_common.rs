@@ -119,3 +119,29 @@ pub fn ensure_parent_dir(path: &str) -> Result<(), ToolError> {
     }
     Ok(())
 }
+
+/// Rejects an input schema that already carries one of the field names this
+/// tool appends.
+///
+/// `wbvector` keeps the first schema entry for a duplicated name, so the
+/// appended `FieldDef` is silently ignored and attributes written by name stop
+/// lining up with the schema — the output then carries wrong or missing
+/// columns with no error. Failing loudly is the only safe option.
+pub(crate) fn reject_field_collisions(
+    layer: &wbvector::Layer,
+    appended: &[&str],
+) -> Result<(), wbcore::ToolError> {
+    let clashes: Vec<&str> = appended
+        .iter()
+        .copied()
+        .filter(|n| layer.schema.field_index(n).is_some())
+        .collect();
+    if clashes.is_empty() {
+        return Ok(());
+    }
+    Err(wbcore::ToolError::Validation(format!(
+        "the input layer already has field(s) {}; this tool appends them, and a duplicate name \
+         would silently misalign the output attributes. Rename or drop them first.",
+        clashes.join(", ")
+    )))
+}

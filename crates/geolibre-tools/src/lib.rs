@@ -887,6 +887,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("exponent", float()),
             ("row_standardization", ToolParamSchema::bool()),
             ("search_tolerance", float()),
+            ("snap_tolerance", float()),
         ]),
         "intersect_3d" => schemas(&[
             ("input", vector_in()),

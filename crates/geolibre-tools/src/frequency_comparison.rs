@@ -38,7 +38,7 @@ use wbraster::DataType;
 use crate::args_common::{bool_or, choice_or, f64_or, req_str};
 use crate::common::{load_input_raster, parse_optional_output};
 use crate::raster_stack::{
-    check_alignment, load_stack, parse_band_policy, parse_input_paths, write_stack_result,
+    check_alignment_refs, load_stack, parse_band_policy, parse_input_paths, write_stack_result,
 };
 
 pub struct FrequencyComparisonTool;
@@ -54,7 +54,7 @@ impl Tool for FrequencyComparisonTool {
             params: vec![
                 ToolParamSpec {
                     name: "value_raster",
-                    description: "Reference raster each stack layer is compared against, co-registered with the inputs.",
+                    description: "Reference raster each stack layer is compared against, co-registered with the inputs. A single-band reference is broadcast to every band group; a multiband reference must have one band per group and advances with it.",
                     required: true,
                 },
                 ToolParamSpec {
@@ -120,7 +120,7 @@ impl Tool for FrequencyComparisonTool {
         let value = load_input_raster(&value_path)?;
         // The reference is read cell-by-cell against the stack grid, so a
         // mismatched grid would silently compare the wrong locations.
-        check_alignment(&[stack.template().clone(), value.clone()])?;
+        check_alignment_refs(&[stack.template(), &value])?;
 
         let (rows, cols) = (stack.rows, stack.cols);
         ctx.progress.info(&format!(
@@ -136,11 +136,24 @@ impl Tool for FrequencyComparisonTool {
         let mut bands: Vec<Vec<f64>> = Vec::with_capacity(n_groups);
         let mut vals: Vec<f64> = Vec::new();
 
+        // A single-band reference is broadcast to every group; a multiband one
+        // must supply exactly one band per group, and advances with it. Any
+        // other count is ambiguous, so it is rejected rather than silently
+        // truncated or reused.
+        if value.bands > 1 && value.bands != n_groups {
+            return Err(ToolError::Validation(format!(
+                "'value_raster' has {} band(s) but the inputs form {n_groups} band group(s); \
+                 supply a single-band reference or exactly one band per group",
+                value.bands
+            )));
+        }
+
         for g in 0..n_groups {
+            let ref_band = if value.bands > 1 { g as isize } else { 0 };
             let mut out = vec![nodata; rows * cols];
             for r in 0..rows {
                 for c in 0..cols {
-                    let reference = value.get(0, r as isize, c as isize);
+                    let reference = value.get(ref_band, r as isize, c as isize);
                     if reference == value.nodata || !reference.is_finite() {
                         continue;
                     }
@@ -399,6 +412,38 @@ mod tests {
         let out = load_input_raster(res.outputs["output"].as_str().unwrap()).unwrap();
         assert_eq!(out.get(0, 0, 0), 2.0); // band 1: both 9 > 5
         assert_eq!(out.get(1, 0, 0), 0.0); // band 2: neither 1 > 5
+    }
+
+    #[test]
+    fn a_multiband_reference_advances_with_the_band_group() {
+        // Regression: the reference was always read from band 0, so every
+        // group was compared against the first reference band. Bands must
+        // hold DISTINCT values or the test cannot detect it.
+        let value = multiband(1, 1, vec![vec![5.0], vec![50.0]]);
+        let a = multiband(1, 1, vec![vec![9.0], vec![9.0]]);
+        let b = multiband(1, 1, vec![vec![9.0], vec![9.0]]);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "value_raster": value,
+            "inputs": format!("{a},{b}"),
+            "comparison": "greater",
+            "process_as_multiband": "multi_band",
+        }))
+        .unwrap();
+        let res = FrequencyComparisonTool.run(&args, &ctx()).unwrap();
+        let out = load_input_raster(res.outputs["output"].as_str().unwrap()).unwrap();
+        assert_eq!(out.get(0, 0, 0), 2.0, "band 1: both 9 exceed 5");
+        assert_eq!(out.get(1, 0, 0), 0.0, "band 2: neither 9 exceeds 50");
+    }
+
+    #[test]
+    fn a_reference_with_the_wrong_band_count_is_rejected() {
+        let value = multiband(1, 1, vec![vec![5.0], vec![5.0], vec![5.0]]);
+        let a = multiband(1, 1, vec![vec![9.0], vec![9.0]]);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "value_raster": value, "inputs": a, "process_as_multiband": "multi_band",
+        }))
+        .unwrap();
+        assert!(FrequencyComparisonTool.run(&args, &ctx()).is_err());
     }
 
     #[test]

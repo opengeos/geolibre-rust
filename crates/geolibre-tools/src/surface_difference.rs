@@ -99,12 +99,12 @@ impl Tool for SurfaceDifferenceTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band of the input surface (default 0).",
+                    description: "1-based band of the input surface (default 1).",
                     required: false,
                 },
                 ToolParamSpec {
                     name: "reference_band",
-                    description: "Band of the reference surface (default 0).",
+                    description: "1-based band of the reference surface (default 1).",
                     required: false,
                 },
             ],

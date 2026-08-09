@@ -121,7 +121,7 @@ impl Tool for RemoveThermalNoiseTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band to denoise (default 0).",
+                    description: "1-based band to denoise (default 1).",
                     required: false,
                 },
             ],

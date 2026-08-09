@@ -131,7 +131,7 @@ impl Tool for ObserverPointsTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band of the elevation raster (default 0).",
+                    description: "1-based band of the elevation raster (default 1).",
                     required: false,
                 },
             ],

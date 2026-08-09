@@ -132,7 +132,7 @@ impl Tool for ExtractWaterSarTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band to threshold (default 0).",
+                    description: "1-based band to threshold (default 1).",
                     required: false,
                 },
             ],

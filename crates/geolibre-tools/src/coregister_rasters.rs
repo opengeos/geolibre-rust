@@ -89,7 +89,7 @@ impl Tool for CoregisterRastersTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band used for matching (default 0). A two-band input is matched on its complex magnitude unless this is given.",
+                    description: "1-based band used for matching (default 1). A two-band input is matched on its complex magnitude unless this is given.",
                     required: false,
                 },
                 ToolParamSpec {

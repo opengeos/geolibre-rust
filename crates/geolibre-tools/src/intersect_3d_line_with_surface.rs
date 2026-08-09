@@ -108,7 +108,7 @@ impl Tool for Intersect3dLineWithSurfaceTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band of the surface raster (default 0).",
+                    description: "1-based band of the surface raster (default 1).",
                     required: false,
                 },
             ],

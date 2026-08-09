@@ -224,12 +224,15 @@ mod is_closed_3d;
 mod mesh3d;
 mod multipatch_footprint;
 mod radiometric_terrain_flattening;
+mod raster_domain;
+mod raster_to_weighted_points;
 mod raster_stack;
 mod simplify_by_tangent_segments;
 mod sun_shadow_volume;
 mod surface_solid;
 mod union_3d;
 mod unwrap_phase;
+mod validate_flow_direction;
 mod vector_common;
 mod vector_convert;
 mod vector_to_h3;
@@ -285,6 +288,7 @@ mod cell_position_statistics;
 mod cell_statistics;
 mod collapse_road_detail;
 mod compute_accuracy_for_object_detection;
+mod contour_list;
 mod contour_with_barriers;
 mod convert_coordinate_notation;
 mod create_spatial_sampling_locations;
@@ -390,6 +394,10 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(observer_points::ObserverPointsTool),
         Box::new(surface_difference::SurfaceDifferenceTool),
         Box::new(intersect_3d_line_with_surface::Intersect3dLineWithSurfaceTool),
+        Box::new(raster_domain::RasterDomainTool),
+        Box::new(contour_list::ContourListTool),
+        Box::new(raster_to_weighted_points::RasterToWeightedPointsTool),
+        Box::new(validate_flow_direction::ValidateFlowDirectionTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -939,6 +947,56 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "raster_domain" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("geometry_type", ToolParamSchema::enum_values(&["polygon", "line"])),
+            ("ignore_value", float()),
+            ("min_value", float()),
+            ("max_value", float()),
+            ("min_area", float()),
+            ("fill_holes", ToolParamSchema::bool()),
+            ("all_bands", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
+        "contour_list" => schemas(&[
+            ("input", raster_in()),
+            ("contour_values", ToolParamSchema::string()),
+            ("output", vector_out()),
+            (
+                "geometry_type",
+                ToolParamSchema::enum_values(&["polyline", "polygon"]),
+            ),
+            ("min_length", float()),
+            ("close_rings", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
+        "raster_to_weighted_points" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("max_number_of_points", int()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&[
+                    "fibonacci_lattice",
+                    "fibonacci_spiral",
+                    "circular",
+                    "centroid",
+                ]),
+            ),
+            ("min_value", float()),
+            ("max_points_per_cell", int()),
+            ("include_weight", ToolParamSchema::bool()),
+            ("band", int()),
+        ]),
+        "validate_flow_direction" => schemas(&[
+            ("input", raster_in()),
+            ("output", vector_out()),
+            ("flow_direction_type", ToolParamSchema::enum_values(&["d8", "mfd"])),
+            ("report_edge_outflow", ToolParamSchema::bool()),
+            ("check_circular", ToolParamSchema::bool()),
+            ("band", int()),
         ]),
         "intersect_3d_line_with_surface" => schemas(&[
             ("input", vector_in()),

@@ -145,7 +145,7 @@ impl Tool for RadiometricTerrainFlatteningTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band of the input raster to flatten (default 0).",
+                    description: "1-based band of the input raster to flatten (default 1).",
                     required: false,
                 },
             ],

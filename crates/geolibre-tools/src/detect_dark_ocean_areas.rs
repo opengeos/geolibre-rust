@@ -120,7 +120,7 @@ impl Tool for DetectDarkOceanAreasTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "Band to search (default 0).",
+                    description: "1-based band to search (default 1).",
                     required: false,
                 },
             ],

@@ -311,20 +311,27 @@ fn thin_by_bin(pts: &[Pt], bin_size: f64) -> Vec<usize> {
     let mut seen: BTreeMap<(i64, i64), usize> = BTreeMap::new();
     let mut kept: Vec<usize> = Vec::new();
     for p in pts {
-        // Pinned points bypass the one-per-cell rule entirely, for the same
-        // reason as in thin_by_spacing: two hazards can share a cell.
-        if p.pinned {
-            kept.push(p.fid);
-            continue;
-        }
         let key = (
             (p.x / bin_size).floor() as i64,
             (p.y / bin_size).floor() as i64,
         );
+        // A pinned point is kept unconditionally, but it must still CLAIM its
+        // cell. Skipping `seen` left the cell free, so a non-pinned point in
+        // the same cell was retained too and that cell yielded two points,
+        // breaking the one-per-cell guarantee for the non-pinned set. This
+        // mirrors thin_by_spacing, where the pinned point enters the kd-tree
+        // and so continues to suppress its neighbours.
+        if p.pinned {
+            kept.push(p.fid);
+            seen.entry(key).or_insert(p.fid);
+            continue;
+        }
         seen.entry(key).or_insert(p.fid);
     }
+    // A pinned point may already be in `kept`; dedup so it is not emitted twice.
     kept.extend(seen.into_values());
     kept.sort_unstable();
+    kept.dedup();
     kept
 }
 

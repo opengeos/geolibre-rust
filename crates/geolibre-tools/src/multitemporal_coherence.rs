@@ -224,15 +224,27 @@ impl Tool for MultitemporalCoherenceTool {
         // with rows*cols — so without this a large grid aborts on allocation
         // instead of returning a validation error. Note pairs='consecutive'
         // otherwise passes every guard for any N.
+        // Count every grid that is live at once, not just the per-pair set:
+        //   2*n  the loaded I/Q bands (rasters stays alive — template borrows
+        //        rasters[0] to the end)
+        //   2*n  the `iq` copies complex_bands materializes
+        //   P    the per-pair coherence grids
+        //   P    the phase grids estimate_coherence returns alongside them
+        //   S    the statistic bands, allocated while per_pair is still live
+        // An undercount lets a run past the stated budget and then abort during
+        // allocation, which is the failure the guard exists to replace.
+        let grids = (4 * n as u64)
+            .saturating_add(2 * pair_list.len() as u64)
+            .saturating_add(stats.len() as u64);
         let f64_cells = (cells as u64)
-            .saturating_mul(pair_list.len() as u64 + 2 * n as u64)
+            .saturating_mul(grids)
             .saturating_mul(std::mem::size_of::<f64>() as u64);
         if f64_cells > MAX_WORKING_BYTES {
             return Err(ToolError::Validation(format!(
-                "this run needs about {} GiB of working buffers ({rows}x{cols} over {} pair(s) \
-                 and {n} acquisition(s)), over the {} GiB budget; reduce the stack, use \
+                "this run needs about {:.1} GiB of working buffers ({rows}x{cols} over {} \
+                 pair(s) and {n} acquisition(s)), over the {} GiB budget; reduce the stack, use \
                  pairs='consecutive', or tile the scene",
-                f64_cells / (1 << 30),
+                f64_cells as f64 / (1u64 << 30) as f64,
                 pair_list.len(),
                 MAX_WORKING_BYTES / (1 << 30)
             )));

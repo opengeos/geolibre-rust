@@ -48,6 +48,15 @@ use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_
 
 const LAST_RECORD: [&str; 3] = ["null", "same_as_start", "duration"];
 
+/// How the end value is written, derived from the target column's declared
+/// type so the written values always agree with the schema.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EndKind {
+    Text,
+    Integer,
+    Float,
+}
+
 pub struct CalculateEndTimeTool;
 
 impl Tool for CalculateEndTimeTool {
@@ -171,10 +180,14 @@ impl Tool for CalculateEndTimeTool {
             .field_index(&end_name)
             .map(|i| layer.schema.fields()[i].field_type)
             .unwrap_or_else(|| layer.schema.fields()[start_idx].field_type);
-        let textual = matches!(
-            type_source,
-            FieldType::Text | FieldType::Date | FieldType::DateTime
-        );
+        // Three cases, not two: collapsing to text-vs-not writes a Float into
+        // an existing Integer column holding whole epoch seconds, which is the
+        // same schema/value mismatch the Text case fixed.
+        let out_kind = match type_source {
+            FieldType::Text | FieldType::Date | FieldType::DateTime => EndKind::Text,
+            FieldType::Integer => EndKind::Integer,
+            _ => EndKind::Float,
+        };
 
         let n = layer.features.len();
         let mut starts: Vec<Option<f64>> = Vec::with_capacity(n);
@@ -261,10 +274,10 @@ impl Tool for CalculateEndTimeTool {
             None => {
                 out.add_field(FieldDef::new(
                     end_name.as_str(),
-                    if textual {
-                        FieldType::Text
-                    } else {
-                        FieldType::Float
+                    match out_kind {
+                        EndKind::Text => FieldType::Text,
+                        EndKind::Integer => FieldType::Integer,
+                        EndKind::Float => FieldType::Float,
                     },
                 ));
                 out.schema.fields().len() - 1
@@ -278,10 +291,11 @@ impl Tool for CalculateEndTimeTool {
             while attrs.len() <= end_idx {
                 attrs.push(FieldValue::Null);
             }
-            attrs[end_idx] = match ends[i] {
-                None => FieldValue::Null,
-                Some(v) if textual => FieldValue::Text(format_iso8601(v)),
-                Some(v) => FieldValue::Float(v),
+            attrs[end_idx] = match (ends[i], out_kind) {
+                (None, _) => FieldValue::Null,
+                (Some(v), EndKind::Text) => FieldValue::Text(format_iso8601(v)),
+                (Some(v), EndKind::Integer) => FieldValue::Integer(v.round() as i64),
+                (Some(v), EndKind::Float) => FieldValue::Float(v),
             };
             out.push(wbvector::Feature {
                 fid: f.fid,

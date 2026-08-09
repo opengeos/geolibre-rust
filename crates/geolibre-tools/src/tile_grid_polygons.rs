@@ -197,9 +197,16 @@ impl Tool for TileGridPolygonsTool {
         layer.add_field(FieldDef::new("y", FieldType::Integer));
         layer.add_field(FieldDef::new("quadkey", FieldType::Text));
         layer.add_field(FieldDef::new("tile_id", FieldType::Text));
-        // The count is already bounded by max_tiles above, so reserving up
-        // front avoids repeated reallocation of a large feature vector.
-        layer.features.reserve(total as usize);
+        // Reserving up front avoids repeated reallocation, but `reserve`
+        // ABORTS the process on allocation failure — and `max_tiles` is
+        // caller-supplied, so a large accepted value can reach here. try_reserve
+        // turns that into an error the caller can act on.
+        layer.features.try_reserve(total as usize).map_err(|e| {
+            ToolError::Execution(format!(
+                "cannot allocate room for {total} tile(s): {e}; lower 'max_tiles', narrow \
+                     the extent, or reduce the zoom"
+            ))
+        })?;
         let mut next_fid = 0_u64;
 
         for (z, x0, x1, y0, y1) in ranges {

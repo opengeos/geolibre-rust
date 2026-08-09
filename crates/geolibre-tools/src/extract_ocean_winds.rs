@@ -234,6 +234,17 @@ impl Tool for ExtractOceanWindsTool {
                     // (MaskSide has no "inside" variant; passing one made this
                     // whole branch fail at runtime.)
                     let layer = load_input_layer(spec)?;
+                    // rasterize_mask compares cell-centre coordinates directly
+                    // against the polygon coordinates, so a mask in a different
+                    // CRS masks the wrong cells (or none) without any error.
+                    if let (Some(img), Some(mask_epsg)) = (sigma.crs.epsg, layer.crs_epsg()) {
+                        if img != mask_epsg {
+                            return Err(ToolError::Validation(format!(
+                                "'water_mask' is EPSG:{mask_epsg} but 'input' is EPSG:{img}; \
+                                 reproject the mask to the image CRS first"
+                            )));
+                        }
+                    }
                     rasterize_mask(&sigma, &layer, MaskSide::WaterPolygon)
                 }
             }),
@@ -839,6 +850,38 @@ mod tests {
         assert_eq!(res.outputs["masked_cells"], json!(1));
         assert_eq!(res.outputs["valid_cells"], json!(1));
         assert_eq!(out.get(0, 0, 1), out.nodata, "the land cell must be masked");
+    }
+
+    #[test]
+    fn a_water_mask_in_a_different_crs_is_refused() {
+        // rasterize_mask compares raw coordinates, so a WGS84 mask over a
+        // Web Mercator scene silently masks the wrong cells.
+        let mut l = wbvector::Layer::new("water")
+            .with_geom_type(wbvector::GeometryType::Polygon)
+            .with_crs_epsg(4326);
+        l.add_feature(
+            Some(wbvector::Geometry::polygon(
+                vec![
+                    wbvector::Coord::xy(0.0, 0.0),
+                    wbvector::Coord::xy(1.0, 0.0),
+                    wbvector::Coord::xy(1.0, 1.0),
+                    wbvector::Coord::xy(0.0, 0.0),
+                ],
+                Vec::new(),
+            )),
+            &[],
+        )
+        .unwrap();
+        let id = wbvector::memory_store::put_vector(l);
+        let mask = wbvector::memory_store::make_vector_memory_path(&id);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster(1, 2, &[-20.0, -20.0]), "units": "db",
+            "incidence_angle": 35.0, "wind_direction": 0.0, "look_direction": 0.0,
+            "water_mask": mask,
+        }))
+        .unwrap();
+        let err = ExtractOceanWindsTool.run(&args, &ctx()).unwrap_err();
+        assert!(format!("{err}").contains("EPSG:4326"), "{err}");
     }
 
     #[test]

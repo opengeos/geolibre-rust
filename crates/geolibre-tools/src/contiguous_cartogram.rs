@@ -72,8 +72,9 @@ const SEA_MODES: [&str; 2] = ["mean", "min"];
 /// Blur is a Gaussian sigma in grid cells; beyond the grid itself it is
 /// meaningless, and the kernel it sizes is `2*ceil(3*sigma)+1` f64 values.
 const MAX_BLUR: f64 = MAX_GRID as f64;
-/// Densification spacing bounds, in map units. Below the minimum every edge
-/// saturates the per-edge vertex cap; above the maximum nothing is inserted.
+/// Densification spacing bounds, in GRID CELLS (the parameter is multiplied by
+/// the cell size before use). Below the minimum every edge saturates the
+/// per-edge vertex cap; above the maximum nothing is inserted.
 const MIN_DENSIFY: f64 = 1e-3;
 const MAX_DENSIFY: f64 = 1e6;
 
@@ -452,6 +453,20 @@ impl Tool for ContiguousCartogramTool {
                 });
             rebuilt.push((geom, value));
         }
+        // The opposite desync: rebuild_geometry consumed FEWER vertices than
+        // collect_vertices produced. That misaligns nothing inside a feature,
+        // so take_ring's bounds check cannot see it — but it means the two
+        // walks disagree, and every later feature would have been rebuilt from
+        // another feature's vertices.
+        if cursor != pts.len() {
+            return Err(ToolError::Execution(format!(
+                "internal vertex-cursor desync in contiguous_cartogram: {} vertices were \
+                 collected but {cursor} consumed; collect_vertices and rebuild_geometry \
+                 disagree about which geometry variants they walk",
+                pts.len()
+            )));
+        }
+
         let out_total: f64 = rebuilt
             .iter()
             .filter(|(_, v)| v.is_some())
@@ -658,7 +673,7 @@ fn take_ring(
     cursor: &mut usize,
     max_seg: f64,
 ) -> Result<Vec<Coord>, ToolError> {
-    let count = densify(original, max_seg).len();
+    let count = densify_len(original, max_seg);
     // `collect_vertices` (via walk_rings) and `rebuild_geometry` must agree
     // exactly on vertex count and order. They do today because both handle the
     // same Geometry variants — but if a future change adds a variant to one and
@@ -700,6 +715,27 @@ fn take_ring(
         out[last] = first;
     }
     Ok(out)
+}
+
+/// Number of vertices [`densify`] would emit, without building them.
+///
+/// `take_ring` needs only the count, and `collect_vertices` has already
+/// densified the same ring once; materializing a second full Vec per ring
+/// doubles both the work and the allocations on a large layer.
+fn densify_len(coords: &[Coord], max_seg: f64) -> usize {
+    if coords.is_empty() {
+        return 0;
+    }
+    let mut n = 0usize;
+    for w in coords.windows(2) {
+        let (a, b) = (&w[0], &w[1]);
+        n += 1;
+        let d = ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt();
+        if d > max_seg && max_seg > 0.0 {
+            n += ((d / max_seg).ceil() as usize).min(4096).saturating_sub(1);
+        }
+    }
+    n + 1
 }
 
 /// Inserts intermediate vertices so no segment exceeds `max_seg`.
@@ -992,12 +1028,6 @@ mod tests {
         };
         let left = verts(0);
         let right = verts(1);
-        // Both polygons densify the shared x = 1 edge identically, so EVERY
-        // vertex the left polygon contributed to it must still coincide with
-        // one on the right. Counting only two matches would be satisfied by
-        // the untouched corners alone, and would pass even if every densified
-        // intermediate vertex had separated — the exact failure densification
-        // exists to prevent.
         // Both polygons densify the shared x = 1 edge identically and the two
         // copies of each vertex see the same velocity field, so EVERY vertex
         // along that edge must still coincide after the distortion — not just

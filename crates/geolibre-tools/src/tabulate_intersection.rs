@@ -9,29 +9,30 @@
 //! has had no vector-native answer.
 //!
 //! For polygon class features the measure is intersected **area** (via `geo`
-//! `BooleanOps`); for point class features it is the **count** of points inside
-//! the zone. Results are grouped by zone × `class_field` value (or a single
+//! `BooleanOps`); for line class features it is intersected **length** (via
+//! `BooleanOps::clip`); for point class features it is the **count** of points
+//! inside the zone. Results are grouped by zone × `class_field` value (or a single
 //! "ALL" class when no field is given). Each output row carries:
 //!
 //! - `zone_id` — the zone identifier (`zone_field` value, or the zone's index);
 //! - the class value (under the `class_field` name), when grouping;
-//! - `area` or `count` — the intersected measure;
+//! - `area`, `length` or `count` — the intersected measure;
 //! - `percentage` — the measure as a percent of the zone's total across all
 //!   classes (so a zone's rows sum to 100);
 //! - one column per `sum_fields` entry — the class attribute apportioned by the
-//!   intersected fraction (`value x intersected_area / class_area` for polygons;
-//!   the plain sum over contained points for points).
+//!   intersected fraction (`value x intersected_area / class_area` for polygons,
+//!   `value x intersected_length / class_length` for lines; the plain sum over
+//!   contained points for points).
 //!
 //! Output geometry is the intersection polygon per zone × class (polygon
-//! classes) or the zone polygon (point classes), so the table is also mappable.
-//!
-//! Scope for v1: line class features (intersected length) are not yet supported
-//! — `geo` has no arbitrary line-in-polygon clip; use polygon or point classes.
+//! classes), the clipped lines (line classes), or the zone polygon (point
+//! classes), so the table is also mappable.
 
 use std::collections::BTreeMap;
 
 use geo::{
-    Area, BooleanOps, Contains, Coord as GeoCoord, LineString, MultiPolygon, Point, Polygon,
+    Area, BooleanOps, Contains, Coord as GeoCoord, Euclidean, Length, LineString, MultiLineString,
+    MultiPolygon, Point, Polygon,
 };
 use serde_json::{json, Value};
 use wbcore::{
@@ -40,7 +41,10 @@ use wbcore::{
 };
 use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer, Ring};
 
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    load_input_layer, multilinestring_to_geometry, parse_optional_str, to_multilinestring,
+    write_or_store_layer,
+};
 
 pub struct TabulateIntersectionTool;
 
@@ -49,7 +53,7 @@ impl Tool for TabulateIntersectionTool {
         ToolMetadata {
             id: "tabulate_intersection",
             display_name: "Tabulate Intersection",
-            summary: "Vector-on-vector zonal summary: apportion a class layer (polygons by area, or points by count) across zone polygons, reporting intersected measure, percentage of zone, and area-weighted sum fields.",
+            summary: "Vector-on-vector zonal summary: apportion a class layer (polygons by area, lines by intersected length, or points by count) across zone polygons, reporting intersected measure, percentage of zone, and measure-weighted sum fields.",
             category: ToolCategory::Vector,
             license_tier: LicenseTier::Open,
             params: vec![
@@ -60,7 +64,7 @@ impl Tool for TabulateIntersectionTool {
                 },
                 ToolParamSpec {
                     name: "class_features",
-                    description: "Class vector layer to apportion across the zones (polygons summarized by area, or points by count).",
+                    description: "Class vector layer to apportion across the zones (polygons summarized by area, lines by intersected length, or points by count).",
                     required: true,
                 },
                 ToolParamSpec {
@@ -75,7 +79,7 @@ impl Tool for TabulateIntersectionTool {
                 },
                 ToolParamSpec {
                     name: "sum_fields",
-                    description: "Optional comma-separated numeric fields in the class layer to apportion into each zone (area-weighted for polygons, summed for points).",
+                    description: "Optional comma-separated numeric fields in the class layer to apportion into each zone (area-weighted for polygons, length-weighted for lines, summed for points).",
                     required: false,
                 },
                 ToolParamSpec {
@@ -123,17 +127,18 @@ impl Tool for TabulateIntersectionTool {
         let zones = load_input_layer(input)?;
         let classes = load_input_layer(class_path)?;
         let class_kind = ClassKind::detect(&classes).ok_or_else(|| {
-            ToolError::Validation(
-                "class layer has no polygon or point features (line classes are not supported)"
-                    .to_string(),
-            )
+            ToolError::Validation("class layer has no polygon, line or point features".to_string())
         })?;
 
         // Pre-extract class features as (geo geometry, class value, sum values).
         let class_schema = classes.schema.clone();
         struct ClassFeat {
             poly: Option<MultiPolygon>,
+            lines: Option<MultiLineString>,
             point: Option<Point>,
+            /// Total measure of the whole class feature (area for polygons,
+            /// length for lines), cached so apportionment is one division.
+            total: f64,
             value: String,
             sums: Vec<f64>,
         }
@@ -159,15 +164,33 @@ impl Tool for TabulateIntersectionTool {
                     })
                     .collect();
                 match class_kind {
-                    ClassKind::Polygon => to_multipolygon(geom).map(|poly| ClassFeat {
-                        poly: Some(poly),
-                        point: None,
-                        value,
-                        sums,
+                    ClassKind::Polygon => to_multipolygon(geom).map(|poly| {
+                        let total = poly.unsigned_area();
+                        ClassFeat {
+                            poly: Some(poly),
+                            lines: None,
+                            point: None,
+                            total,
+                            value,
+                            sums,
+                        }
+                    }),
+                    ClassKind::Line => to_multilinestring(geom).map(|lines| {
+                        let total = Euclidean.length(&lines);
+                        ClassFeat {
+                            poly: None,
+                            lines: Some(lines),
+                            point: None,
+                            total,
+                            value,
+                            sums,
+                        }
                     }),
                     ClassKind::Point => rep_point(geom).map(|(x, y)| ClassFeat {
                         poly: None,
+                        lines: None,
                         point: Some(Point::new(x, y)),
+                        total: 0.0,
                         value,
                         sums,
                     }),
@@ -187,11 +210,13 @@ impl Tool for TabulateIntersectionTool {
         struct Accum {
             measure: f64,
             geom: MultiPolygon,
+            lines: MultiLineString,
             sums: Vec<f64>,
         }
         let new_accum = || Accum {
             measure: 0.0,
             geom: MultiPolygon::new(vec![]),
+            lines: MultiLineString(vec![]),
             sums: vec![0.0; sum_fields.len()],
         };
         let measure_field = class_kind.measure_field();
@@ -209,6 +234,7 @@ impl Tool for TabulateIntersectionTool {
         }
         out_layer.geom_type = Some(match class_kind {
             ClassKind::Polygon => GeometryType::MultiPolygon,
+            ClassKind::Line => GeometryType::MultiLineString,
             ClassKind::Point => GeometryType::Polygon,
         });
 
@@ -235,15 +261,28 @@ impl Tool for TabulateIntersectionTool {
                         if area <= 0.0 {
                             continue;
                         }
-                        let class_area = cpoly.unsigned_area();
-                        let frac = if class_area > 0.0 {
-                            area / class_area
-                        } else {
-                            0.0
-                        };
+                        let frac = if cf.total > 0.0 { area / cf.total } else { 0.0 };
                         let entry = by_class.entry(cf.value.clone()).or_insert_with(new_accum);
                         entry.measure += area;
                         entry.geom = entry.geom.union(&inter);
+                        for (s, v) in entry.sums.iter_mut().zip(&cf.sums) {
+                            *s += v * frac;
+                        }
+                        continue;
+                    }
+                    ClassKind::Line => {
+                        // `clip` keeps only the portions inside the zone; a line
+                        // crossing the zone twice comes back as two parts and
+                        // `length` sums them, which is the measure we want.
+                        let clipped = zone_mp.clip(cf.lines.as_ref().unwrap(), false);
+                        let len = Euclidean.length(&clipped);
+                        if len <= 0.0 {
+                            continue;
+                        }
+                        let frac = if cf.total > 0.0 { len / cf.total } else { 0.0 };
+                        let entry = by_class.entry(cf.value.clone()).or_insert_with(new_accum);
+                        entry.measure += len;
+                        entry.lines.0.extend(clipped.0);
                         for (s, v) in entry.sums.iter_mut().zip(&cf.sums) {
                             *s += v * frac;
                         }
@@ -271,6 +310,7 @@ impl Tool for TabulateIntersectionTool {
             for (value, acc) in &by_class {
                 let geom = match class_kind {
                     ClassKind::Polygon => multipolygon_to_geometry(&acc.geom),
+                    ClassKind::Line => multilinestring_to_geometry(&acc.lines),
                     ClassKind::Point => zone.geometry.clone().unwrap(),
                 };
                 let mut fields: Vec<(&str, FieldValue)> =
@@ -311,6 +351,7 @@ impl Tool for TabulateIntersectionTool {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ClassKind {
     Polygon,
+    Line,
     Point,
 }
 
@@ -321,6 +362,7 @@ impl ClassKind {
             .iter()
             .find_map(|f| match f.geometry.as_ref()? {
                 Geometry::Polygon { .. } | Geometry::MultiPolygon(_) => Some(ClassKind::Polygon),
+                Geometry::LineString(_) | Geometry::MultiLineString(_) => Some(ClassKind::Line),
                 Geometry::Point(_) | Geometry::MultiPoint(_) => Some(ClassKind::Point),
                 _ => None,
             })
@@ -328,12 +370,16 @@ impl ClassKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::Polygon => "polygon",
+            Self::Line => "line",
             Self::Point => "point",
         }
     }
+    /// Output column holding the intersected measure. Matches
+    /// `summarize_within`'s naming so the vector-zonal family agrees.
     fn measure_field(self) -> &'static str {
         match self {
             Self::Polygon => "area",
+            Self::Line => "length",
             Self::Point => "count",
         }
     }
@@ -613,6 +659,206 @@ mod tests {
             out.outputs["row_count"],
             json!(1),
             "only the overlapping zone yields a row"
+        );
+    }
+
+    /// A `Geometry::MultiPolygon` built from axis-aligned rectangles.
+    fn multi_rect(boxes: &[(f64, f64, f64, f64)]) -> Geometry {
+        Geometry::MultiPolygon(
+            boxes
+                .iter()
+                .map(|&(x0, y0, x1, y1)| {
+                    (
+                        Ring::new(vec![
+                            Coord::xy(x0, y0),
+                            Coord::xy(x1, y0),
+                            Coord::xy(x1, y1),
+                            Coord::xy(x0, y1),
+                        ]),
+                        vec![],
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn line(pts: &[(f64, f64)]) -> Geometry {
+        Geometry::LineString(pts.iter().map(|&(x, y)| Coord::xy(x, y)).collect())
+    }
+
+    #[test]
+    fn line_length_composition_sums_to_100() {
+        // One 10x10 zone. Class A runs x=0..4 along y=5 (length 4), class B
+        // x=4..10 (length 6). Total 10 -> 40% / 60%.
+        let mut zones = Layer::new("zones");
+        zones
+            .add_feature(Some(rect(0.0, 0.0, 10.0, 10.0)), &[])
+            .unwrap();
+        let zin = store(zones);
+
+        let mut cls = Layer::new("roads");
+        cls.add_field(FieldDef::new("class", FieldType::Text));
+        cls.add_feature(
+            Some(line(&[(0.0, 5.0), (4.0, 5.0)])),
+            &[("class", FieldValue::Text("A".into()))],
+        )
+        .unwrap();
+        cls.add_feature(
+            Some(line(&[(4.0, 5.0), (10.0, 5.0)])),
+            &[("class", FieldValue::Text("B".into()))],
+        )
+        .unwrap();
+        let cin = store(cls);
+
+        let (out, layer) = run_tool(json!({
+            "input": zin, "class_features": cin, "class_field": "class"
+        }));
+        assert_eq!(out.outputs["class_kind"], json!("line"));
+        assert_eq!(out.outputs["row_count"], json!(2));
+        let mut pairs: Vec<(String, f64, f64)> = (0..2)
+            .map(|i| {
+                let c = match fget(&layer, i, "class") {
+                    FieldValue::Text(s) => s,
+                    _ => unreachable!(),
+                };
+                (
+                    c,
+                    ffloat(&layer, i, "length"),
+                    ffloat(&layer, i, "percentage"),
+                )
+            })
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        assert!((pairs[0].1 - 4.0).abs() < 1e-9, "A length {:?}", pairs);
+        assert!((pairs[1].1 - 6.0).abs() < 1e-9, "B length {:?}", pairs);
+        assert!((pairs[0].2 - 40.0).abs() < 1e-9 && (pairs[1].2 - 60.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn line_sum_field_apportioned_by_clipped_length() {
+        // A length-10 line half inside the zone carries 50% of its attribute.
+        let mut zones = Layer::new("zones");
+        zones
+            .add_feature(Some(rect(0.0, 0.0, 10.0, 10.0)), &[])
+            .unwrap();
+        let zin = store(zones);
+        let mut cls = Layer::new("roads");
+        cls.add_field(FieldDef::new("aadt", FieldType::Float));
+        cls.add_feature(
+            Some(line(&[(-5.0, 5.0), (5.0, 5.0)])),
+            &[("aadt", FieldValue::Float(1000.0))],
+        )
+        .unwrap();
+        let cin = store(cls);
+        let (_, layer) = run_tool(json!({
+            "input": zin, "class_features": cin, "sum_fields": "aadt"
+        }));
+        assert_eq!(layer.len(), 1);
+        assert!((ffloat(&layer, 0, "length") - 5.0).abs() < 1e-9);
+        assert!((ffloat(&layer, 0, "aadt") - 500.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn line_clipped_into_multiple_parts_sums_all_parts() {
+        // A two-part zone; one straight line crosses both parts. The measure
+        // must be the sum of both clipped runs (2 + 2), not just the first.
+        let mut zones = Layer::new("zones");
+        zones
+            .add_feature(
+                Some(multi_rect(&[(0.0, 0.0, 2.0, 10.0), (5.0, 0.0, 7.0, 10.0)])),
+                &[],
+            )
+            .unwrap();
+        let zin = store(zones);
+        let mut cls = Layer::new("roads");
+        cls.add_feature(Some(line(&[(0.0, 5.0), (10.0, 5.0)])), &[])
+            .unwrap();
+        let cin = store(cls);
+        let (_, layer) = run_tool(json!({ "input": zin, "class_features": cin }));
+        assert_eq!(layer.len(), 1);
+        assert!(
+            (ffloat(&layer, 0, "length") - 4.0).abs() < 1e-9,
+            "expected 2 + 2, got {}",
+            ffloat(&layer, 0, "length")
+        );
+        // Both runs must survive into the output geometry, not just one.
+        match layer.features[0].geometry.as_ref().unwrap() {
+            Geometry::MultiLineString(parts) => assert_eq!(parts.len(), 2),
+            g => panic!("expected a two-part MultiLineString, got {g:?}"),
+        }
+    }
+
+    #[test]
+    fn line_entirely_outside_yields_no_row() {
+        let mut zones = Layer::new("zones");
+        zones
+            .add_feature(Some(rect(0.0, 0.0, 5.0, 5.0)), &[])
+            .unwrap();
+        let zin = store(zones);
+        let mut cls = Layer::new("roads");
+        cls.add_feature(Some(line(&[(100.0, 100.0), (110.0, 100.0)])), &[])
+            .unwrap();
+        let cin = store(cls);
+        let (out, _) = run_tool(json!({ "input": zin, "class_features": cin }));
+        assert_eq!(
+            out.outputs["row_count"],
+            json!(0),
+            "a line outside every zone must produce no row, not a zero row"
+        );
+    }
+
+    #[test]
+    fn line_length_agrees_with_summarize_within() {
+        // Cross-tool contract: the intersected length this tool reports must
+        // equal what `summarize_within` reports for the same lines and zone.
+        // If either tool's clip convention drifts, this fails.
+        use crate::summarize_within::SummarizeWithinTool;
+
+        let zone_geom = rect(0.0, 0.0, 10.0, 10.0);
+        let lines: Vec<Geometry> = vec![
+            line(&[(-5.0, 2.0), (5.0, 2.0)]),    // half in -> 5
+            line(&[(1.0, 1.0), (1.0, 9.0)]),     // fully in -> 8
+            line(&[(8.0, -2.0), (8.0, 12.0)]),   // crosses -> 10
+            line(&[(20.0, 20.0), (30.0, 20.0)]), // outside -> 0
+        ];
+
+        let mut zones = Layer::new("zones");
+        zones.add_feature(Some(zone_geom.clone()), &[]).unwrap();
+        let zin = store(zones);
+        let mut zones2 = Layer::new("zones");
+        zones2.add_feature(Some(zone_geom), &[]).unwrap();
+        let zin2 = store(zones2);
+
+        let mk = || {
+            let mut l = Layer::new("roads");
+            for g in &lines {
+                l.add_feature(Some(g.clone()), &[]).unwrap();
+            }
+            store(l)
+        };
+        let (cin, cin2) = (mk(), mk());
+
+        let (_, ti) = run_tool(json!({ "input": zin, "class_features": cin }));
+        let ti_len = ffloat(&ti, 0, "length");
+
+        let args: ToolArgs =
+            serde_json::from_value(json!({ "polygons": zin2, "input": cin2 })).unwrap();
+        let sw_out = SummarizeWithinTool.run(&args, &ctx()).unwrap();
+        let sw = load_input_layer(sw_out.outputs["output"].as_str().unwrap()).unwrap();
+        let sw_len = FieldValue::as_f64(
+            sw.features[0]
+                .get(&sw.schema, "length_within")
+                .expect("summarize_within emits length_within for line inputs"),
+        )
+        .unwrap();
+
+        assert!(
+            (ti_len - 23.0).abs() < 1e-9,
+            "expected 5+8+10, got {ti_len}"
+        );
+        assert!(
+            (ti_len - sw_len).abs() < 1e-9,
+            "tabulate_intersection {ti_len} != summarize_within {sw_len}"
         );
     }
 

@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use geo::{Coord as GeoCoord, LineString, MultiLineString};
 use serde_json::Value;
 use wbcore::{ToolArgs, ToolError};
 use wbvector::{memory_store, Coord, Geometry, Layer, VectorFormat};
@@ -144,4 +145,49 @@ pub(crate) fn reject_field_collisions(
          would silently misalign the output attributes. Rename or drop them first.",
         clashes.join(", ")
     )))
+}
+
+// ── Line geometry <-> `geo` ───────────────────────────────────────────────────
+//
+// Shared by the vector-zonal family (`summarize_within`, `tabulate_intersection`,
+// `summarize_nearby`), which all measure "how much line length falls inside this
+// polygon" with `geo`'s `BooleanOps::clip`. Kept here so the three tools cannot
+// drift on the conversion.
+
+/// Converts a run of `wbvector` coordinates to a `geo` `LineString`.
+pub(crate) fn coords_to_linestring(cs: &[Coord]) -> LineString {
+    LineString::new(cs.iter().map(|c| GeoCoord { x: c.x, y: c.y }).collect())
+}
+
+/// Converts a `wbvector` line geometry to a `geo` `MultiLineString`.
+///
+/// Returns `None` for any non-line geometry, so callers can use it as the
+/// line arm of a geometry-kind dispatch.
+pub(crate) fn to_multilinestring(geom: &Geometry) -> Option<MultiLineString> {
+    match geom {
+        Geometry::LineString(cs) => Some(MultiLineString(vec![coords_to_linestring(cs)])),
+        Geometry::MultiLineString(parts) => Some(MultiLineString(
+            parts.iter().map(|cs| coords_to_linestring(cs)).collect(),
+        )),
+        _ => None,
+    }
+}
+
+/// Converts a `geo` `MultiLineString` back to a `wbvector` geometry, collapsing
+/// the single-part case to a plain `LineString`.
+///
+/// Empty parts are dropped: `BooleanOps::clip` can return degenerate pieces for
+/// a line that merely touches the clip polygon, and a zero/one-vertex
+/// `LineString` is not writable by every vector driver.
+pub(crate) fn multilinestring_to_geometry(ml: &MultiLineString) -> Geometry {
+    let mut parts: Vec<Vec<Coord>> =
+        ml.0.iter()
+            .map(|ls| ls.0.iter().map(|c| Coord::xy(c.x, c.y)).collect::<Vec<_>>())
+            .filter(|cs| cs.len() >= 2)
+            .collect();
+    if parts.len() == 1 {
+        Geometry::LineString(parts.pop().expect("len checked"))
+    } else {
+        Geometry::MultiLineString(parts)
+    }
 }

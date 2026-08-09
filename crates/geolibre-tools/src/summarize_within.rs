@@ -31,10 +31,11 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, Layer, Ring};
+use wbvector::{FieldDef, FieldType, FieldValue, Geometry, Layer, Ring};
 
 use crate::vector_common::{
-    geometry_contains_point, load_input_layer, parse_optional_str, write_or_store_layer,
+    geometry_contains_point, load_input_layer, parse_optional_str, to_multilinestring,
+    write_or_store_layer,
 };
 
 /// What kind of geometry the summarized layer holds; decides the weighting rule.
@@ -654,20 +655,6 @@ fn to_multipolygon(geom: &Geometry) -> Option<MultiPolygon> {
     }
 }
 
-fn to_multilinestring(geom: &Geometry) -> Option<MultiLineString> {
-    match geom {
-        Geometry::LineString(cs) => Some(MultiLineString(vec![coords_to_linestring(cs)])),
-        Geometry::MultiLineString(parts) => Some(MultiLineString(
-            parts.iter().map(|cs| coords_to_linestring(cs)).collect(),
-        )),
-        _ => None,
-    }
-}
-
-fn coords_to_linestring(cs: &[Coord]) -> LineString {
-    LineString::new(cs.iter().map(|c| GeoCoord { x: c.x, y: c.y }).collect())
-}
-
 fn rings_to_polygon(exterior: &Ring, interiors: &[Ring]) -> Polygon {
     Polygon::new(
         ring_to_linestring(exterior),
@@ -688,7 +675,7 @@ fn ring_to_linestring(ring: &Ring) -> LineString {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbvector::{memory_store, GeometryType};
+    use wbvector::{memory_store, Coord, GeometryType};
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

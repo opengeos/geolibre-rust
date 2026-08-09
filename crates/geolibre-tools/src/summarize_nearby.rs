@@ -37,18 +37,18 @@
 //! `mean_<field>` (mean = sum / count, 0 when nothing is nearby). The geometry
 //! is the buffer polygon, so the enriched result is directly mappable.
 //!
-//! Scope for v1: line summary features (intersected length) are not supported —
-//! `geo` has no arbitrary line-in-polygon clip, the same limitation
-//! `tabulate_intersection` carries; use polygon or point summary layers.
-//! Distances are in the layer's CRS units (no on-the-fly unit conversion), input
+//! Line summary features are measured by their intersected **length** inside the
+//! buffer (via `geo`'s `BooleanOps::clip`), reported as `length_within`.
+//!
+//! Scope for v1: distances are in the layer's CRS units (no on-the-fly unit conversion), input
 //! attributes beyond `id_field` are not copied onto the buffers, and the summary
 //! statistics are fixed to count/sum/mean.
 
 use std::collections::BTreeMap;
 
 use geo::{
-    Area, BooleanOps, Buffer, Contains, Coord as GeoCoord, Geometry as GeoGeometry, LineString,
-    MultiLineString, MultiPoint, MultiPolygon, Point, Polygon,
+    Area, BooleanOps, Buffer, Contains, Coord as GeoCoord, Euclidean, Geometry as GeoGeometry,
+    Length, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon,
 };
 use serde_json::{json, Value};
 use wbcore::{
@@ -57,7 +57,10 @@ use wbcore::{
 };
 use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer, Ring};
 
-use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
+use crate::vector_common::{
+    coords_to_linestring, load_input_layer, parse_optional_str, to_multilinestring,
+    write_or_store_layer,
+};
 
 pub struct SummarizeNearbyTool;
 
@@ -142,8 +145,7 @@ impl Tool for SummarizeNearbyTool {
         let summary = load_input_layer(summary_path)?;
         let kind = SummaryKind::detect(&summary).ok_or_else(|| {
             ToolError::Validation(
-                "summary_features has no polygon or point features (line summaries are not supported)"
-                    .to_string(),
+                "summary_features has no polygon, line or point features".to_string(),
             )
         })?;
 
@@ -166,18 +168,30 @@ impl Tool for SummarizeNearbyTool {
                     .collect();
                 match kind {
                     SummaryKind::Polygon => to_multipolygon(geom).map(|poly| {
-                        let area = poly.unsigned_area();
+                        let total = poly.unsigned_area();
                         SummaryFeat {
                             poly: Some(poly),
+                            lines: None,
                             point: None,
-                            area,
+                            total,
+                            sums,
+                        }
+                    }),
+                    SummaryKind::Line => to_multilinestring(geom).map(|lines| {
+                        let total = Euclidean.length(&lines);
+                        SummaryFeat {
+                            poly: None,
+                            lines: Some(lines),
+                            point: None,
+                            total,
                             sums,
                         }
                     }),
                     SummaryKind::Point => rep_point(geom).map(|(x, y)| SummaryFeat {
                         poly: None,
+                        lines: None,
                         point: Some(Point::new(x, y)),
-                        area: 0.0,
+                        total: 0.0,
                         sums,
                     }),
                 }
@@ -199,6 +213,7 @@ impl Tool for SummarizeNearbyTool {
         out_layer.add_field(FieldDef::new("distance", FieldType::Float));
         out_layer.add_field(FieldDef::new("count", FieldType::Integer));
         out_layer.add_field(FieldDef::new("area_within", FieldType::Float));
+        out_layer.add_field(FieldDef::new("length_within", FieldType::Float));
         for f in &sum_fields {
             out_layer.add_field(FieldDef::new(format!("sum_{f}"), FieldType::Float));
             out_layer.add_field(FieldDef::new(format!("mean_{f}"), FieldType::Float));
@@ -229,6 +244,7 @@ impl Tool for SummarizeNearbyTool {
                     ("distance", FieldValue::Float(d)),
                     ("count", FieldValue::Integer(stats.count as i64)),
                     ("area_within", FieldValue::Float(stats.area_within)),
+                    ("length_within", FieldValue::Float(stats.length_within)),
                 ];
                 let labels: Vec<(String, String)> = sum_fields
                     .iter()
@@ -272,14 +288,18 @@ impl Tool for SummarizeNearbyTool {
 
 struct SummaryFeat {
     poly: Option<MultiPolygon>,
+    lines: Option<MultiLineString>,
     point: Option<Point>,
-    area: f64,
+    /// Total measure of the whole feature (area for polygons, length for
+    /// lines), cached so apportionment is one division.
+    total: f64,
     sums: Vec<f64>,
 }
 
 struct Stats {
     count: usize,
     area_within: f64,
+    length_within: f64,
     sums: Vec<f64>,
 }
 
@@ -293,6 +313,7 @@ fn summarize(
     let mut stats = Stats {
         count: 0,
         area_within: 0.0,
+        length_within: 0.0,
         sums: vec![0.0; n_sum],
     };
     for f in feats {
@@ -316,7 +337,23 @@ fn summarize(
                 }
                 stats.count += 1;
                 stats.area_within += area;
-                let frac = if f.area > 0.0 { area / f.area } else { 0.0 };
+                let frac = if f.total > 0.0 { area / f.total } else { 0.0 };
+                for (s, v) in stats.sums.iter_mut().zip(&f.sums) {
+                    *s += v * frac;
+                }
+            }
+            SummaryKind::Line => {
+                // `clip` keeps only the portions inside the buffer; a line
+                // entering it twice comes back as two parts and `length` sums
+                // them, which is the measure we want.
+                let clipped = buffer.clip(f.lines.as_ref().unwrap(), false);
+                let len = Euclidean.length(&clipped);
+                if len <= 0.0 {
+                    continue;
+                }
+                stats.count += 1;
+                stats.length_within += len;
+                let frac = if f.total > 0.0 { len / f.total } else { 0.0 };
                 for (s, v) in stats.sums.iter_mut().zip(&f.sums) {
                     *s += v * frac;
                 }
@@ -329,6 +366,7 @@ fn summarize(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SummaryKind {
     Polygon,
+    Line,
     Point,
 }
 
@@ -339,6 +377,7 @@ impl SummaryKind {
             .iter()
             .find_map(|f| match f.geometry.as_ref()? {
                 Geometry::Polygon { .. } | Geometry::MultiPolygon(_) => Some(SummaryKind::Polygon),
+                Geometry::LineString(_) | Geometry::MultiLineString(_) => Some(SummaryKind::Line),
                 Geometry::Point(_) | Geometry::MultiPoint(_) => Some(SummaryKind::Point),
                 _ => None,
             })
@@ -346,6 +385,7 @@ impl SummaryKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::Polygon => "polygon",
+            Self::Line => "line",
             Self::Point => "point",
         }
     }
@@ -442,10 +482,6 @@ fn to_multipolygon(geom: &Geometry) -> Option<MultiPolygon> {
         )),
         _ => None,
     }
-}
-
-fn coords_to_linestring(coords: &[Coord]) -> LineString {
-    LineString::new(coords.iter().map(|c| GeoCoord { x: c.x, y: c.y }).collect())
 }
 
 fn rings_to_polygon(exterior: &Ring, interiors: &[Ring]) -> Polygon {
@@ -546,6 +582,70 @@ mod tests {
             FieldValue::Integer(i) => i,
             other => panic!("expected integer, got {other:?}"),
         }
+    }
+
+    fn line(pts: &[(f64, f64)]) -> Geometry {
+        Geometry::LineString(pts.iter().map(|&(x, y)| Coord::xy(x, y)).collect())
+    }
+
+    /// A buffer of radius 10 around the origin over a long horizontal line
+    /// through it: the clipped run is the buffer's diameter, and the line's
+    /// attribute apportions by that length fraction.
+    #[test]
+    fn line_length_within_buffer_and_apportioned_sum() {
+        let mut inp = Layer::new("origin");
+        inp.add_feature(Some(Geometry::point(0.0, 0.0)), &[])
+            .unwrap();
+        let iin = store(inp);
+
+        let mut roads = Layer::new("roads");
+        roads.add_field(FieldDef::new("aadt", FieldType::Float));
+        // Length 100, centred on the origin; 20 of it lies inside r=10.
+        roads
+            .add_feature(
+                Some(line(&[(-50.0, 0.0), (50.0, 0.0)])),
+                &[("aadt", FieldValue::Float(1000.0))],
+            )
+            .unwrap();
+        let sin = store(roads);
+
+        let (out, layer) = run_tool(json!({
+            "input": iin, "summary_features": sin, "distances": "10", "sum_fields": "aadt"
+        }));
+        assert_eq!(out.outputs["summary_kind"], json!("line"));
+        assert_eq!(fint(&layer, 0, "count"), 1);
+        // The buffer is a polygonal approximation of the circle, so the clipped
+        // run is slightly under the true diameter of 20.
+        let len = ffloat(&layer, 0, "length_within");
+        assert!(
+            (len - 20.0).abs() < 0.1,
+            "expected ~20 (buffer diameter), got {len}"
+        );
+        assert!(
+            (ffloat(&layer, 0, "area_within") - 0.0).abs() < 1e-12,
+            "area_within stays 0 for line summaries"
+        );
+        // 1000 * (len / 100) tracks the clipped fraction.
+        let expected = 1000.0 * len / 100.0;
+        assert!((ffloat(&layer, 0, "sum_aadt") - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn line_outside_every_buffer_summarizes_to_zero() {
+        let mut inp = Layer::new("origin");
+        inp.add_feature(Some(Geometry::point(0.0, 0.0)), &[])
+            .unwrap();
+        let iin = store(inp);
+        let mut roads = Layer::new("roads");
+        roads
+            .add_feature(Some(line(&[(500.0, 500.0), (600.0, 500.0)])), &[])
+            .unwrap();
+        let sin = store(roads);
+        let (_, layer) = run_tool(json!({
+            "input": iin, "summary_features": sin, "distances": "10"
+        }));
+        assert_eq!(fint(&layer, 0, "count"), 0);
+        assert_eq!(ffloat(&layer, 0, "length_within"), 0.0);
     }
 
     /// One input point buffered at three distances over a field of summary

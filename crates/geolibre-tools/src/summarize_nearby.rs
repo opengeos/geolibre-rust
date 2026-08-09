@@ -30,19 +30,22 @@
 //!   the field value apportioned by the intersected fraction
 //!   (`value × intersected_area / feature_area`), exactly as Summarize Within
 //!   apportions.
+//! - **line** summary features — a feature contributes the length of itself
+//!   clipped to the buffer (`geo`'s `BooleanOps::clip`); `count` is the number
+//!   of lines that touch the buffer, `length_within` is the total clipped
+//!   length, and each `sum_fields` entry is apportioned by the length fraction
+//!   (`value × clipped_length / feature_length`).
 //!
 //! Every output feature carries `input_id` (the value of `id_field`, or the
-//! input feature index), the buffer `distance`, `count`, `area_within` (0 for
-//! point summaries), and for each summarized field a `sum_<field>` and
-//! `mean_<field>` (mean = sum / count, 0 when nothing is nearby). The geometry
-//! is the buffer polygon, so the enriched result is directly mappable.
+//! input feature index), the buffer `distance`, `count`, `area_within` (0 unless
+//! the summary layer is polygons), `length_within` (0 unless it is lines), and
+//! for each summarized field a `sum_<field>` and `mean_<field>` (mean = sum /
+//! count, 0 when nothing is nearby). The geometry is the buffer polygon, so the
+//! enriched result is directly mappable.
 //!
-//! Line summary features are measured by their intersected **length** inside the
-//! buffer (via `geo`'s `BooleanOps::clip`), reported as `length_within`.
-//!
-//! Scope for v1: distances are in the layer's CRS units (no on-the-fly unit conversion), input
-//! attributes beyond `id_field` are not copied onto the buffers, and the summary
-//! statistics are fixed to count/sum/mean.
+//! Scope for v1: distances are in the layer's CRS units (no on-the-fly unit
+//! conversion), input attributes beyond `id_field` are not copied onto the
+//! buffers, and the summary statistics are fixed to count/sum/mean.
 
 use std::collections::BTreeMap;
 
@@ -69,7 +72,7 @@ impl Tool for SummarizeNearbyTool {
         ToolMetadata {
             id: "summarize_nearby",
             display_name: "Summarize Nearby",
-            summary: "Buffer input features at one or more straight-line distances and summarize a second layer within each buffer: count of features, intersected area (polygons), and area-weighted sum/mean of numeric fields.",
+            summary: "Buffer input features at one or more straight-line distances and summarize a second layer within each buffer: count of features, intersected area (polygons), clipped length (lines), and measure-weighted sum/mean of numeric fields.",
             category: ToolCategory::Vector,
             license_tier: LicenseTier::Open,
             params: vec![
@@ -80,7 +83,7 @@ impl Tool for SummarizeNearbyTool {
                 },
                 ToolParamSpec {
                     name: "summary_features",
-                    description: "Vector layer to summarize within each buffer (polygons summarized by intersected area, or points by count).",
+                    description: "Vector layer to summarize within each buffer (polygons summarized by intersected area, lines by clipped length, or points by count).",
                     required: true,
                 },
                 ToolParamSpec {
@@ -95,7 +98,7 @@ impl Tool for SummarizeNearbyTool {
                 },
                 ToolParamSpec {
                     name: "sum_fields",
-                    description: "Optional comma-separated numeric fields in the summary layer to aggregate. Each yields a sum_<field> and mean_<field> column (area-weighted for polygons, plain for points).",
+                    description: "Optional comma-separated numeric fields in the summary layer to aggregate. Each yields a sum_<field> and mean_<field> column (area-weighted for polygons, length-weighted for lines, plain for points).",
                     required: false,
                 },
                 ToolParamSpec {

@@ -207,6 +207,7 @@ mod is_closed_3d;
 mod mesh3d;
 mod multipatch_footprint;
 mod raster_stack;
+mod simplify_by_tangent_segments;
 mod union_3d;
 mod vector_common;
 mod vector_convert;
@@ -354,6 +355,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(voxel_isosurface::VoxelIsosurfaceTool),
         Box::new(inside_3d::Inside3dTool),
         Box::new(cost_back_link::CostBackLinkTool),
+        Box::new(simplify_by_tangent_segments::SimplifyByTangentSegmentsTool),
         Box::new(difference_3d::Difference3dTool),
         Box::new(add_z_information::AddZInformationTool),
         Box::new(enclose_multipatch::EncloseMultipatchTool),
@@ -805,6 +807,15 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("observer_offset", float()),
             ("target_offset", float()),
             ("visible_only", ToolParamSchema::bool()),
+        ]),
+        "simplify_by_tangent_segments" => schemas(&[
+            ("input", vector_in()),
+            ("output", vector_out()),
+            ("max_offset", float()),
+            ("anchor_points", vector_in()),
+            ("anchor_tolerance", float()),
+            ("min_run", int()),
+            ("preserve_endpoints", ToolParamSchema::bool()),
         ]),
         "cost_back_link" => schemas(&[
             // Dual-typed: a source raster or a point vector layer.

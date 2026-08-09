@@ -120,7 +120,7 @@ impl Tool for UnwrapPhaseTool {
                 },
                 ToolParamSpec {
                     name: "band",
-                    description: "1-based band holding the phase for single-band input (default 1).",
+                    description: "1-based band holding the phase. Omit it for a single-band phase raster or a two-band I/Q interferogram (which is then auto-detected); supply it to read real phase from a specific band of a multiband stack. A raster with more than two bands REQUIRES this parameter, because three or more bands are not an I/Q pair and guessing would return plausible but wrong phase.",
                     required: false,
                 },
             ],

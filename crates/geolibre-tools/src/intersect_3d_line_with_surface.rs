@@ -229,6 +229,17 @@ impl Tool for Intersect3dLineWithSurfaceTool {
             if coords.len() < 2 {
                 continue;
             }
+            // The whole tool is the comparison of the line's own z against the
+            // surface. A 2D vertex has no z to compare, and silently reading it
+            // as 0 would report confident crossings, positions and clearances
+            // that describe nothing.
+            if coords.iter().any(|c| c.z.is_none()) {
+                return Err(ToolError::Execution(format!(
+                    "input feature {} has a vertex with no z value; this tool needs 3D lines \
+                     (use interpolate_shape to drape a 2D line onto a surface first)",
+                    feat.fid
+                )));
+            }
 
             // Densify in plan view and evaluate the line-minus-surface
             // clearance at each sample.
@@ -667,6 +678,33 @@ mod tests {
         seen.sort_unstable();
         seen.dedup();
         assert_eq!(before, seen.len(), "duplicate (source_fid, part) pairs");
+    }
+
+    /// A 2D line has no z to compare against the surface. Treating a missing z
+    /// as 0 would produce confident nonsense, so it is an error.
+    #[test]
+    fn two_dimensional_lines_are_rejected() {
+        let mut layer = Layer::new("lines");
+        layer.geom_type = Some(GeometryType::LineString);
+        layer = layer.with_crs_epsg(32610);
+        layer.add_field(FieldDef::new("id", FieldType::Integer));
+        let coords = vec![Coord::xy(5.0, 50.0), Coord::xy(95.0, 50.0)];
+        let mut f = Feature::with_geometry(0, Geometry::LineString(coords), layer.schema.len());
+        f.set_by_index(0, FieldValue::Integer(0));
+        layer.push(f);
+        let input = write_or_store_layer(layer, None).unwrap();
+
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": input, "surface": flat_surface(50.0), "spacing": 1.0
+        }))
+        .unwrap();
+        let err = Intersect3dLineWithSurfaceTool
+            .run(&args, &ctx())
+            .expect_err("a 2D line must be rejected");
+        assert!(
+            format!("{err:?}").contains("no z value"),
+            "unexpected error: {err:?}"
+        );
     }
 
     /// A line rising through a flat surface splits into exactly two parts at the

@@ -178,6 +178,32 @@ impl Tool for CoregisterRastersTool {
         // on top of this, so rasters with different origins still work.
         let nominal = NominalMap::new(&reference, &secondary);
 
+        // A tile larger than either raster means every tile is skipped, after
+        // which the tie-point message would advise "try a larger tile_size" —
+        // the opposite of what would help. The secondary counts too: the
+        // matcher reads a tile_size window out of both.
+        let max_tile_size = rows.min(cols).min(secondary.rows).min(secondary.cols);
+        if prm.tile_size > max_tile_size {
+            return Err(ToolError::Validation(format!(
+                "'tile_size' {} does not fit in the {rows}x{cols} reference and {}x{} \
+                 secondary rasters; use at most {max_tile_size}",
+                prm.tile_size, secondary.rows, secondary.cols
+            )));
+        }
+
+        // The grid is laid out over the tile origins that actually exist, so
+        // asking for more columns of tiles than there are origins only repeats
+        // work — and `grid_size * grid_size` overflows outright once the value
+        // is large enough.
+        let max_grid_size = (rows - prm.tile_size + 1).min(cols - prm.tile_size + 1);
+        if prm.grid_size > max_grid_size {
+            return Err(ToolError::Validation(format!(
+                "'grid_size' {} exceeds the {max_grid_size} tile origin(s) a {} px tile leaves \
+                 in a {rows}x{cols} raster; use at most {max_grid_size}",
+                prm.grid_size, prm.tile_size
+            )));
+        }
+
         ctx.progress.info(&format!(
             "reference {rows}x{cols}, secondary {}x{}, {} tiles of {}, search +/-{}",
             secondary.rows,
@@ -186,18 +212,6 @@ impl Tool for CoregisterRastersTool {
             prm.tile_size,
             prm.max_shift
         ));
-
-        // A tile larger than the reference means every tile is skipped, after
-        // which the tie-point message would advise "try a larger tile_size" —
-        // the opposite of what would help.
-        if prm.tile_size > rows || prm.tile_size > cols {
-            return Err(ToolError::Validation(format!(
-                "'tile_size' {} does not fit in the {rows}x{cols} reference raster; \
-                 use at most {}",
-                prm.tile_size,
-                rows.min(cols)
-            )));
-        }
 
         let ties = measure_tie_points(
             &ref_grey,
@@ -1259,6 +1273,38 @@ mod tests {
         assert!(bad(base(json!({"band": 0}))).is_err());
         assert!(bad(base(json!({"band": 1}))).is_ok());
         assert!(bad(base(json!({"transform": "polynomial2"}))).is_ok());
+    }
+
+    /// Both rasters have to hold a tile, and the tile grid has to fit in the
+    /// origins that exist — `grid_size * grid_size` overflows without a bound.
+    #[test]
+    fn tile_and_grid_sizes_are_bounded_by_the_inputs() {
+        let big = raster_from(64, 64, 1, |_, r, c| scene(c as f64, r as f64));
+        let small = raster_from(16, 16, 1, |_, r, c| scene(c as f64, r as f64));
+
+        let err = |v: Value| {
+            let args: ToolArgs = serde_json::from_value(v).unwrap();
+            format!("{:?}", CoregisterRastersTool.run(&args, &ctx()).unwrap_err())
+        };
+
+        // A tile that fits the reference but not the secondary.
+        let e = err(json!({
+            "reference": big.clone(), "secondary": small.clone(), "tile_size": 32
+        }));
+        assert!(e.contains("tile_size"), "unexpected error: {e}");
+
+        // `grid_size` past the number of tile origins, and one large enough
+        // that squaring it would overflow.
+        let e = err(json!({
+            "reference": big.clone(), "secondary": big.clone(),
+            "tile_size": 32, "grid_size": 100
+        }));
+        assert!(e.contains("grid_size"), "unexpected error: {e}");
+        let e = err(json!({
+            "reference": big.clone(), "secondary": big.clone(),
+            "tile_size": 32, "grid_size": 9_223_372_036_854_775_808u64
+        }));
+        assert!(e.contains("grid_size"), "unexpected error: {e}");
     }
 
     /// A band index past `isize::MAX` used to wrap negative on its way to the

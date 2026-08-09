@@ -312,7 +312,11 @@ pub(crate) fn sun_position(lat: f64, decl: f64, hour: f64) -> (f64, f64) {
 
 /// Slope and aspect (radians; aspect from north, clockwise) per cell via Horn's
 /// 3×3 gradient. Flat cells get aspect 0.
-fn slope_aspect(z: &[f64], rows: usize, cols: usize, cell: f64) -> (Vec<f64>, Vec<f64>) {
+///
+/// Aspect is the **downhill** direction. `pub(crate)` because
+/// `radiometric_terrain_flattening` needs the same terrain derivatives to build
+/// the local incidence angle.
+pub(crate) fn slope_aspect(z: &[f64], rows: usize, cols: usize, cell: f64) -> (Vec<f64>, Vec<f64>) {
     let mut slope = vec![0.0; rows * cols];
     let mut aspect = vec![0.0; rows * cols];
     let at = |r: isize, c: isize| -> Option<f64> {

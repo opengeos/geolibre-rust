@@ -40,6 +40,7 @@ mod combine;
 mod common;
 mod compare_spatial_weights;
 mod construct_sight_lines;
+mod coregister_rasters;
 mod corridor;
 mod count_overlapping_features;
 mod create_cartographic_partitions;
@@ -106,9 +107,11 @@ mod generate_points_along_3d_lines;
 mod generate_spatial_weights_matrix;
 mod generate_subset_polygons;
 mod generate_transects_along_lines;
+mod geojson_geom;
 mod geographically_weighted_regression;
 mod geoparquet_io;
 mod getis_ord_general_g;
+mod goldstein_phase_filter;
 mod gpx_to_features;
 mod graphic_buffer;
 mod h3_polyfill;
@@ -168,6 +171,7 @@ mod resolve_building_conflicts;
 mod ripleys_k;
 mod rubbersheet_features;
 mod sar_coherence;
+mod sar_common;
 mod semivariogram_sensitivity;
 mod similarity_search;
 mod simplify_3d_line;
@@ -213,6 +217,7 @@ mod intervisibility;
 mod is_closed_3d;
 mod mesh3d;
 mod multipatch_footprint;
+mod radiometric_terrain_flattening;
 mod raster_stack;
 mod simplify_by_tangent_segments;
 mod sun_shadow_volume;
@@ -284,6 +289,7 @@ mod dimension_reduction;
 mod disperse_markers;
 mod extract_scanned_features;
 mod feature_outline_masks;
+mod fft2;
 mod find_argument_statistics;
 mod generalized_linear_regression;
 mod geodetic_densify;
@@ -358,6 +364,9 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(semivariogram_sensitivity::SemivariogramSensitivityTool),
         Box::new(spatially_constrained_multivariate_clustering::SpatiallyConstrainedMultivariateClusteringTool),
         Box::new(optimal_corridor_connections::OptimalCorridorConnectionsTool),
+        Box::new(goldstein_phase_filter::GoldsteinPhaseFilterTool),
+        Box::new(coregister_rasters::CoregisterRastersTool),
+        Box::new(radiometric_terrain_flattening::RadiometricTerrainFlatteningTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
         Box::new(generate_breach_lines::GenerateBreachLinesTool),
         Box::new(idw_3d::Idw3dTool),
@@ -907,6 +916,55 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "radiometric_terrain_flattening" => schemas(&[
+            ("input", raster_in()),
+            ("dem", raster_in()),
+            ("output", raster_out()),
+            ("output_scattering_area", raster_out()),
+            ("output_geometry_mask", raster_out()),
+            // Dual-typed: a constant in degrees or a raster path, so it stays
+            // a string rather than claiming to be a raster input.
+            ("incidence_angle", ToolParamSchema::string()),
+            ("look_azimuth", float()),
+            (
+                "input_calibration",
+                ToolParamSchema::enum_values(&["beta0", "sigma0_ellipsoid", "gamma0_ellipsoid"]),
+            ),
+            ("calibration_type", ToolParamSchema::enum_values(&["gamma0", "sigma0"])),
+            (
+                "input_units",
+                ToolParamSchema::enum_values(&["intensity", "dn", "amplitude", "db"]),
+            ),
+            ("output_units", ToolParamSchema::enum_values(&["linear", "db"])),
+            ("z_factor", float()),
+            ("band", int()),
+        ]),
+        "coregister_rasters" => schemas(&[
+            ("reference", raster_in()),
+            ("secondary", raster_in()),
+            ("output", raster_out()),
+            ("tie_points", vector_out()),
+            ("band", int()),
+            (
+                "transform",
+                ToolParamSchema::enum_values(&["translation", "affine", "polynomial2"]),
+            ),
+            ("tile_size", int()),
+            ("grid_size", int()),
+            ("max_shift", int()),
+            ("min_correlation", float()),
+            ("outlier_sigma", float()),
+            ("resample", ToolParamSchema::enum_values(&["bilinear", "nearest"])),
+        ]),
+        "goldstein_phase_filter" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            ("output_phase", raster_out()),
+            ("alpha", float()),
+            ("outer_window_size", int()),
+            ("inner_window_size", int()),
+            ("spectrum_smoothing", int()),
         ]),
         "cell_position_statistics" => schemas(&[
             (

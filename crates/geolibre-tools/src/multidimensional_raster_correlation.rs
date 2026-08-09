@@ -145,7 +145,12 @@ impl Tool for MultidimensionalRasterCorrelationTool {
 
         let (rows, cols, n) = (a.rows, a.cols, a.len());
         let lags: Vec<isize> = if prm.cross {
-            let m = prm.max_lag as isize;
+            // Cap at `n - 1` before materialising the vector. A lag at or past
+            // the slice count leaves no overlapping pairs, so a larger
+            // `max_lag` buys nothing — and unbounded it would both allocate
+            // billions of entries and, on wasm32's 32-bit `isize`, wrap the
+            // cast to a wrong (possibly negative) bound.
+            let m = prm.max_lag.min(n - 1) as isize;
             (-m..=m).collect()
         } else {
             vec![prm.lag]
@@ -528,6 +533,23 @@ mod tests {
             "at the right lag the series match exactly, got {}",
             corr.get(0, 0, 0)
         );
+    }
+
+    /// An enormous `max_lag` is capped at the slice count instead of
+    /// materialising billions of lags. The answer is unchanged: every lag past
+    /// `n - 1` leaves no overlapping pairs anyway.
+    #[test]
+    fn huge_max_lag_is_capped_to_the_slice_count() {
+        let x = series_cube(&[1.0, 5.0, 2.0, 8.0, 3.0, 9.0, 4.0, 7.0]);
+        let y = series_cube(&[0.0, 0.0, 1.0, 5.0, 2.0, 8.0, 3.0, 9.0]);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input1": x, "input2": y, "cross_correlation": true,
+            "max_lag": 9_007_199_254_740_991u64, "min_valid": 4
+        }))
+        .unwrap();
+        let out = MultidimensionalRasterCorrelationTool.run(&args, &ctx()).unwrap();
+        let lag = load_input_raster(out.outputs["output_lag"].as_str().unwrap()).unwrap();
+        assert_eq!(lag.get(0, 0, 0), 2.0, "the two-slice delay is still found");
     }
 
     /// A fixed lag is applied verbatim rather than searched.

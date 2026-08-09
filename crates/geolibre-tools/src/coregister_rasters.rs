@@ -159,7 +159,7 @@ impl Tool for CoregisterRastersTool {
 
         if let Some(b) = prm.band {
             for (name, r) in [("reference", &reference), ("secondary", &secondary)] {
-                if b as usize >= r.bands {
+                if b >= r.bands {
                     return Err(ToolError::Validation(format!(
                         "'band' {} is out of range for the {name} raster, which has {} band(s)",
                         b + 1,
@@ -328,12 +328,14 @@ struct TiePoint {
 /// A two-band raster with no explicit band request is treated as complex I/Q
 /// and matched on its magnitude — matching on I alone would correlate the
 /// carrier rather than the scene.
-fn match_band(r: &Raster, band: Option<isize>) -> Vec<f64> {
+fn match_band(r: &Raster, band: Option<usize>) -> Vec<f64> {
     let (rows, cols) = (r.rows, r.cols);
     let nd = r.nodata;
     let mut out = vec![f64::NAN; rows * cols];
     let complex = r.bands == 2 && band.is_none();
-    let b = band.unwrap_or(0);
+    // The caller has already bounded `band` against `r.bands`, so the cast to
+    // the raster API's signed band index cannot go negative here.
+    let b = band.unwrap_or(0) as isize;
     for row in 0..rows {
         for col in 0..cols {
             let i = row * cols + col;
@@ -930,7 +932,8 @@ fn tie_point_layer(reference: &Raster, ties: &[TiePoint], fit: &Fit) -> Layer {
 // ── Parameters ──────────────────────────────────────────────────────────────
 
 struct Params {
-    band: Option<isize>,
+    /// 0-based band index, already decremented from the 1-based parameter.
+    band: Option<usize>,
     transform: TransformKind,
     tile_size: usize,
     grid_size: usize,
@@ -952,7 +955,10 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
                 "'band' is 1-based; use 1 for the first band".to_string(),
             ))
         }
-        Some(b) => Some(b as isize - 1),
+        // Subtract in `usize`. Going through `isize` first wrapped any value
+        // above `isize::MAX` to a negative index, which then passed the
+        // `>= r.bands` range check as a huge `usize` only by accident.
+        Some(b) => Some(b - 1),
     };
     let transform = match choice_or(
         args,
@@ -1253,5 +1259,25 @@ mod tests {
         assert!(bad(base(json!({"band": 0}))).is_err());
         assert!(bad(base(json!({"band": 1}))).is_ok());
         assert!(bad(base(json!({"transform": "polynomial2"}))).is_ok());
+    }
+
+    /// A band index past `isize::MAX` used to wrap negative on its way to the
+    /// range check. It must be reported as out of range like any other.
+    #[test]
+    fn oversized_band_is_out_of_range() {
+        let reference = raster_from(8, 8, 1, |_, r, c| (r + c) as f64);
+        let secondary = raster_from(8, 8, 1, |_, r, c| (r + c) as f64);
+        let args: ToolArgs = serde_json::from_value(json!({
+            "reference": reference, "secondary": secondary,
+            "band": 9_223_372_036_854_775_808u64
+        }))
+        .unwrap();
+        let err = CoregisterRastersTool
+            .run(&args, &ctx())
+            .expect_err("an out-of-range band must be rejected");
+        assert!(
+            format!("{err:?}").contains("out of range"),
+            "unexpected error: {err:?}"
+        );
     }
 }

@@ -202,8 +202,16 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
 ///
 /// An empty geometry gets an inverted box, which the prefilter then rejects for
 /// every cell — the containment test would say the same, only far more slowly.
+/// The variants covered here must therefore track `geometry_contains_point`
+/// exactly: a geometry the containment test *can* accept but the envelope skips
+/// would be prefiltered away everywhere, masking the whole raster out.
 fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
     let mut bb = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    accumulate_envelope(geom, &mut bb);
+    bb
+}
+
+fn accumulate_envelope(geom: &Geometry, bb: &mut (f64, f64, f64, f64)) {
     let mut visit = |c: &Coord| {
         bb.0 = bb.0.min(c.x);
         bb.1 = bb.1.min(c.y);
@@ -217,9 +225,13 @@ fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
                 ext.coords().iter().for_each(&mut visit);
             }
         }
+        Geometry::GeometryCollection(members) => {
+            for member in members {
+                accumulate_envelope(member, bb);
+            }
+        }
         _ => {}
     }
-    bb
 }
 
 /// One 4-connected run of flagged cells.
@@ -361,6 +373,8 @@ fn parse_labelled_polygons(geojson: &str) -> Result<Vec<(usize, Geometry)>, Tool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wbraster::{CrsInfo, DataType, RasterConfig};
+    use wbvector::{GeometryType, Ring};
 
     #[test]
     fn unit_conversions_agree_on_one_power() {
@@ -430,5 +444,58 @@ mod tests {
     #[test]
     fn empty_flag_gives_no_regions() {
         assert!(connected_regions(&[false; 9], &[0.0; 9], 3, 3, 1).is_empty());
+    }
+
+    /// A polygon wrapped in a `GeometryCollection` must still mask. The
+    /// envelope prefilter used to return an inverted box for a collection, so
+    /// every cell was rejected before `geometry_contains_point` — which does
+    /// recurse — ever ran.
+    #[test]
+    fn geometry_collection_mask_is_not_prefiltered_away() {
+        // A 4x4 raster over [0,4]x[0,4]; the mask covers the lower-left 2x2.
+        let raster = Raster::new(RasterConfig {
+            cols: 4,
+            rows: 4,
+            bands: 1,
+            x_min: 0.0,
+            y_min: 0.0,
+            cell_size: 1.0,
+            cell_size_y: Some(1.0),
+            nodata: -9999.0,
+            data_type: DataType::F32,
+            crs: CrsInfo {
+                epsg: Some(32610),
+                wkt: None,
+                proj4: None,
+            },
+            metadata: Vec::new(),
+        });
+        let square = Geometry::Polygon {
+            exterior: Ring(vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(2.0, 0.0),
+                Coord::xy(2.0, 2.0),
+                Coord::xy(0.0, 2.0),
+                Coord::xy(0.0, 0.0),
+            ]),
+            interiors: vec![],
+        };
+        let collected = Geometry::GeometryCollection(vec![square.clone()]);
+
+        let mask_of = |g: Geometry| {
+            let mut layer = Layer::new("mask").with_geom_type(GeometryType::Polygon);
+            layer
+                .add_feature(Some(g), &[])
+                .expect("adding the mask feature must succeed");
+            rasterize_mask(&raster, &layer, MaskSide::WaterPolygon)
+        };
+
+        let bare = mask_of(square);
+        let wrapped = mask_of(collected);
+        assert!(bare.iter().any(|&k| k), "the bare polygon must mask cells");
+        assert_eq!(
+            bare, wrapped,
+            "wrapping the polygon in a collection must not change the mask"
+        );
     }
 }

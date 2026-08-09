@@ -258,6 +258,13 @@ impl Tool for Intersect3dLineWithSurfaceTool {
             if runs.is_empty() {
                 continue;
             }
+            // One counter per source line, not per run: a line that crosses a
+            // gap in the surface yields several runs, and restarting the count
+            // in each of them would repeat `part` values under one `source_fid`.
+            // One counter per source line, not per run: a line that crosses a
+            // gap in the surface yields several runs, and restarting the count
+            // in each of them would repeat `part` values under one `source_fid`.
+            let mut part_index = 0i64;
             for evaluated in runs {
                 // Cut at every sign change. Each part records the inclusive range
                 // of *real* samples it covers, because `coords` also carries the
@@ -312,7 +319,6 @@ impl Tool for Intersect3dLineWithSurfaceTool {
                 }
 
                 // Clearance statistics per part, from the real samples it spans.
-                let mut part_index = 0i64;
                 for (coords, is_above, lo, hi) in parts {
                     let stats: Vec<f64> =
                         evaluated[lo..=hi.max(lo)].iter().map(|(_, d)| *d).collect();
@@ -577,6 +583,37 @@ mod tests {
         wbraster::memory_store::make_raster_memory_path(&id)
     }
 
+    /// A flat surface with a nodata band down the middle, so a line crossing it
+    /// left to right is evaluated as two separate runs.
+    fn gapped_surface(height: f64) -> String {
+        let (rows, cols) = (10usize, 10usize);
+        let mut r = Raster::new(RasterConfig {
+            cols,
+            rows,
+            bands: 1,
+            x_min: 0.0,
+            y_min: 0.0,
+            cell_size: 10.0,
+            cell_size_y: Some(10.0),
+            nodata: -9999.0,
+            data_type: DataType::F32,
+            crs: CrsInfo {
+                epsg: Some(32610),
+                wkt: None,
+                proj4: None,
+            },
+            metadata: Vec::new(),
+        });
+        for row in 0..rows {
+            for col in 0..cols {
+                let v = if (4..=6).contains(&col) { -9999.0 } else { height };
+                r.set(0, row as isize, col as isize, v).unwrap();
+            }
+        }
+        let id = wbraster::memory_store::put_raster(r);
+        wbraster::memory_store::make_raster_memory_path(&id)
+    }
+
     fn line_layer(pts: &[(f64, f64, f64)]) -> String {
         let mut layer = Layer::new("lines");
         layer.geom_type = Some(GeometryType::LineString);
@@ -601,6 +638,35 @@ mod tests {
             FieldValue::Text(t) => t.clone(),
             other => panic!("{name} should be text, got {other:?}"),
         }
+    }
+
+    /// `(source_fid, part)` must identify one piece. When a surface gap splits
+    /// the line into several runs, the part counter has to keep counting across
+    /// them rather than restart inside each run.
+    #[test]
+    fn part_numbers_are_unique_across_surface_gaps() {
+        let (layer, _) = run(json!({
+            "input": line_layer(&[(5.0, 50.0, 0.0), (95.0, 50.0, 100.0)]),
+            "surface": gapped_surface(50.0), "spacing": 1.0
+        }));
+        assert!(layer.len() >= 2, "the gap must produce at least two pieces");
+
+        let idx_src = layer.schema.field_index("source_fid").unwrap();
+        let idx_part = layer.schema.field_index("part").unwrap();
+        let mut seen: Vec<(i64, i64)> = layer
+            .iter()
+            .map(|f| {
+                let g = |i: usize| match &f.attributes[i] {
+                    FieldValue::Integer(v) => *v,
+                    other => panic!("expected an integer, got {other:?}"),
+                };
+                (g(idx_src), g(idx_part))
+            })
+            .collect();
+        let before = seen.len();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(before, seen.len(), "duplicate (source_fid, part) pairs");
     }
 
     /// A line rising through a flat surface splits into exactly two parts at the

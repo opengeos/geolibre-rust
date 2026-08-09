@@ -198,13 +198,16 @@ impl Tool for DetectBrightOceanObjectsTool {
         // unbounded `background_size` blocks the call: 500 is a million samples
         // for every cell. A window wider than the raster also cannot describe
         // local clutter, which is the whole premise of a CFAR detector.
+        // Compare the half-widths: `background * 2 + 1` overflows for a
+        // `background` above `usize::MAX / 2`, and the wrapped window width
+        // then slips past this guard.
         let span = rows.min(cols);
-        if prm.background * 2 + 1 > span.max(1) {
+        let max_background = span.max(1).saturating_sub(1) / 2;
+        if prm.background > max_background {
             return Err(ToolError::Validation(format!(
                 "'background_size' {} is too large for a {rows}x{cols} raster; the background \
-                 window must fit inside it, so use at most {}",
+                 window must fit inside it, so use at most {max_background}",
                 prm.background,
-                span.saturating_sub(1) / 2
             )));
         }
 
@@ -844,6 +847,19 @@ mod tests {
         let v: Vec<f64> = (0..rows * cols).map(|i| 0.05 + 0.02 * clutter(i)).collect();
         let args: ToolArgs = serde_json::from_value(json!({
             "input": raster_of(cols, rows, &v), "guard_size": 3, "background_size": 500
+        }))
+        .unwrap();
+        let err = DetectBrightOceanObjectsTool.run(&args, &ctx()).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("background_size"),
+            "expected a background_size error, got {err:?}"
+        );
+
+        // Past `usize::MAX / 2` the window width `2b + 1` overflows. Comparing
+        // widths let the wrapped value through; comparing half-widths does not.
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster_of(cols, rows, &v),
+            "guard_size": 3, "background_size": usize::MAX
         }))
         .unwrap();
         let err = DetectBrightOceanObjectsTool.run(&args, &ctx()).unwrap_err();

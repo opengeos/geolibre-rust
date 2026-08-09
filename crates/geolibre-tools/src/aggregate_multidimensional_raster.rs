@@ -219,8 +219,18 @@ fn build_bins(cube: &Cube, prm: &Params) -> Result<Vec<Bin>, ToolError> {
             // `<=` rather than `<` so the final partial bin is still emitted
             // when the span is not a whole multiple of the width.
             while start <= hi {
-                edges.push((start, start + w));
-                start += w;
+                let next = start + w;
+                // A width smaller than one ulp of `start` — coordinates near
+                // 1e308 with a modest interval — rounds `start + w` back to
+                // `start`, and the loop then never advances past `hi`.
+                if next <= start {
+                    return Err(ToolError::Validation(format!(
+                        "'interval_value' {w} is too small to advance past the coordinate \
+                         {start}; the bin edges would not progress"
+                    )));
+                }
+                edges.push((start, next));
+                start = next;
             }
         }
         Definition::IntervalCount => {
@@ -591,6 +601,26 @@ mod tests {
         assert!((out.get(0, 0, 0) - 1.5).abs() < 1e-6, "bin 1: mean(1,2)");
         assert!((out.get(1, 0, 0) - 3.5).abs() < 1e-6, "bin 2: mean(3,4)");
         assert!((out.get(2, 0, 0) - 5.5).abs() < 1e-6, "bin 3: mean(5,6)");
+    }
+
+    /// A width below one ulp of the coordinates cannot advance the bin edges.
+    /// The loop used to spin forever on `start += w`; it now reports instead.
+    #[test]
+    fn interval_narrower_than_an_ulp_is_rejected() {
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": six_slices(),
+            "dimension_values": "1e308, 1.0000001e308, 1.0000002e308, \
+                                 1.0000003e308, 1.0000004e308, 1.0000005e308",
+            "aggregation_definition": "interval_value", "interval_value": 1.0
+        }))
+        .unwrap();
+        let err = AggregateMultidimensionalRasterTool
+            .run(&args, &ctx())
+            .expect_err("a non-progressing interval must be an error, not a hang");
+        assert!(
+            format!("{err:?}").contains("would not progress"),
+            "unexpected error: {err:?}"
+        );
     }
 
     /// Real dimension coordinates (years) drive the binning, not slice order.

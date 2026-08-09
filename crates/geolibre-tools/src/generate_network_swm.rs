@@ -28,7 +28,7 @@
 //! point: this is a new way to build the same object, not a new object.
 
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, BTreeMap};
+use std::collections::{BTreeMap, BinaryHeap};
 
 use serde_json::json;
 use wbcore::{
@@ -118,9 +118,7 @@ impl Tool for GenerateNetworkSwmTool {
         opt_positive_f64(args, "search_tolerance")?;
         let e = f64_or(args, "exponent", 1.0)?;
         if e <= 0.0 {
-            return Err(ToolError::Validation(
-                "'exponent' must be > 0".to_string(),
-            ));
+            return Err(ToolError::Validation("'exponent' must be > 0".to_string()));
         }
         bool_or(args, "row_standardization", false)?;
         Ok(())
@@ -130,7 +128,8 @@ impl Tool for GenerateNetworkSwmTool {
         let input = req_str(args, "input")?;
         let network_path = req_str(args, "network")?;
         let output = parse_optional_str(args, "output")?;
-        let inverse = choice_or(args, "conceptualization", &["fixed", "inverse"], "fixed")? == "inverse";
+        let inverse =
+            choice_or(args, "conceptualization", &["fixed", "inverse"], "fixed")? == "inverse";
         let exponent = f64_or(args, "exponent", 1.0)?;
         let cutoff = opt_positive_f64(args, "distance_cutoff")?.unwrap_or(f64::INFINITY);
         let max_neighbors = opt_usize(args, "max_neighbors")?.unwrap_or(usize::MAX);
@@ -301,7 +300,8 @@ impl Graph {
         let mut adjacency: Vec<Vec<(usize, f64)>> = Vec::new();
         // Quantise vertices so two segments meeting at a shared endpoint are
         // actually connected despite float noise.
-        let mut node_of = |x: f64, y: f64,
+        let mut node_of = |x: f64,
+                           y: f64,
                            nodes: &mut Vec<(f64, f64)>,
                            adjacency: &mut Vec<Vec<(usize, f64)>>| {
             let key = ((x / 1e-9).round() as i64, (y / 1e-9).round() as i64);
@@ -322,7 +322,7 @@ impl Graph {
             // length, so a long polyline is not charged the same as a short one.
             let declared = imp_idx.and_then(|i| field_to_f64(&feature.attributes[i]));
             for cs in parts {
-                let total: f64 = cs.windows(2).map(|w| seg_len(w)).sum();
+                let total: f64 = cs.windows(2).map(seg_len).sum();
                 for w in cs.windows(2) {
                     let len = seg_len(w);
                     if len <= 0.0 {
@@ -348,7 +348,7 @@ impl Graph {
         let mut best: Option<(usize, f64)> = None;
         for (i, (nx, ny)) in self.nodes.iter().enumerate() {
             let d = ((nx - x).powi(2) + (ny - y).powi(2)).sqrt();
-            if d <= tolerance && best.map_or(true, |(_, bd)| d < bd) {
+            if d <= tolerance && best.is_none_or(|(_, bd)| d < bd) {
                 best = Some((i, d));
             }
         }
@@ -360,7 +360,10 @@ impl Graph {
         let mut dist: BTreeMap<usize, f64> = BTreeMap::new();
         let mut heap: BinaryHeap<Step> = BinaryHeap::new();
         dist.insert(start, 0.0);
-        heap.push(Step { cost: 0.0, node: start });
+        heap.push(Step {
+            cost: 0.0,
+            node: start,
+        });
         while let Some(Step { cost, node }) = heap.pop() {
             if dist.get(&node).is_some_and(|d| cost > *d) {
                 continue; // stale entry
@@ -372,7 +375,10 @@ impl Graph {
                 }
                 if dist.get(&next).is_none_or(|d| nd < *d) {
                     dist.insert(next, nd);
-                    heap.push(Step { cost: nd, node: next });
+                    heap.push(Step {
+                        cost: nd,
+                        node: next,
+                    });
                 }
             }
         }
@@ -521,12 +527,7 @@ mod tests {
         // a U-shaped detour. A cutoff of 5 must find NO neighbours — which a
         // Euclidean matrix would never conclude.
         let pts = points(vec![(0.0, 0.0), (2.0, 0.0)]);
-        let detour = network(vec![vec![
-            (0.0, 0.0),
-            (0.0, 10.0),
-            (2.0, 10.0),
-            (2.0, 0.0),
-        ]]);
+        let detour = network(vec![vec![(0.0, 0.0), (0.0, 10.0), (2.0, 10.0), (2.0, 0.0)]]);
         let (out, _) = run(json!({
             "input": pts, "network": detour, "distance_cutoff": 5.0,
         }));
@@ -675,7 +676,9 @@ mod tests {
             "network": network(vec![vec![(0.0, 0.0), (10.0, 0.0)]]),
             "id_field": "name",
         }));
-        assert!(rows(&out).iter().any(|(o, n, _)| o == "west" && n == "east"));
+        assert!(rows(&out)
+            .iter()
+            .any(|(o, n, _)| o == "west" && n == "east"));
     }
 
     #[test]
@@ -687,7 +690,9 @@ mod tests {
             GenerateNetworkSwmTool.validate(&args).is_err()
         };
         assert!(bad(json!({"network": net})));
-        assert!(bad(json!({"input": pts, "network": net, "conceptualization": "nope"})));
+        assert!(bad(
+            json!({"input": pts, "network": net, "conceptualization": "nope"})
+        ));
         assert!(bad(json!({"input": pts, "network": net, "exponent": 0})));
     }
 }

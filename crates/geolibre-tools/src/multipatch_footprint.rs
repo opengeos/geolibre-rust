@@ -119,10 +119,22 @@ impl Tool for MultipatchFootprintTool {
             for t in &tris {
                 let poly = Polygon::new(
                     LineString::from(vec![
-                        GeoCoord { x: t[0][0], y: t[0][1] },
-                        GeoCoord { x: t[1][0], y: t[1][1] },
-                        GeoCoord { x: t[2][0], y: t[2][1] },
-                        GeoCoord { x: t[0][0], y: t[0][1] },
+                        GeoCoord {
+                            x: t[0][0],
+                            y: t[0][1],
+                        },
+                        GeoCoord {
+                            x: t[1][0],
+                            y: t[1][1],
+                        },
+                        GeoCoord {
+                            x: t[2][0],
+                            y: t[2][1],
+                        },
+                        GeoCoord {
+                            x: t[0][0],
+                            y: t[0][1],
+                        },
                     ]),
                     vec![],
                 );
@@ -161,9 +173,7 @@ impl Tool for MultipatchFootprintTool {
                 acc = acc.union(&MultiPolygon::new(vec![p.clone()]));
             }
             if let Some(tol) = tolerance {
-                acc = MultiPolygon::new(
-                    acc.0.iter().map(|p| p.simplify(tol)).collect::<Vec<_>>(),
-                );
+                acc = MultiPolygon::new(acc.0.iter().map(|p| p.simplify(tol)).collect::<Vec<_>>());
             }
             let area = acc.unsigned_area();
             if acc.0.is_empty() || area <= 0.0 {

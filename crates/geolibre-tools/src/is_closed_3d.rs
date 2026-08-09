@@ -187,19 +187,11 @@ impl Tool for IsClosed3dTool {
 }
 
 /// Copies the input feature's attributes into name/value pairs for the output.
-fn carry<'a>(
-    names: &'a [String],
-    feature: &wbvector::Feature,
-) -> Vec<(&'a str, FieldValue)> {
+fn carry<'a>(names: &'a [String], feature: &wbvector::Feature) -> Vec<(&'a str, FieldValue)> {
     names
         .iter()
         .enumerate()
-        .filter_map(|(i, n)| {
-            feature
-                .attributes
-                .get(i)
-                .map(|v| (n.as_str(), v.clone()))
-        })
+        .filter_map(|(i, n)| feature.attributes.get(i).map(|v| (n.as_str(), v.clone())))
         .collect()
 }
 

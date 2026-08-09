@@ -71,7 +71,9 @@ pub(crate) fn edge_map(tris: &[Tri]) -> BTreeMap<EdgeKey, Vec<EdgeUse>> {
             let q = t[(k + 1) % 3];
             let key = edge_key(p, q);
             let forward = vkey(p) <= vkey(q);
-            map.entry(key).or_default().push(EdgeUse { tri: ti, forward });
+            map.entry(key)
+                .or_default()
+                .push(EdgeUse { tri: ti, forward });
         }
     }
     map
@@ -244,7 +246,7 @@ pub(crate) fn mesh_volume(tris: &[Tri]) -> f64 {
 
 /// Total surface area of a triangle mesh.
 pub(crate) fn mesh_area(tris: &[Tri]) -> f64 {
-    tris.iter().map(|t| tri_area(t)).sum()
+    tris.iter().map(tri_area).sum()
 }
 
 /// Area of one triangle (half the cross-product magnitude).
@@ -276,22 +278,6 @@ pub(crate) fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 
 pub(crate) fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-/// Axis-aligned bounding box of a set of solids, or `None` when degenerate.
-pub(crate) fn union_bbox(solids: &[&Solid]) -> Option<([f64; 3], [f64; 3])> {
-    if solids.is_empty() {
-        return None;
-    }
-    let mut min = [f64::INFINITY; 3];
-    let mut max = [f64::NEG_INFINITY; 3];
-    for s in solids {
-        for k in 0..3 {
-            min[k] = min[k].min(s.min[k]);
-            max[k] = max[k].max(s.max[k]);
-        }
-    }
-    (0..3).all(|k| max[k] > min[k]).then_some((min, max))
 }
 
 /// Bounding box shared by two solids, or `None` when they do not overlap.
@@ -552,7 +538,9 @@ mod tests {
     fn occupancy_recovers_a_box_volume() {
         let tris = box_tris([0.0; 3], [4.0, 4.0, 4.0]);
         let solid = Solid::new(0, tris);
-        let v = occupancy_volume([0.0; 3], [4.0, 4.0, 4.0], 32, |x, y, z| solid.contains(x, y, z));
+        let v = occupancy_volume([0.0; 3], [4.0, 4.0, 4.0], 32, |x, y, z| {
+            solid.contains(x, y, z)
+        });
         assert!((v - 64.0).abs() < 1.0, "occupancy gave {v}, expected ~64");
     }
 }

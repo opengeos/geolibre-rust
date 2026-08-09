@@ -38,7 +38,7 @@ use wbvector::{FieldDef, FieldType, FieldValue, GeometryType, Layer};
 
 use crate::args_common::{choice_or, req_str, usize_or};
 use crate::inside_3d::{collect_triangles, Solid};
-use crate::mesh3d::{box_mesh, grid_for, intersect_bbox, mesh_volume, occupancy_volume};
+use crate::mesh3d::{box_mesh, intersect_bbox, mesh_volume, occupancy_volume};
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
 
 pub struct Intersect3dTool;
@@ -224,13 +224,6 @@ pub(crate) fn load_solids(path: &str) -> Result<(Vec<Solid>, u64), ToolError> {
         }
     }
     Ok((solids, open))
-}
-
-/// Voxel edge length a grid over `min..max` at `resolution` would use — the
-/// accuracy scale of an occupancy estimate.
-pub(crate) fn cell_size(min: [f64; 3], max: [f64; 3], resolution: usize) -> f64 {
-    let (_, _, _, cell_vol, _) = grid_for(min, max, resolution);
-    cell_vol.cbrt()
 }
 
 #[cfg(test)]

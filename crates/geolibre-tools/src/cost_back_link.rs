@@ -32,7 +32,7 @@
 //! rasters, and it is what makes the tool useful on terrain.
 
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, BTreeMap};
+use std::collections::{BTreeMap, BinaryHeap};
 
 use serde_json::json;
 use wbcore::{
@@ -165,10 +165,7 @@ impl Tool for CostBackLinkTool {
         for &idx in &sources {
             accum[idx] = 0.0;
             backlink[idx] = 0.0; // ArcGIS marks source cells 0.
-            heap.push(Step {
-                cost: 0.0,
-                idx,
-            });
+            heap.push(Step { cost: 0.0, idx });
         }
 
         let cell_cost = |idx: usize| -> Option<f64> {
@@ -317,7 +314,7 @@ fn load_sources(spec: &str, template: &Raster) -> Result<Vec<usize>, ToolError> 
 
     let layer = load_input_layer(spec)?;
     let mut out = Vec::new();
-    let mut push = |x: f64, y: f64, out: &mut Vec<usize>| {
+    let push = |x: f64, y: f64, out: &mut Vec<usize>| {
         // y is measured up from y_min, while rows count down from the top.
         let c = ((x - template.x_min) / template.cell_size_x).floor();
         let r = (rows as f64 - 1.0) - ((y - template.y_min) / template.cell_size_y).floor();
@@ -447,11 +444,7 @@ mod tests {
         // 3x3, source at (0,0). The middle column is very expensive, so the
         // cheapest way to (1,2) is around rather than straight through.
         let src = raster(3, 3, &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        let cost = raster(
-            3,
-            3,
-            &[1.0, 1000.0, 1.0, 1.0, 1000.0, 1.0, 1.0, 1.0, 1.0],
-        );
+        let cost = raster(3, 3, &[1.0, 1000.0, 1.0, 1.0, 1000.0, 1.0, 1.0, 1.0, 1.0]);
         let (_, dist, _) = run(json!({"source": src, "cost": cost}));
         // Going around the bottom must beat crossing the barrier.
         assert!(
@@ -499,8 +492,7 @@ mod tests {
         // silently vanishes for callers with no scratch directory.
         let src = raster(1, 2, &[1.0, 0.0]);
         let cost = raster(1, 2, &[1.0, 1.0]);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"source": src, "cost": cost})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"source": src, "cost": cost})).unwrap();
         let res = CostBackLinkTool.run(&args, &ctx()).unwrap();
         let p = res.outputs["out_distance"].as_str().unwrap();
         assert!(!p.is_empty());

@@ -133,9 +133,7 @@ impl Tool for UnwrapPhaseTool {
         }
         let tol = f64_or(args, "tolerance", 1e-8)?;
         if tol <= 0.0 {
-            return Err(ToolError::Validation(
-                "'tolerance' must be > 0".to_string(),
-            ));
+            return Err(ToolError::Validation("'tolerance' must be > 0".to_string()));
         }
         crate::args_common::band_index(args, "band")?;
         Ok(())
@@ -367,7 +365,7 @@ fn solve(
         rz = rz_next;
         iterations += 1;
         residual = (r.iter().map(|v| v * v).sum::<f64>().sqrt()) / b_norm;
-        if iterations % 32 == 0 {
+        if iterations.is_multiple_of(32) {
             ctx.progress.progress(iterations as f64 / max_iter as f64);
         }
     }
@@ -381,13 +379,7 @@ fn solve(
     (x, iterations, residual)
 }
 
-fn read_phase(
-    r: &Raster,
-    complex_input: bool,
-    band: isize,
-    row: usize,
-    col: usize,
-) -> Option<f64> {
+fn read_phase(r: &Raster, complex_input: bool, band: isize, row: usize, col: usize) -> Option<f64> {
     if complex_input {
         let i = r.get(0, row as isize, col as isize);
         let q = r.get(1, row as isize, col as isize);
@@ -473,8 +465,13 @@ mod tests {
         for (b, band) in bands.iter().enumerate() {
             for row in 0..rows {
                 for col in 0..cols {
-                    r.set(b as isize, row as isize, col as isize, band[row * cols + col])
-                        .unwrap();
+                    r.set(
+                        b as isize,
+                        row as isize,
+                        col as isize,
+                        band[row * cols + col],
+                    )
+                    .unwrap();
                 }
             }
         }

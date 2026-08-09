@@ -106,10 +106,8 @@ impl Tool for ConvertSarUnitsTool {
             )));
         }
 
-        ctx.progress.info(&format!(
-            "{rows}x{cols}, conversion {}",
-            conversion.label()
-        ));
+        ctx.progress
+            .info(&format!("{rows}x{cols}, conversion {}", conversion.label()));
 
         let nodata = -9999.0_f64;
         let mut out = vec![nodata; rows * cols];
@@ -203,9 +201,7 @@ impl Conversion {
             // Line-of-sight displacement from unwrapped phase. The sign
             // convention is ArcGIS's: positive phase = motion away from the
             // sensor = negative displacement.
-            Conversion::PhaseToDisplacement => {
-                Some(-v * wavelength / (4.0 * std::f64::consts::PI))
-            }
+            Conversion::PhaseToDisplacement => Some(-v * wavelength / (4.0 * std::f64::consts::PI)),
         }
     }
 }
@@ -304,12 +300,14 @@ mod tests {
 
     #[test]
     fn linear_and_db_round_trip() {
-        let (db, _) = run(json!({"input": raster(&[1.0, 10.0, 100.0]), "conversion": "linear_to_db"}));
+        let (db, _) =
+            run(json!({"input": raster(&[1.0, 10.0, 100.0]), "conversion": "linear_to_db"}));
         assert!(close(db.get(0, 0, 0), 0.0));
         assert!(close(db.get(0, 0, 1), 10.0));
         assert!(close(db.get(0, 0, 2), 20.0));
 
-        let (lin, _) = run(json!({"input": raster(&[0.0, 10.0, 20.0]), "conversion": "db_to_linear"}));
+        let (lin, _) =
+            run(json!({"input": raster(&[0.0, 10.0, 20.0]), "conversion": "db_to_linear"}));
         assert!(close(lin.get(0, 0, 0), 1.0));
         assert!(close(lin.get(0, 0, 1), 10.0));
         assert!(close(lin.get(0, 0, 2), 100.0));
@@ -318,7 +316,8 @@ mod tests {
     #[test]
     fn non_positive_power_becomes_nodata_not_negative_infinity() {
         // The whole reason this tool exists rather than raster_calculator.
-        let (out, res) = run(json!({"input": raster(&[0.0, -3.0, 4.0]), "conversion": "linear_to_db"}));
+        let (out, res) =
+            run(json!({"input": raster(&[0.0, -3.0, 4.0]), "conversion": "linear_to_db"}));
         assert_eq!(out.get(0, 0, 0), out.nodata);
         assert_eq!(out.get(0, 0, 1), out.nodata);
         assert!(out.get(0, 0, 2).is_finite() && out.get(0, 0, 2) != out.nodata);
@@ -327,18 +326,21 @@ mod tests {
 
     #[test]
     fn amplitude_and_intensity_round_trip() {
-        let (inten, _) = run(json!({"input": raster(&[2.0, 3.0]), "conversion": "amplitude_to_intensity"}));
+        let (inten, _) =
+            run(json!({"input": raster(&[2.0, 3.0]), "conversion": "amplitude_to_intensity"}));
         assert!(close(inten.get(0, 0, 0), 4.0));
         assert!(close(inten.get(0, 0, 1), 9.0));
 
-        let (amp, _) = run(json!({"input": raster(&[4.0, 9.0]), "conversion": "intensity_to_amplitude"}));
+        let (amp, _) =
+            run(json!({"input": raster(&[4.0, 9.0]), "conversion": "intensity_to_amplitude"}));
         assert!(close(amp.get(0, 0, 0), 2.0));
         assert!(close(amp.get(0, 0, 1), 3.0));
     }
 
     #[test]
     fn negative_intensity_is_rejected_rather_than_producing_nan() {
-        let (out, res) = run(json!({"input": raster(&[-1.0]), "conversion": "intensity_to_amplitude"}));
+        let (out, res) =
+            run(json!({"input": raster(&[-1.0]), "conversion": "intensity_to_amplitude"}));
         assert_eq!(out.get(0, 0, 0), out.nodata);
         assert_eq!(res.outputs["out_of_domain_cells"], json!(1));
     }

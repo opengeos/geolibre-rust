@@ -37,7 +37,7 @@ use wbcore::{
     LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
     ToolRunResult,
 };
-use wbvector::{FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer};
+use wbvector::{FieldDef, FieldType, FieldValue, GeometryType, Layer};
 
 use crate::args_common::{bool_or, f64_or, opt_f64, req_str};
 use crate::inside_3d::{collect_triangles, Tri};
@@ -257,7 +257,7 @@ fn sweep(tris: &[Tri], dir: [f64; 3], ground: f64, max_length: f64) -> Option<Ve
     // opposes the light direction.
     let lit: Vec<bool> = tris
         .iter()
-        .map(|t| tri_normal(t).map_or(false, |n| dot(n, dir) < 0.0))
+        .map(|t| tri_normal(t).is_some_and(|n| dot(n, dir) < 0.0))
         .collect();
     if !lit.iter().any(|b| *b) {
         return None;
@@ -401,7 +401,7 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbvector::memory_store;
+    use wbvector::{memory_store, Geometry};
 
     use crate::mesh3d::box_mesh;
 
@@ -449,7 +449,10 @@ mod tests {
     #[test]
     fn a_building_casts_a_shadow_volume_with_positive_extent() {
         let mut a = noon();
-        a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+        a["input"] = json!(layer_of(vec![box_mesh(
+            [0.0, 0.0, 0.0],
+            [10.0, 10.0, 20.0]
+        )]));
         let (out, res) = run(a);
         assert_eq!(res.outputs["shadow_count"], json!(1));
         assert!(num(&out, 0, "VOLUME") > 0.0);
@@ -460,12 +463,22 @@ mod tests {
     fn the_shadow_geometry_extends_below_the_building_top() {
         // A shadow must reach the ground plane, not float at roof level.
         let mut a = noon();
-        a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+        a["input"] = json!(layer_of(vec![box_mesh(
+            [0.0, 0.0, 0.0],
+            [10.0, 10.0, 20.0]
+        )]));
         let (out, _) = run(a);
         let geom = out.iter().next().unwrap().geometry.clone().unwrap();
-        let zs: Vec<f64> = collect_triangles(&geom).iter().flatten().map(|v| v[2]).collect();
+        let zs: Vec<f64> = collect_triangles(&geom)
+            .iter()
+            .flatten()
+            .map(|v| v[2])
+            .collect();
         let min_z = zs.iter().copied().fold(f64::INFINITY, f64::min);
-        assert!(min_z <= 1e-6, "shadow bottoms out at {min_z}, not the ground");
+        assert!(
+            min_z <= 1e-6,
+            "shadow bottoms out at {min_z}, not the ground"
+        );
     }
 
     #[test]
@@ -475,7 +488,10 @@ mod tests {
         // zenith, so the shadow is the vertical prism under the roof:
         // 10 x 10 footprint x 20 height = 2000.
         let mut a = json!({"datetime": "2026-06-21T12:00", "latitude": 23.45});
-        a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+        a["input"] = json!(layer_of(vec![box_mesh(
+            [0.0, 0.0, 0.0],
+            [10.0, 10.0, 20.0]
+        )]));
         let (out, res) = run(a);
         assert!(
             res.outputs["sun_altitude"].as_f64().unwrap() > 89.0,
@@ -493,7 +509,10 @@ mod tests {
         // the signed-tetrahedron sum only means something on a closed mesh.
         // Uses the zenith sun so the roof is the only lit face.
         let mut a = json!({"datetime": "2026-06-21T12:00", "latitude": 23.45});
-        a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+        a["input"] = json!(layer_of(vec![box_mesh(
+            [0.0, 0.0, 0.0],
+            [10.0, 10.0, 20.0]
+        )]));
         a["ground_elevation"] = json!(20.0);
         let args: ToolArgs = serde_json::from_value(a).unwrap();
         assert!(SunShadowVolumeTool.run(&args, &ctx()).is_err());
@@ -504,7 +523,10 @@ mod tests {
         // The core physical behaviour. Late afternoon vs noon.
         let vol = |time: &str| {
             let mut a = json!({"datetime": time, "latitude": 45.0});
-            a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+            a["input"] = json!(layer_of(vec![box_mesh(
+                [0.0, 0.0, 0.0],
+                [10.0, 10.0, 20.0]
+            )]));
             let (out, _) = run(a);
             (num(&out, 0, "VOLUME"), num(&out, 0, "SUN_ALTITUDE"))
         };
@@ -530,7 +552,10 @@ mod tests {
     fn max_length_caps_the_sweep() {
         let vol = |cap: Option<f64>| {
             let mut a = json!({"datetime": "2026-06-21T17:30", "latitude": 55.0});
-            a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 30.0])]));
+            a["input"] = json!(layer_of(vec![box_mesh(
+                [0.0, 0.0, 0.0],
+                [10.0, 10.0, 30.0]
+            )]));
             if let Some(c) = cap {
                 a["max_length"] = json!(c);
             }
@@ -545,7 +570,10 @@ mod tests {
         // Projecting onto a higher ground plane means a shorter sweep.
         let vol = |g: f64| {
             let mut a = noon();
-            a["input"] = json!(layer_of(vec![box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 20.0])]));
+            a["input"] = json!(layer_of(vec![box_mesh(
+                [0.0, 0.0, 0.0],
+                [10.0, 10.0, 20.0]
+            )]));
             a["ground_elevation"] = json!(g);
             let (out, _) = run(a);
             num(&out, 0, "VOLUME")
@@ -584,7 +612,9 @@ mod tests {
             let args: ToolArgs = serde_json::from_value(v).unwrap();
             SunShadowVolumeTool.validate(&args).is_err()
         };
-        assert!(bad(json!({"datetime": "2026-06-21T12:00", "latitude": 45.0})));
+        assert!(bad(
+            json!({"datetime": "2026-06-21T12:00", "latitude": 45.0})
+        ));
         assert!(bad(json!({"input": path, "latitude": 45.0})));
         assert!(bad(json!({"input": path, "datetime": "2026-06-21T12:00"})));
         assert!(bad(

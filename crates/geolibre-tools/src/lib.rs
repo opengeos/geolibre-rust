@@ -13,6 +13,7 @@ mod adjust_stream_to_raster;
 mod aggregate_points;
 mod aggregate_polygons;
 mod apportion_polygon;
+mod areal_interpolation;
 mod assign_projection;
 mod attribute_uncertainty;
 mod block_statistics;
@@ -122,6 +123,7 @@ mod interpolate_from_spatiotemporal_points;
 mod interpolate_shape;
 mod kernel_interpolation_with_barriers;
 mod kml_to_features;
+mod kriging_common;
 mod lidar_common;
 mod line_of_sight;
 mod local_polynomial_interpolation;
@@ -166,6 +168,7 @@ mod resolve_building_conflicts;
 mod ripleys_k;
 mod rubbersheet_features;
 mod sar_coherence;
+mod semivariogram_sensitivity;
 mod similarity_search;
 mod simplify_3d_line;
 mod simplify_by_circular_arcs;
@@ -349,8 +352,10 @@ use wbcore::{Tool, ToolDatasetSchema, ToolParamSchema};
 /// ```
 pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        Box::new(areal_interpolation::ArealInterpolationTool),
         Box::new(build_seamlines::BuildSeamlinesTool),
         Box::new(merge_divided_roads::MergeDividedRoadsTool),
+        Box::new(semivariogram_sensitivity::SemivariogramSensitivityTool),
         Box::new(spatially_constrained_multivariate_clustering::SpatiallyConstrainedMultivariateClusteringTool),
         Box::new(optimal_corridor_connections::OptimalCorridorConnectionsTool),
         Box::new(adjust_stream_to_raster::AdjustStreamToRasterTool),
@@ -901,6 +906,167 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("input", vector_in()),
             ("output", vector_out()),
             ("closed_only", ToolParamSchema::bool()),
+        ]),
+        "cell_position_statistics" => schemas(&[
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            (
+                "statistic",
+                ToolParamSchema::enum_values(&[
+                    "highest_position",
+                    "lowest_position",
+                    "popularity",
+                    "rank",
+                ]),
+            ),
+            // Dual-typed: a raster path or a bare constant, so it stays a
+            // string rather than claiming to be a raster input.
+            ("selector", ToolParamSchema::string()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            (
+                "process_as_multiband",
+                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
+            ),
+        ]),
+        "frequency_comparison" => schemas(&[
+            ("value_raster", raster_in()),
+            (
+                "inputs",
+                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
+            ),
+            ("output", raster_out()),
+            (
+                "comparison",
+                ToolParamSchema::enum_values(&[
+                    "equal",
+                    "not_equal",
+                    "greater",
+                    "greater_equal",
+                    "less",
+                    "less_equal",
+                ]),
+            ),
+            ("tolerance", float()),
+            ("ignore_nodata", ToolParamSchema::bool()),
+            (
+                "process_as_multiband",
+                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
+            ),
+        ]),
+        "areal_interpolation" => schemas(&[
+            ("input", vector_in()),
+            ("target", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("output", vector_out()),
+            (
+                "field_type",
+                ToolParamSchema::enum_values(&["count", "average"]),
+            ),
+            ("discretization", int()),
+            (
+                "model",
+                ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"]),
+            ),
+            ("preserve_total", ToolParamSchema::bool()),
+        ]),
+        "semivariogram_sensitivity" => schemas(&[
+            ("input", vector_in()),
+            ("field", ToolParamSchema::string()),
+            ("locations", vector_in()),
+            ("output", table_out()),
+            (
+                "model",
+                ToolParamSchema::enum_values(&["exponential", "spherical", "gaussian"]),
+            ),
+            ("nugget_span_percent", float()),
+            ("partial_sill_span_percent", float()),
+            ("range_span_percent", float()),
+            ("nugget_steps", int()),
+            ("partial_sill_steps", int()),
+            ("range_steps", int()),
+            ("lag_count", int()),
+        ]),
+        "flatten_interferogram" => schemas(&[
+            ("input", raster_in()),
+            ("dem", raster_in()),
+            ("output", raster_out()),
+            ("perpendicular_baseline", float()),
+            ("wavelength", float()),
+            // Dual-typed: a constant in degrees or a raster path.
+            ("incidence_angle", ToolParamSchema::string()),
+            ("slant_range", float()),
+            ("reference_elevation", float()),
+            ("out_topographic_phase", raster_out()),
+            ("band", int()),
+        ]),
+        "unwrap_phase" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "method",
+                ToolParamSchema::enum_values(&["least_squares_pcg"]),
+            ),
+            ("coherence", raster_in()),
+            ("coherence_threshold", float()),
+            ("max_iterations", int()),
+            ("tolerance", float()),
+            ("reference_row", int()),
+            ("reference_col", int()),
+            ("band", int()),
+        ]),
+        "apply_radiometric_calibration" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "calibration_type",
+                ToolParamSchema::enum_values(&["sigma0", "beta0", "gamma0"]),
+            ),
+            ("calibration_constant", float()),
+            ("calibration_lut", raster_in()),
+            // Dual-typed: a constant in degrees or a raster path.
+            ("incidence_angle", ToolParamSchema::string()),
+            (
+                "input_units",
+                ToolParamSchema::enum_values(&["dn", "amplitude", "intensity", "db"]),
+            ),
+            (
+                "output_units",
+                ToolParamSchema::enum_values(&["linear", "db"]),
+            ),
+            ("band", int()),
+        ]),
+        "convert_sar_units" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "conversion",
+                ToolParamSchema::enum_values(&[
+                    "linear_to_db",
+                    "db_to_linear",
+                    "amplitude_to_intensity",
+                    "intensity_to_amplitude",
+                    "complex_to_intensity",
+                    "phase_to_displacement",
+                ]),
+            ),
+            ("wavelength", float()),
+            ("band", int()),
+        ]),
+        "compute_sar_indices" => schemas(&[
+            ("input", raster_in()),
+            ("output", raster_out()),
+            (
+                "index",
+                ToolParamSchema::enum_values(&["rvi", "rfdi", "csi", "dpsvi"]),
+            ),
+            ("polarization_bands", ToolParamSchema::string()),
+            (
+                "input_units",
+                ToolParamSchema::enum_values(&["linear", "db"]),
+            ),
         ]),
         "union_3d" => schemas(&[
             ("input", vector_in()),
@@ -2979,134 +3145,6 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("min_height", float()),
             ("min_points", int()),
             ("cell_size", float()),
-        ]),
-        "unwrap_phase" => schemas(&[
-            ("input", raster_in()),
-            ("output", raster_out()),
-            (
-                "method",
-                ToolParamSchema::enum_values(&["least_squares_pcg"]),
-            ),
-            ("coherence", raster_in()),
-            ("coherence_threshold", float()),
-            ("max_iterations", int()),
-            ("tolerance", float()),
-            ("reference_row", int()),
-            ("reference_col", int()),
-            ("band", int()),
-        ]),
-        "flatten_interferogram" => schemas(&[
-            ("input", raster_in()),
-            ("dem", raster_in()),
-            ("output", raster_out()),
-            ("perpendicular_baseline", float()),
-            ("wavelength", float()),
-            // Dual-typed: a constant in degrees or a raster path.
-            ("incidence_angle", ToolParamSchema::string()),
-            ("slant_range", float()),
-            ("reference_elevation", float()),
-            ("out_topographic_phase", raster_out()),
-            ("band", int()),
-        ]),
-        "convert_sar_units" => schemas(&[
-            ("input", raster_in()),
-            ("output", raster_out()),
-            (
-                "conversion",
-                ToolParamSchema::enum_values(&[
-                    "linear_to_db",
-                    "db_to_linear",
-                    "amplitude_to_intensity",
-                    "intensity_to_amplitude",
-                    "complex_to_intensity",
-                    "phase_to_displacement",
-                ]),
-            ),
-            ("wavelength", float()),
-            ("band", int()),
-        ]),
-        "compute_sar_indices" => schemas(&[
-            ("input", raster_in()),
-            ("output", raster_out()),
-            (
-                "index",
-                ToolParamSchema::enum_values(&["rvi", "rfdi", "csi", "dpsvi"]),
-            ),
-            ("polarization_bands", ToolParamSchema::string()),
-            (
-                "input_units",
-                ToolParamSchema::enum_values(&["linear", "db"]),
-            ),
-        ]),
-        "apply_radiometric_calibration" => schemas(&[
-            ("input", raster_in()),
-            ("output", raster_out()),
-            (
-                "calibration_type",
-                ToolParamSchema::enum_values(&["sigma0", "beta0", "gamma0"]),
-            ),
-            ("calibration_constant", float()),
-            ("calibration_lut", raster_in()),
-            // Dual-typed: a constant in degrees or a raster path.
-            ("incidence_angle", ToolParamSchema::string()),
-            (
-                "input_units",
-                ToolParamSchema::enum_values(&["dn", "amplitude", "intensity", "db"]),
-            ),
-            (
-                "output_units",
-                ToolParamSchema::enum_values(&["linear", "db"]),
-            ),
-            ("band", int()),
-        ]),
-        "cell_position_statistics" => schemas(&[
-            (
-                "inputs",
-                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
-            ),
-            ("output", raster_out()),
-            (
-                "statistic",
-                ToolParamSchema::enum_values(&[
-                    "highest_position",
-                    "lowest_position",
-                    "popularity",
-                    "rank",
-                ]),
-            ),
-            // Dual-typed: a raster path or a bare constant, so it stays a
-            // string rather than claiming to be a raster input.
-            ("selector", ToolParamSchema::string()),
-            ("ignore_nodata", ToolParamSchema::bool()),
-            (
-                "process_as_multiband",
-                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
-            ),
-        ]),
-        "frequency_comparison" => schemas(&[
-            ("value_raster", raster_in()),
-            (
-                "inputs",
-                ToolParamSchema::input_multiple(ToolDatasetSchema::Raster),
-            ),
-            ("output", raster_out()),
-            (
-                "comparison",
-                ToolParamSchema::enum_values(&[
-                    "equal",
-                    "not_equal",
-                    "greater",
-                    "greater_equal",
-                    "less",
-                    "less_equal",
-                ]),
-            ),
-            ("tolerance", float()),
-            ("ignore_nodata", ToolParamSchema::bool()),
-            (
-                "process_as_multiband",
-                ToolParamSchema::enum_values(&["single_band", "multi_band"]),
-            ),
         ]),
         "cell_statistics" => schemas(&[
             (

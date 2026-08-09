@@ -65,11 +65,6 @@ impl Tool for EncloseMultipatchTool {
                     required: false,
                 },
                 ToolParamSpec {
-                    name: "skip_closed",
-                    description: "Pass already-closed features through untouched (default true). When false they are still re-verified and reported.",
-                    required: false,
-                },
-                ToolParamSpec {
                     name: "drop_failed",
                     description: "Omit features that could not be made watertight (default false: they are emitted with CAP_FAILED = true so the failure is visible rather than silent).",
                     required: false,
@@ -80,7 +75,6 @@ impl Tool for EncloseMultipatchTool {
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
         req_str(args, "input")?;
-        bool_or(args, "skip_closed", true)?;
         bool_or(args, "drop_failed", false)?;
         Ok(())
     }
@@ -88,7 +82,6 @@ impl Tool for EncloseMultipatchTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let input = req_str(args, "input")?;
         let output = parse_optional_str(args, "output")?;
-        let skip_closed = bool_or(args, "skip_closed", true)?;
         let drop_failed = bool_or(args, "drop_failed", false)?;
 
         let layer = load_input_layer(input)?;
@@ -293,11 +286,7 @@ mod tests {
     fn a_single_triangle_cannot_be_enclosed_and_says_so() {
         // Its boundary is one triangle loop; capping it gives a degenerate
         // zero-volume shell rather than a solid, and that must be visible.
-        let lone = triangles_to_geometry(&[[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]]);
+        let lone = triangles_to_geometry(&[[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]);
         let (out, _) = run(json!({"input": layer_of(vec![lone])}));
         // Either it fails to close, or it closes to zero volume — never a
         // positive volume from a flat sheet.
@@ -306,11 +295,7 @@ mod tests {
 
     #[test]
     fn drop_failed_removes_uncappable_features() {
-        let lone = triangles_to_geometry(&[[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]]);
+        let lone = triangles_to_geometry(&[[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]);
         let closed = box_mesh([0.0; 3], [1.0, 1.0, 1.0]);
         let (kept, _) = run(json!({
             "input": layer_of(vec![lone.clone(), closed.clone()]),

@@ -160,8 +160,7 @@ impl Tool for FrequencyComparisonTool {
             bands.push(out);
         }
 
-        let out_path =
-            write_stack_result(stack.template(), bands, nodata, DataType::I32, output)?;
+        let out_path = write_stack_result(stack.template(), bands, nodata, DataType::I32, output)?;
 
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));
@@ -411,8 +410,12 @@ mod tests {
             FrequencyComparisonTool.validate(&args).is_err()
         };
         assert!(bad(json!({"inputs": stack})));
-        assert!(bad(json!({"value_raster": value, "inputs": stack, "comparison": "nope"})));
-        assert!(bad(json!({"value_raster": value, "inputs": stack, "tolerance": -1})));
+        assert!(bad(
+            json!({"value_raster": value, "inputs": stack, "comparison": "nope"})
+        ));
+        assert!(bad(
+            json!({"value_raster": value, "inputs": stack, "tolerance": -1})
+        ));
     }
 
     #[test]

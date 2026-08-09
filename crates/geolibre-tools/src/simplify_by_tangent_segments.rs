@@ -99,7 +99,9 @@ impl Tool for SimplifyByTangentSegmentsTool {
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
         req_str(args, "input")?;
         opt_positive_f64(args, "max_offset")?.ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'max_offset' (must be > 0)".to_string())
+            ToolError::Validation(
+                "missing required parameter 'max_offset' (must be > 0)".to_string(),
+            )
         })?;
         opt_positive_f64(args, "anchor_tolerance")?;
         let min_run = usize_or(args, "min_run", 3)?;
@@ -178,9 +180,8 @@ impl Tool for SimplifyByTangentSegmentsTool {
             ctx.progress.progress((i as f64 + 1.0) / total as f64);
         }
 
-        ctx.progress.info(&format!(
-            "{orig_total} vertices in, {out_total} out"
-        ));
+        ctx.progress
+            .info(&format!("{orig_total} vertices in, {out_total} out"));
 
         let out_path = write_or_store_layer(out, output)?;
         let mut outputs = BTreeMap::new();
@@ -335,7 +336,7 @@ fn simplify_run(cs: &[Coord], opts: &Options) -> Vec<Coord> {
     for p in out {
         if deduped
             .last()
-            .map_or(true, |q| hypot(p.0 - q.0, p.1 - q.1) > 1e-12)
+            .is_none_or(|q| hypot(p.0 - q.0, p.1 - q.1) > 1e-12)
         {
             deduped.push(p);
         }
@@ -343,10 +344,7 @@ fn simplify_run(cs: &[Coord], opts: &Options) -> Vec<Coord> {
     if deduped.len() < 2 {
         return cs.to_vec();
     }
-    deduped
-        .into_iter()
-        .map(|(x, y)| Coord::xy(x, y))
-        .collect()
+    deduped.into_iter().map(|(x, y)| Coord::xy(x, y)).collect()
 }
 
 /// How far a computed joint may stray from the vertex it replaces before it is
@@ -525,7 +523,11 @@ mod tests {
         let (out, _) = run(json!({"input": lines(vec![cs]), "max_offset": 0.01}));
         let got = out_coords(&out, 0);
         assert_eq!(got.len(), 3, "got {got:?}");
-        assert!((got[1].0 - 10.0).abs() < 1e-6 && got[1].1.abs() < 1e-6, "corner at {:?}", got[1]);
+        assert!(
+            (got[1].0 - 10.0).abs() < 1e-6 && got[1].1.abs() < 1e-6,
+            "corner at {:?}",
+            got[1]
+        );
     }
 
     #[test]
@@ -611,7 +613,8 @@ mod tests {
         }));
         let got = out_coords(&out, 0);
         assert!(
-            got.iter().any(|p| (p.0 - 5.0).abs() < 1e-6 && p.1.abs() < 1e-6),
+            got.iter()
+                .any(|p| (p.0 - 5.0).abs() < 1e-6 && p.1.abs() < 1e-6),
             "anchor was dropped: {got:?}"
         );
     }

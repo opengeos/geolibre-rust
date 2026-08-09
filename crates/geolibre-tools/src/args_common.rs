@@ -124,16 +124,12 @@ pub(crate) fn choice_or<'a>(
 ) -> Result<&'a str, ToolError> {
     match opt_choice(args, key) {
         None => Ok(default),
-        Some(v) => allowed
-            .iter()
-            .find(|a| **a == v)
-            .copied()
-            .ok_or_else(|| {
-                ToolError::Validation(format!(
-                    "'{key}' must be one of {}, got '{v}'",
-                    allowed.join("|")
-                ))
-            }),
+        Some(v) => allowed.iter().find(|a| **a == v).copied().ok_or_else(|| {
+            ToolError::Validation(format!(
+                "'{key}' must be one of {}, got '{v}'",
+                allowed.join("|")
+            ))
+        }),
     }
 }
 

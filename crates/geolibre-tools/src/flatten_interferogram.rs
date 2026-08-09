@@ -157,8 +157,8 @@ impl Tool for FlattenInterferogramTool {
 
         // Incidence angle: constant or raster, resolved the same way
         // apply_radiometric_calibration does.
-        let incidence_path = parse_optional_str(args, "incidence_angle")?
-            .filter(|s| s.parse::<f64>().is_err());
+        let incidence_path =
+            parse_optional_str(args, "incidence_angle")?.filter(|s| s.parse::<f64>().is_err());
         let incidence_raster = match incidence_path {
             Some(p) => {
                 let r = load_input_raster(p)?;
@@ -173,9 +173,8 @@ impl Tool for FlattenInterferogramTool {
         // flattened field is centred rather than offset by an arbitrary datum.
         let reference = match opt_f64(args, "reference_elevation")? {
             Some(v) => v,
-            None => dem_mean(&dem).ok_or_else(|| {
-                ToolError::Execution("DEM holds no valid elevations".to_string())
-            })?,
+            None => dem_mean(&dem)
+                .ok_or_else(|| ToolError::Execution("DEM holds no valid elevations".to_string()))?,
         };
 
         ctx.progress.info(&format!(
@@ -210,7 +209,8 @@ impl Tool for FlattenInterferogramTool {
                 if theta_deg <= 0.0 || theta_deg >= 90.0 {
                     continue;
                 }
-                let phi_topo = -(4.0 * std::f64::consts::PI / wavelength) * (b_perp * (h - reference))
+                let phi_topo = -(4.0 * std::f64::consts::PI / wavelength)
+                    * (b_perp * (h - reference))
                     / (slant_range * theta_deg.to_radians().sin());
                 topo[idx] = wrap(phi_topo);
                 flat[idx] = wrap(phi - phi_topo);
@@ -238,13 +238,7 @@ impl Tool for FlattenInterferogramTool {
 }
 
 /// Reads the input phase, from either a real phase band or an I/Q pair.
-fn read_phase(
-    r: &Raster,
-    complex_input: bool,
-    band: isize,
-    row: usize,
-    col: usize,
-) -> Option<f64> {
+fn read_phase(r: &Raster, complex_input: bool, band: isize, row: usize, col: usize) -> Option<f64> {
     if complex_input {
         let i = r.get(0, row as isize, col as isize);
         let q = r.get(1, row as isize, col as isize);
@@ -323,8 +317,13 @@ mod tests {
         for (b, band) in bands.iter().enumerate() {
             for row in 0..rows {
                 for col in 0..cols {
-                    r.set(b as isize, row as isize, col as isize, band[row * cols + col])
-                        .unwrap();
+                    r.set(
+                        b as isize,
+                        row as isize,
+                        col as isize,
+                        band[row * cols + col],
+                    )
+                    .unwrap();
                 }
             }
         }
@@ -440,7 +439,10 @@ mod tests {
         }));
         for c in 0..50 {
             for v in [flat.get(0, 0, c), topo.get(0, 0, c)] {
-                assert!(v > -PI - 1e-12 && v <= PI + 1e-12, "phase {v} escaped (-pi, pi]");
+                assert!(
+                    v > -PI - 1e-12 && v <= PI + 1e-12,
+                    "phase {v} escaped (-pi, pi]"
+                );
             }
         }
     }

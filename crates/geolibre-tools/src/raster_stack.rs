@@ -55,11 +55,6 @@ impl Stack {
         self.groups.len()
     }
 
-    /// Number of input layers reducing into output band `group`.
-    pub(crate) fn layer_count(&self, group: usize) -> usize {
-        self.groups[group].len()
-    }
-
     /// Total input layers across all groups (for reporting).
     pub(crate) fn total_layers(&self) -> usize {
         self.groups.iter().map(Vec::len).sum()
@@ -259,8 +254,13 @@ pub(crate) fn raster_like_multiband(
         }
         for row in 0..rows {
             for col in 0..cols {
-                out.set(b as isize, row as isize, col as isize, band[row * cols + col])
-                    .map_err(|e| ToolError::Execution(format!("failed writing cell: {e}")))?;
+                out.set(
+                    b as isize,
+                    row as isize,
+                    col as isize,
+                    band[row * cols + col],
+                )
+                .map_err(|e| ToolError::Execution(format!("failed writing cell: {e}")))?;
             }
         }
     }

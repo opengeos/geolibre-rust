@@ -115,7 +115,7 @@ impl Tool for AddZInformationTool {
             } else {
                 FieldType::Float
             };
-            out.add_field(FieldDef::new(&p.to_uppercase(), ty));
+            out.add_field(FieldDef::new(p.to_uppercase(), ty));
         }
 
         let names: Vec<String> = layer
@@ -257,6 +257,8 @@ impl ZStats {
             "mean_slope" => f(self.mean_slope),
             "point_count" => i(self.point_count),
             "vertex_count" => i(self.vertex_count),
+            // `parse_properties` validates every requested name against ALL,
+            // so this arm is only reachable if the two lists drift apart.
             _ => FieldValue::Null,
         }
     }
@@ -300,7 +302,6 @@ fn collect(geom: &Geometry, out: &mut Vec<[f64; 3]>) {
                 collect(g, out);
             }
         }
-        _ => {}
     }
 }
 
@@ -330,23 +331,18 @@ fn parse_properties(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
     };
     let mut out = Vec::new();
     for raw in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        let name = ALL
-            .iter()
-            .find(|a| **a == raw)
-            .ok_or_else(|| {
-                ToolError::Validation(format!(
-                    "unknown property '{raw}'; expected one of {}",
-                    ALL.join("|")
-                ))
-            })?;
+        let name = ALL.iter().find(|a| **a == raw).ok_or_else(|| {
+            ToolError::Validation(format!(
+                "unknown property '{raw}'; expected one of {}",
+                ALL.join("|")
+            ))
+        })?;
         if !out.iter().any(|o: &String| o == name) {
             out.push(name.to_string());
         }
     }
     if out.is_empty() {
-        return Err(ToolError::Validation(
-            "'properties' is empty".to_string(),
-        ));
+        return Err(ToolError::Validation("'properties' is empty".to_string()));
     }
     Ok(out)
 }
@@ -399,10 +395,7 @@ mod tests {
     fn a_3d_line_reports_its_true_slant_length_not_its_plan_length() {
         // A 3-4-5 triangle in the vertical plane: plan length 3, rise 4,
         // true 3D length 5. Reporting 3 would be the classic mistake.
-        let line = Geometry::LineString(vec![
-            Coord::xyz(0.0, 0.0, 0.0),
-            Coord::xyz(3.0, 0.0, 4.0),
-        ]);
+        let line = Geometry::LineString(vec![Coord::xyz(0.0, 0.0, 0.0), Coord::xyz(3.0, 0.0, 4.0)]);
         let out = run(json!({"input": layer_of(GeometryType::LineString, vec![line])}));
         assert!((num(&out, 0, "LENGTH_3D") - 5.0).abs() < 1e-9);
     }
@@ -426,7 +419,9 @@ mod tests {
     fn noise_filtering_discards_a_spike_vertex() {
         // Nine vertices at z = 1..9 plus one spike at 999. Without trimming
         // MAX_Z is the spike; with it, the real surface height survives.
-        let mut cs: Vec<Coord> = (1..=9).map(|i| Coord::xyz(i as f64, 0.0, i as f64)).collect();
+        let mut cs: Vec<Coord> = (1..=9)
+            .map(|i| Coord::xyz(i as f64, 0.0, i as f64))
+            .collect();
         cs.push(Coord::xyz(10.0, 0.0, 999.0));
         let path = layer_of(GeometryType::LineString, vec![Geometry::LineString(cs)]);
 
@@ -484,7 +479,10 @@ mod tests {
 
     #[test]
     fn rejects_bad_parameters() {
-        let path = layer_of(GeometryType::MultiPolygon, vec![box_mesh([0.0; 3], [1.0, 1.0, 1.0])]);
+        let path = layer_of(
+            GeometryType::MultiPolygon,
+            vec![box_mesh([0.0; 3], [1.0, 1.0, 1.0])],
+        );
         let bad = |v: Value| {
             let args: ToolArgs = serde_json::from_value(v).unwrap();
             AddZInformationTool.validate(&args).is_err()

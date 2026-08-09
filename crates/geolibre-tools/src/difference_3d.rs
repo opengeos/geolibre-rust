@@ -135,10 +135,8 @@ impl Tool for Difference3dTool {
             let volume_in = mesh_volume(&m.tris);
             // Only subtrahends whose boxes meet this minuend can remove
             // anything, and restricting the set also shrinks the inner test.
-            let cutters: Vec<&crate::inside_3d::Solid> = subtrahends
-                .iter()
-                .filter(|s| bbox_overlap(m, s))
-                .collect();
+            let cutters: Vec<&crate::inside_3d::Solid> =
+                subtrahends.iter().filter(|s| bbox_overlap(m, s)).collect();
 
             let removed = if cutters.is_empty() {
                 0.0
@@ -361,6 +359,8 @@ mod tests {
         };
         assert!(bad(json!({"input": path})));
         assert!(bad(json!({"subtract": path})));
-        assert!(bad(json!({"input": path, "subtract": path, "resolution": 0})));
+        assert!(bad(
+            json!({"input": path, "subtract": path, "resolution": 0})
+        ));
     }
 }

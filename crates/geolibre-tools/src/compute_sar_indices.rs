@@ -162,10 +162,7 @@ impl Tool for ComputeSarIndicesTool {
         let mut outputs = BTreeMap::new();
         outputs.insert("output".to_string(), json!(out_path));
         outputs.insert("index".to_string(), json!(index.label()));
-        outputs.insert(
-            "polarization_bands".to_string(),
-            json!(describe_map(&map)),
-        );
+        outputs.insert("polarization_bands".to_string(), json!(describe_map(&map)));
         outputs.insert("rows".to_string(), json!(rows));
         outputs.insert("cols".to_string(), json!(cols));
         Ok(ToolRunResult { outputs })
@@ -461,7 +458,10 @@ mod tests {
         let args: ToolArgs =
             serde_json::from_value(json!({"input": cell(&[0.3, 0.1]), "index": "rfdi"})).unwrap();
         let err = ComputeSarIndicesTool.run(&args, &ctx()).unwrap_err();
-        assert!(format!("{err:?}").contains("hh"), "unhelpful error: {err:?}");
+        assert!(
+            format!("{err:?}").contains("hh"),
+            "unhelpful error: {err:?}"
+        );
     }
 
     #[test]

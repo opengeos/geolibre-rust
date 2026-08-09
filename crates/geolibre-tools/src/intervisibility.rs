@@ -187,7 +187,7 @@ impl Tool for IntervisibilityTool {
                         if !(1e-9..=1.0 - 1e-9).contains(&t) {
                             continue;
                         }
-                        if best.map_or(true, |(bt, _, _)| t < bt) {
+                        if best.is_none_or(|(bt, _, _)| t < bt) {
                             best = Some((t, solid.fid, *li));
                         }
                     }
@@ -207,9 +207,7 @@ impl Tool for IntervisibilityTool {
             let mut attrs: Vec<(&str, FieldValue)> = names
                 .iter()
                 .enumerate()
-                .filter_map(|(k, n)| {
-                    feature.attributes.get(k).map(|v| (n.as_str(), v.clone()))
-                })
+                .filter_map(|(k, n)| feature.attributes.get(k).map(|v| (n.as_str(), v.clone())))
                 .collect();
             attrs.push((visible_field.as_str(), FieldValue::Boolean(visible)));
             attrs.push((

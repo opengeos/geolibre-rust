@@ -198,6 +198,8 @@ mod transform_features;
 mod transform_fields;
 mod transform_route_events;
 mod trim_line;
+mod difference_3d;
+mod intersect_3d;
 mod is_closed_3d;
 mod mesh3d;
 mod multipatch_footprint;
@@ -347,6 +349,8 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(minimum_bounding_volume::MinimumBoundingVolumeTool),
         Box::new(voxel_isosurface::VoxelIsosurfaceTool),
         Box::new(inside_3d::Inside3dTool),
+        Box::new(difference_3d::Difference3dTool),
+        Box::new(intersect_3d::Intersect3dTool),
         Box::new(is_closed_3d::IsClosed3dTool),
         Box::new(multipatch_footprint::MultipatchFootprintTool),
         Box::new(union_3d::Union3dTool),
@@ -771,6 +775,20 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", vector_out()),
             ("group_field", ToolParamSchema::string()),
             ("simplify_tolerance", float()),
+        ]),
+        "intersect_3d" => schemas(&[
+            ("input", vector_in()),
+            ("input2", vector_in()),
+            ("output", table_out()),
+            ("mode", ToolParamSchema::enum_values(&["table", "solid"])),
+            ("resolution", int()),
+        ]),
+        "difference_3d" => schemas(&[
+            ("input", vector_in()),
+            ("subtract", vector_in()),
+            ("output", table_out()),
+            ("resolution", int()),
+            ("keep_geometry", ToolParamSchema::bool()),
         ]),
         "is_closed_3d" => schemas(&[
             ("input", vector_in()),

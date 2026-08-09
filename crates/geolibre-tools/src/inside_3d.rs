@@ -621,53 +621,11 @@ fn required_str<'a>(args: &'a ToolArgs, key: &str) -> Result<&'a str, ToolError>
         .ok_or_else(|| ToolError::Validation(format!("missing required parameter '{key}'")))
 }
 
-/// Axis-aligned box as a closed triangle mesh, shared by this module's tests
-/// and `union_3d`'s.
+// `box_mesh` — the axis-aligned closed test box — now lives in `mesh3d`, where
+// the round-17 3D tools can use it outside `cfg(test)` too (`intersect_3d`
+// emits one as an intersection's bounding solid).
 #[cfg(test)]
-pub(crate) fn box_mesh(min: [f64; 3], max: [f64; 3]) -> Geometry {
-    let (x0, y0, z0) = (min[0], min[1], min[2]);
-    let (x1, y1, z1) = (max[0], max[1], max[2]);
-    let v = [
-        [x0, y0, z0],
-        [x1, y0, z0],
-        [x1, y1, z0],
-        [x0, y1, z0],
-        [x0, y0, z1],
-        [x1, y0, z1],
-        [x1, y1, z1],
-        [x0, y1, z1],
-    ];
-    // Outward-facing triangles for all six faces.
-    let faces: [[usize; 3]; 12] = [
-        [0, 2, 1],
-        [0, 3, 2], // bottom
-        [4, 5, 6],
-        [4, 6, 7], // top
-        [0, 1, 5],
-        [0, 5, 4], // front
-        [1, 2, 6],
-        [1, 6, 5], // right
-        [2, 3, 7],
-        [2, 7, 6], // back
-        [3, 0, 4],
-        [3, 4, 7], // left
-    ];
-    Geometry::MultiPolygon(
-        faces
-            .iter()
-            .map(|f| {
-                (
-                    wbvector::Ring::new(
-                        f.iter()
-                            .map(|i| Coord::xyz(v[*i][0], v[*i][1], v[*i][2]))
-                            .collect::<Vec<_>>(),
-                    ),
-                    Vec::new(),
-                )
-            })
-            .collect(),
-    )
-}
+pub(crate) use crate::mesh3d::box_mesh;
 
 #[cfg(test)]
 mod tests {

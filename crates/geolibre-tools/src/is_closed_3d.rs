@@ -214,7 +214,7 @@ mod tests {
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbvector::{memory_store, Geometry, GeometryType};
 
-    use crate::inside_3d::box_mesh;
+    use crate::mesh3d::box_mesh;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

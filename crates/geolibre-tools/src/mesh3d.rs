@@ -404,11 +404,59 @@ pub(crate) fn segment_triangle(a: [f64; 3], b: [f64; 3], tri: &Tri) -> Option<f6
     (-EPS..=1.0 + EPS).contains(&t).then_some(t)
 }
 
+/// Axis-aligned box as a closed, outward-wound triangle mesh.
+///
+/// Originally `inside_3d`'s test helper; promoted here because `intersect_3d`
+/// emits one as an intersection's bounding solid at run time, and every 3D
+/// test in the crate builds its fixtures from it.
+pub(crate) fn box_mesh(min: [f64; 3], max: [f64; 3]) -> Geometry {
+    let (x0, y0, z0) = (min[0], min[1], min[2]);
+    let (x1, y1, z1) = (max[0], max[1], max[2]);
+    let v = [
+        [x0, y0, z0],
+        [x1, y0, z0],
+        [x1, y1, z0],
+        [x0, y1, z0],
+        [x0, y0, z1],
+        [x1, y0, z1],
+        [x1, y1, z1],
+        [x0, y1, z1],
+    ];
+    // Outward-facing triangles for all six faces.
+    let faces: [[usize; 3]; 12] = [
+        [0, 2, 1],
+        [0, 3, 2], // bottom
+        [4, 5, 6],
+        [4, 6, 7], // top
+        [0, 1, 5],
+        [0, 5, 4], // front
+        [1, 2, 6],
+        [1, 6, 5], // right
+        [2, 3, 7],
+        [2, 7, 6], // back
+        [3, 0, 4],
+        [3, 4, 7], // left
+    ];
+    Geometry::MultiPolygon(
+        faces
+            .iter()
+            .map(|f| {
+                (
+                    Ring::new(
+                        f.iter()
+                            .map(|i| Coord::xyz(v[*i][0], v[*i][1], v[*i][2]))
+                            .collect::<Vec<_>>(),
+                    ),
+                    Vec::new(),
+                )
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inside_3d::box_mesh;
-
     fn box_tris(min: [f64; 3], max: [f64; 3]) -> Vec<Tri> {
         crate::inside_3d::collect_triangles(&box_mesh(min, max))
     }

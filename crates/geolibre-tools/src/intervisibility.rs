@@ -144,6 +144,16 @@ impl Tool for IntervisibilityTool {
             lines.iter().count()
         ));
 
+        // The generated names are not in the input schema, so the collision
+        // check below cannot see a clash between them and a user-chosen
+        // visible_field. add_field would silently drop the duplicate.
+        const RESERVED: [&str; 3] = ["BLOCKED_BY", "BLOCKED_LAYER", "BLOCK_FRACTION"];
+        if RESERVED.contains(&visible_field.as_str()) {
+            return Err(ToolError::Validation(format!(
+                "'visible_field' cannot be {}; this tool emits that column itself",
+                visible_field
+            )));
+        }
         reject_field_collisions(
             &lines,
             &[
@@ -451,6 +461,24 @@ mod tests {
         }));
         assert!(out.schema.field_index("CAN_SEE").is_some());
         assert_eq!(val(&out, 0, "CAN_SEE"), FieldValue::Boolean(true));
+    }
+
+    #[test]
+    fn a_reserved_visible_field_name_is_rejected() {
+        // These are emitted by the tool itself, so add_field would silently
+        // drop the duplicate and the attribute writes would collide.
+        for reserved in ["BLOCKED_BY", "BLOCKED_LAYER", "BLOCK_FRACTION"] {
+            let args: ToolArgs = serde_json::from_value(json!({
+                "input": sightlines(vec![([0.0, 0.0, 5.0], [10.0, 0.0, 5.0])]),
+                "obstructions": solids(vec![wall()]),
+                "visible_field": reserved,
+            }))
+            .unwrap();
+            assert!(
+                IntervisibilityTool.run(&args, &ctx()).is_err(),
+                "{reserved} was accepted"
+            );
+        }
     }
 
     #[test]

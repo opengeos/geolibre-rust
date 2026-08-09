@@ -159,7 +159,16 @@ impl Tool for UnwrapPhaseTool {
         // images, would be read as interleaved I and Q and the tool would
         // return atan2 of two unrelated phases rather than failing.
         let band_given = opt_usize(args, "band")?.is_some();
-        let complex_input = raster.bands >= 2 && !band_given;
+        let complex_input = raster.bands == 2 && !band_given;
+        if raster.bands > 2 && !band_given {
+            // Three or more bands is not an I/Q pair, and guessing bands 1 and
+            // 2 would return plausible but wrong phase.
+            return Err(ToolError::Validation(format!(
+                "'input' has {} bands; supply 'band' to select the phase band, or pass a \
+                 two-band I/Q raster",
+                raster.bands
+            )));
+        }
         if !complex_input && band as usize >= raster.bands {
             return Err(ToolError::Validation(format!(
                 "'band' {} is out of range; '{input}' has {} band(s)",
@@ -658,6 +667,17 @@ mod tests {
             let d = out.get(0, 0, b) - out.get(0, 0, a);
             assert!((d - 1.1).abs() < 1e-2, "gap {a}->{b} gave {d}");
         }
+    }
+
+    #[test]
+    fn a_three_band_input_without_a_band_is_rejected() {
+        // Three bands is not an I/Q pair; guessing bands 1 and 2 would return
+        // plausible but wrong phase.
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster(1, 1, vec![vec![0.1], vec![0.2], vec![0.3]]),
+        }))
+        .unwrap();
+        assert!(UnwrapPhaseTool.run(&args, &ctx()).is_err());
     }
 
     #[test]

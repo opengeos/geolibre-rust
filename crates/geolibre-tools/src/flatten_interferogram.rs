@@ -151,7 +151,16 @@ impl Tool for FlattenInterferogramTool {
         // wrong. An explicit band on exactly two bands is ambiguous, so it is
         // rejected rather than guessed.
         let band_given = crate::args_common::opt_usize(args, "band")?.is_some();
-        let complex_input = phase_raster.bands >= 2 && !band_given;
+        let complex_input = phase_raster.bands == 2 && !band_given;
+        if phase_raster.bands > 2 && !band_given {
+            // Three or more bands is not an I/Q pair, and guessing bands 1 and
+            // 2 would return plausible but wrong phase.
+            return Err(ToolError::Validation(format!(
+                "'input' has {} bands; supply 'band' to select the phase band, or pass a \
+                 two-band I/Q raster",
+                phase_raster.bands
+            )));
+        }
         let (rows, cols) = (phase_raster.rows, phase_raster.cols);
         if band_given && phase_raster.bands >= 2 {
             ctx.progress
@@ -531,6 +540,17 @@ mod tests {
             "band 2 was not read as real phase: {}",
             flat.get(0, 0, 0)
         );
+    }
+
+    #[test]
+    fn a_three_band_input_without_a_band_is_rejected() {
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": raster(1, 1, vec![vec![0.1], vec![0.2], vec![0.3]]),
+            "dem": raster(1, 1, vec![vec![10.0]]),
+            "perpendicular_baseline": BPERP,
+        }))
+        .unwrap();
+        assert!(FlattenInterferogramTool.run(&args, &ctx()).is_err());
     }
 
     #[test]

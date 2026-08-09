@@ -166,6 +166,11 @@ impl Tool for FenceDiagramTool {
         out.add_field(FieldDef::new("LEVEL_TOP", FieldType::Integer));
         out.add_field(FieldDef::new("LEVEL_BOTTOM", FieldType::Integer));
         out.add_field(FieldDef::new("PANEL_AREA", FieldType::Float));
+        // A MultiLineString trace yields one run set per part, and an interior
+        // data gap splits a part into several runs, so the (SRC_FID, LEVEL_TOP,
+        // LEVEL_BOTTOM) triple no longer identifies a single panel on its own.
+        out.add_field(FieldDef::new("PART", FieldType::Integer));
+        out.add_field(FieldDef::new("RUN", FieldType::Integer));
         out.add_field(FieldDef::new("STATIONS", FieldType::Integer));
         out.add_field(FieldDef::new("INVERTED", FieldType::Boolean));
 
@@ -174,7 +179,10 @@ impl Tool for FenceDiagramTool {
         let total = lines.iter().count().max(1);
 
         for (fid, feature) in lines.iter().enumerate() {
-            for coords in line_parts(feature.geometry.as_ref()) {
+            for (part_idx, coords) in line_parts(feature.geometry.as_ref())
+                .into_iter()
+                .enumerate()
+            {
                 let stations = densify(&coords, spacing);
                 if stations.len() < 2 {
                     continue;
@@ -232,7 +240,7 @@ impl Tool for FenceDiagramTool {
                         runs.push((lower, upper, inverted));
                     }
 
-                    for (lower, upper, inverted) in runs {
+                    for (run_idx, (lower, upper, inverted)) in runs.into_iter().enumerate() {
                         let tris = strip(&lower, &upper, false);
                         if tris.is_empty() {
                             continue;
@@ -250,6 +258,8 @@ impl Tool for FenceDiagramTool {
                                 ("SRC_FID", FieldValue::Integer(fid as i64)),
                                 ("LEVEL_TOP", FieldValue::Integer(pair as i64)),
                                 ("LEVEL_BOTTOM", FieldValue::Integer(pair as i64 + 1)),
+                                ("PART", FieldValue::Integer(part_idx as i64)),
+                                ("RUN", FieldValue::Integer(run_idx as i64)),
                                 ("PANEL_AREA", FieldValue::Float(area)),
                                 ("STATIONS", FieldValue::Integer(upper.len() as i64)),
                                 ("INVERTED", FieldValue::Boolean(inverted)),
@@ -496,6 +506,48 @@ mod tests {
             num(&out, 0, "PANEL_AREA")
         };
         assert!((mk(2.0) - mk(40.0)).abs() < 1.0);
+    }
+
+    #[test]
+    fn an_interior_surface_gap_truncates_the_panel_rather_than_bridging_it() {
+        // The lower surface has a no-data column in the middle. Skipping those
+        // stations would join both sides into one ribbon spanning ground the
+        // data does not cover; the panel must split into two runs instead.
+        let holed = surface(|_, col| if col == 5 { -9999.0 } else { 10.0 });
+        let (out, res) = run(json!({
+            "input": trace(vec![(5.0, 50.0), (95.0, 50.0)]),
+            "surfaces": format!("{},{}", flat(30.0), holed),
+            "sample_distance": 5.0,
+        }));
+        assert_eq!(res.outputs["panel_count"], json!(2), "gap was bridged");
+        // Each row is identifiable by its RUN index.
+        let runs: Vec<f64> = (0..2).map(|i| num(&out, i, "RUN")).collect();
+        assert_eq!(runs, vec![0.0, 1.0]);
+    }
+
+    #[test]
+    fn every_part_of_a_multilinestring_trace_is_sectioned() {
+        let mut l = Layer::new("trace");
+        l.geom_type = Some(GeometryType::MultiLineString);
+        l.add_feature(
+            Some(Geometry::MultiLineString(vec![
+                vec![Coord::xy(10.0, 20.0), Coord::xy(40.0, 20.0)],
+                vec![Coord::xy(10.0, 80.0), Coord::xy(40.0, 80.0)],
+            ])),
+            &[],
+        )
+        .unwrap();
+        let id = memory_store::put_vector(l);
+        let path = memory_store::make_vector_memory_path(&id);
+
+        let (out, res) = run(json!({
+            "input": path,
+            "surfaces": format!("{},{}", flat(30.0), flat(10.0)),
+            "sample_distance": 10.0,
+        }));
+        assert_eq!(res.outputs["panel_count"], json!(2), "second part dropped");
+        assert_eq!(num(&out, 0, "PART"), 0.0);
+        assert_eq!(num(&out, 1, "PART"), 1.0);
     }
 
     #[test]

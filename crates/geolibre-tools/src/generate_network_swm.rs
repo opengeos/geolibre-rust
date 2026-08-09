@@ -121,6 +121,7 @@ impl Tool for GenerateNetworkSwmTool {
         choice_or(args, "conceptualization", &["fixed", "inverse"], "fixed")?;
         opt_positive_f64(args, "distance_cutoff")?;
         opt_positive_f64(args, "search_tolerance")?;
+        opt_positive_f64(args, "snap_tolerance")?;
         let e = f64_or(args, "exponent", 1.0)?;
         if e <= 0.0 {
             return Err(ToolError::Validation("'exponent' must be > 0".to_string()));
@@ -144,7 +145,7 @@ impl Tool for GenerateNetworkSwmTool {
 
         let network = load_input_layer(network_path)?;
         let impedance_field = parse_optional_str(args, "impedance_field")?;
-        let graph = Graph::build(&network, impedance_field, snap)?;
+        let mut graph = Graph::build(&network, impedance_field, snap)?;
         if graph.nodes.is_empty() {
             return Err(ToolError::Execution(
                 "'network' holds no line geometry".to_string(),
@@ -173,7 +174,7 @@ impl Tool for GenerateNetworkSwmTool {
                 .geometry
                 .as_ref()
                 .and_then(point_xy)
-                .and_then(|(x, y)| graph.nearest_node(x, y, tolerance));
+                .and_then(|(x, y)| graph.snap_point(x, y, tolerance));
             if node.is_none() {
                 unsnapped += 1;
             }
@@ -286,9 +287,18 @@ impl Tool for GenerateNetworkSwmTool {
 }
 
 /// Undirected weighted graph built from a line layer.
+///
+/// Edges are kept alongside the adjacency so an input point can be snapped
+/// onto the interior of a segment (splitting it) rather than jumping to the
+/// nearest vertex — on a single 0..10 edge, points at x=2 and x=8 must be 6
+/// apart, not 10.
 struct Graph {
     nodes: Vec<(f64, f64)>,
+    /// `(a, b, cost)` per undirected edge, indices into `nodes`.
+    edges: Vec<(usize, usize, f64)>,
     adjacency: Vec<Vec<(usize, f64)>>,
+    /// Weld grid, reused when a split introduces a node.
+    snap: f64,
 }
 
 impl Graph {
@@ -302,8 +312,9 @@ impl Graph {
             None => None,
         };
 
+        let mut edges: Vec<(usize, usize, f64)> = Vec::new();
         let mut nodes: Vec<(f64, f64)> = Vec::new();
-        let mut index: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+        let mut index: BTreeMap<(i64, i64), Vec<usize>> = BTreeMap::new();
         let mut adjacency: Vec<Vec<(usize, f64)>> = Vec::new();
         // Weld vertices onto a `snap`-sized grid so two segments meeting at a
         // shared endpoint connect. Neighbouring buckets are probed too:
@@ -320,10 +331,15 @@ impl Graph {
             let ky = (y / cell).round() as i64;
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    if let Some(&existing) = index.get(&(kx + dx, ky + dy)) {
-                        let (nx, ny) = nodes[existing];
-                        if ((nx - x).powi(2) + (ny - y).powi(2)).sqrt() <= snap {
-                            return existing;
+                    // Every candidate in the bucket, not just the latest: two
+                    // vertices farther apart than `snap` can still quantise
+                    // together, and keeping only one would strand the other.
+                    if let Some(bucket) = index.get(&(kx + dx, ky + dy)) {
+                        for &existing in bucket {
+                            let (nx, ny) = nodes[existing];
+                            if ((nx - x).powi(2) + (ny - y).powi(2)).sqrt() <= snap {
+                                return existing;
+                            }
                         }
                     }
                 }
@@ -331,7 +347,7 @@ impl Graph {
             nodes.push((x, y));
             adjacency.push(Vec::new());
             let id = nodes.len() - 1;
-            index.insert((kx, ky), id);
+            index.entry((kx, ky)).or_default().push(id);
             id
         };
 
@@ -377,15 +393,79 @@ impl Graph {
                     let a = node_of(w[0].x, w[0].y, &mut nodes, &mut adjacency);
                     let b = node_of(w[1].x, w[1].y, &mut nodes, &mut adjacency);
                     if a != b {
-                        adjacency[a].push((b, cost));
-                        adjacency[b].push((a, cost));
+                        edges.push((a, b, cost));
                     }
                 }
             }
         }
-        Ok(Graph { nodes, adjacency })
+        let mut g = Graph {
+            nodes,
+            edges,
+            adjacency,
+            snap,
+        };
+        g.rebuild_adjacency();
+        Ok(g)
     }
 
+    /// Recomputes adjacency from the current edge list.
+    fn rebuild_adjacency(&mut self) {
+        self.adjacency = vec![Vec::new(); self.nodes.len()];
+        for &(a, b, cost) in &self.edges {
+            self.adjacency[a].push((b, cost));
+            self.adjacency[b].push((a, cost));
+        }
+    }
+
+    /// Snaps a point onto the nearest segment within `tolerance`, splitting
+    /// that segment at the projection when the point falls in its interior.
+    ///
+    /// Snapping to the nearest *vertex* instead would make two points on the
+    /// same long edge measure the full edge length apart rather than their
+    /// true along-edge separation, which distorts both cutoff inclusion and
+    /// inverse-distance weights.
+    fn snap_point(&mut self, x: f64, y: f64, tolerance: f64) -> Option<usize> {
+        let mut best: Option<(usize, f64, f64)> = None; // (edge, t, distance)
+        for (ei, &(a, b, _)) in self.edges.iter().enumerate() {
+            let (ax, ay) = self.nodes[a];
+            let (bx, by) = self.nodes[b];
+            let (dx, dy) = (bx - ax, by - ay);
+            let len2 = dx * dx + dy * dy;
+            if len2 <= 0.0 {
+                continue;
+            }
+            let t = (((x - ax) * dx + (y - ay) * dy) / len2).clamp(0.0, 1.0);
+            let (px, py) = (ax + t * dx, ay + t * dy);
+            let d = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+            if d <= tolerance && best.is_none_or(|(_, _, bd)| d < bd) {
+                best = Some((ei, t, d));
+            }
+        }
+        let (ei, t, _) = best?;
+        let (a, b, cost) = self.edges[ei];
+        let (ax, ay) = self.nodes[a];
+        let (bx, by) = self.nodes[b];
+        let (px, py) = (ax + t * (bx - ax), ay + t * (by - ay));
+
+        // Land on an existing endpoint when the projection is within the weld
+        // tolerance of one, so a point at a junction does not split anything.
+        if ((ax - px).powi(2) + (ay - py).powi(2)).sqrt() <= self.snap {
+            return Some(a);
+        }
+        if ((bx - px).powi(2) + (by - py).powi(2)).sqrt() <= self.snap {
+            return Some(b);
+        }
+
+        // Split: the edge's cost is apportioned along its length.
+        self.nodes.push((px, py));
+        let mid = self.nodes.len() - 1;
+        self.edges[ei] = (a, mid, cost * t);
+        self.edges.push((mid, b, cost * (1.0 - t)));
+        self.rebuild_adjacency();
+        Some(mid)
+    }
+
+    #[cfg(test)]
     fn nearest_node(&self, x: f64, y: f64, tolerance: f64) -> Option<usize> {
         let mut best: Option<(usize, f64)> = None;
         for (i, (nx, ny)) in self.nodes.iter().enumerate() {
@@ -777,6 +857,35 @@ mod tests {
         }))
         .unwrap();
         assert!(GenerateNetworkSwmTool.run(&args, &ctx()).is_err());
+    }
+
+    #[test]
+    fn points_snap_onto_a_segment_not_to_its_nearest_vertex() {
+        // On a single 0..10 edge, points at x=2 and x=8 are 6 apart along the
+        // edge. Snapping each to the nearest VERTEX would report 10 and change
+        // both cutoff inclusion and inverse-distance weights.
+        let (out, _) = run(json!({
+            "input": points(vec![(2.0, 0.0), (8.0, 0.0)]),
+            "network": network(vec![vec![(0.0, 0.0), (10.0, 0.0)]]),
+            "conceptualization": "inverse",
+        }));
+        let w = rows(&out)[0].2;
+        assert!(
+            (w - 1.0 / 6.0).abs() < 1e-9,
+            "expected a 6-unit separation, got weight {w} (=1/{})",
+            1.0 / w
+        );
+    }
+
+    #[test]
+    fn a_point_at_a_junction_does_not_split_the_edge() {
+        let (out, _) = run(json!({
+            "input": points(vec![(0.0, 0.0), (10.0, 0.0)]),
+            "network": network(vec![vec![(0.0, 0.0), (10.0, 0.0)]]),
+            "conceptualization": "inverse",
+        }));
+        let w = rows(&out)[0].2;
+        assert!((w - 1.0 / 10.0).abs() < 1e-9, "got {w}");
     }
 
     #[test]

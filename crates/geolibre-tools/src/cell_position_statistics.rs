@@ -93,10 +93,18 @@ impl Tool for CellPositionStatisticsTool {
         // Presence, not string-ness: `run` accepts a bare number through
         // `opt_f64`, and the parameter is documented as "a raster path, or a
         // constant number". Testing `as_str` alone rejected `{"selector": 3}`.
+        // Only a number or a non-empty string is parseable by `parse_selector`;
+        // accepting booleans, arrays or objects here would let validate() pass
+        // and run() fail.
         let selector_given = match args.get("selector") {
             None | Some(Value::Null) => false,
             Some(Value::String(s)) => !s.trim().is_empty(),
-            Some(_) => true,
+            Some(Value::Number(_)) => true,
+            Some(other) => {
+                return Err(ToolError::Validation(format!(
+                    "'selector' must be a raster path or a number, got {other}"
+                )))
+            }
         };
         if stat.needs_selector() && !selector_given {
             return Err(ToolError::Validation(format!(

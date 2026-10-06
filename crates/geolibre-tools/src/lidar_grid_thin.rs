@@ -36,9 +36,11 @@ use wblidar::{memory_store, PointCloud, PointReader, PointRecord};
 use crate::args_common::{choice_or, opt_positive_f64, usize_or};
 use crate::lidar_common::write_or_store_cloud;
 
-/// Cap on surviving points on 32-bit targets (wasm32). Each survivor costs ~360 B
-/// in the cell table, and a single allocation above 2 GB aborts the tab, so fail
-/// with an actionable error well before that. Unlimited elsewhere.
+/// Cap on surviving points on 32-bit targets (wasm32). Measured natively, each
+/// survivor costs ~0.7 KB at peak (its 344 B cell-table entry plus the 336 B copy
+/// in the output cloud; 1.4 GB for 2M points), and a wasm32 tab holds 4 GB with at
+/// most 2 GB per allocation, so fail with an actionable error well before that.
+/// Unlimited elsewhere.
 #[cfg(target_pointer_width = "32")]
 const MAX_POINTS: usize = 2_000_000;
 #[cfg(not(target_pointer_width = "32"))]
@@ -104,7 +106,9 @@ impl Tool for LidarGridThinTool {
         let crs = if memory_store::lidar_is_memory_path(input) {
             let cloud = crate::lidar_common::load_input_cloud(input)?;
             for p in &cloud.points {
-                grid.offer(p);
+                if !grid.offer(p) {
+                    break;
+                }
             }
             cloud.crs
         } else {
@@ -190,9 +194,16 @@ impl GridThinner {
         }
     }
 
-    fn offer(&mut self, p: &PointRecord) {
+    /// Considers one point. Returns `false` once the memory cap is hit, so the
+    /// caller can stop reading instead of decoding the rest of the file.
+    fn offer(&mut self, p: &PointRecord) -> bool {
         if p.flags & FLAG_WITHHELD != 0 || !(p.x.is_finite() && p.y.is_finite()) {
-            return;
+            return true;
+        }
+        // A NaN z gives a NaN rank, which never compares less than anything, so
+        // it could pin a cell forever; z only matters to the z-based methods.
+        if self.method != Method::NearestCenter && !p.z.is_finite() {
+            return true;
         }
         self.seen += 1;
         let key = (
@@ -209,14 +220,20 @@ impl GridThinner {
                 if slot.is_empty() {
                     self.cells.remove(&key);
                 }
-                return;
+                return false;
             }
+            // A fresh `Vec` of 336-byte records would otherwise jump to capacity 4
+            // (~1.4 KB per cell even for one point), so grow one slot at a time.
+            slot.reserve_exact(1);
             slot.insert(at, (rank, *p));
             self.kept += 1;
         } else if at < self.per_cell {
-            slot.insert(at, (rank, *p));
+            // Drop the worst first so the insert reuses its slot: inserting into a
+            // full `Vec` would grow it (to capacity 4, ~1.4 KB per cell).
             slot.pop();
+            slot.insert(at, (rank, *p));
         }
+        true
     }
 
     /// Survivors in a stable order (cell row-major, best point first within a
@@ -225,16 +242,21 @@ impl GridThinner {
         let mut cells: Vec<((i64, i64), Vec<(f64, PointRecord)>)> =
             self.cells.into_iter().collect();
         cells.sort_unstable_by_key(|(k, _)| (k.1, k.0));
-        cells
-            .into_iter()
-            .flat_map(|(_, pts)| pts.into_iter().map(|(_, p)| p))
-            .collect()
+        // Exact capacity avoids a doubling reallocation (a transient 1.5-2x peak),
+        // and each cell's Vec is freed as it is drained, so total memory stays
+        // near one copy of the survivors.
+        let mut out = Vec::with_capacity(self.kept);
+        for (_, pts) in cells {
+            out.extend(pts.into_iter().map(|(_, p)| p));
+        }
+        out
     }
 }
 
 /// Streams every point of a LAS/LAZ/COPC file to `visit` without materializing
 /// the cloud, and returns the file's CRS. COPC is decoded one node at a time.
-fn stream_points<F: FnMut(&PointRecord)>(
+/// `visit` returns `false` to stop early (e.g. once the memory cap is hit).
+fn stream_points<F: FnMut(&PointRecord) -> bool>(
     path: &str,
     mut visit: F,
 ) -> Result<Option<wblidar::Crs>, ToolError> {
@@ -256,24 +278,30 @@ fn stream_points<F: FnMut(&PointRecord)>(
             let mut reader = LasReader::new(BufReader::new(open()?)).map_err(read_err)?;
             let mut p = PointRecord::default();
             while reader.read_point(&mut p).map_err(read_err)? {
-                visit(&p);
+                if !visit(&p) {
+                    break;
+                }
             }
         }
         LidarFormat::Laz => {
             let mut reader = LazReader::new(BufReader::new(open()?)).map_err(read_err)?;
             let mut p = PointRecord::default();
             while reader.read_point(&mut p).map_err(read_err)? {
-                visit(&p);
+                if !visit(&p) {
+                    break;
+                }
             }
         }
         LidarFormat::Copc => {
             let mut reader = CopcReader::new(BufReader::new(open()?)).map_err(read_err)?;
             let mut node: Vec<PointRecord> = Vec::new();
-            for key in reader.data_node_keys() {
+            'nodes: for key in reader.data_node_keys() {
                 node.clear();
                 reader.read_node(key, &mut node).map_err(read_err)?;
                 for p in &node {
-                    visit(p);
+                    if !visit(p) {
+                        break 'nodes;
+                    }
                 }
             }
         }
@@ -515,6 +543,55 @@ mod tests {
         }
         assert!(g.overflowed);
         assert_eq!(g.kept, 2);
+    }
+
+    /// `offer` reports `false` as soon as the cap is hit so streaming can stop.
+    #[test]
+    fn offer_signals_stop_at_cap() {
+        let mut g = GridThinner::new(1.0, Method::NearestCenter, 1, 2);
+        assert!(g.offer(&pt(0.5, 0.5, 0.0)));
+        assert!(g.offer(&pt(1.5, 0.5, 0.0)));
+        assert!(!g.offer(&pt(2.5, 0.5, 0.0)));
+    }
+
+    /// A NaN z must neither pin a cell nor displace a valid point.
+    #[test]
+    fn nan_z_is_skipped_for_z_methods() {
+        let input = cloud_path(&[pt(1.0, 1.0, f64::NAN), pt(2.0, 2.0, 4.0), pt(3.0, 3.0, 2.0)]);
+        let (out, pts) = run(json!({ "input": input, "cell_size": 10.0, "method": "lowest" }));
+        assert_eq!(out.outputs["points_in"], json!(2));
+        assert_eq!(pts[0].z, 2.0);
+    }
+
+    /// The CRS survives a LAZ and a COPC round trip, not just uncompressed LAS.
+    #[test]
+    fn crs_survives_compressed_inputs() {
+        let dir = std::env::temp_dir().join(format!("lgt_crs_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["in.laz", "in.copc.laz"] {
+            let src = dir.join(name);
+            let dst = dir.join(format!("out_{name}.las"));
+            let mut cloud = PointCloud::default();
+            cloud.crs = Some(wblidar::Crs {
+                epsg: Some(32610),
+                wkt: None,
+            });
+            for i in 0..50 {
+                cloud
+                    .points
+                    .push(pt(500000.0 + i as f64, 4000000.0, i as f64));
+            }
+            cloud.write(&src).unwrap();
+            let args: ToolArgs = serde_json::from_value(json!({
+                "input": src.to_str().unwrap(), "output": dst.to_str().unwrap(), "cell_size": 10.0
+            }))
+            .unwrap();
+            let out = LidarGridThinTool.run(&args, &ctx()).unwrap();
+            assert_eq!(out.outputs["points_in"], json!(50), "{name}");
+            let back = PointCloud::read(&dst).unwrap();
+            assert_eq!(back.crs.and_then(|c| c.epsg), Some(32610), "{name}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

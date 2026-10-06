@@ -330,6 +330,7 @@ mod interpolate_with_barriers;
 mod intersecting_layers_masks;
 mod kernel_density_ratio;
 mod las_height_metrics;
+mod lidar_convert;
 mod lidar_grid_thin;
 mod line_density;
 mod line_statistics;
@@ -675,6 +676,7 @@ pub fn geolibre_tools() -> Vec<Box<dyn Tool>> {
         Box::new(find_argument_statistics::FindArgumentStatisticsTool),
         Box::new(las_height_metrics::LasHeightMetricsTool),
         Box::new(lidar_grid_thin::LidarGridThinTool),
+        Box::new(lidar_convert::LidarConvertTool),
         Box::new(apply_radiometric_calibration::ApplyRadiometricCalibrationTool),
         Box::new(cell_position_statistics::CellPositionStatisticsTool),
         Box::new(cell_statistics::CellStatisticsTool),
@@ -3706,6 +3708,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("dates", ToolParamSchema::string()),
             ("min_valid", int()),
         ]),
+        "lidar_convert" => schemas(&[("input", lidar_in()), ("output", lidar_out())]),
         "lidar_grid_thin" => schemas(&[
             ("input", lidar_in()),
             ("output", lidar_out()),

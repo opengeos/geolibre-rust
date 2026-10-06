@@ -46,9 +46,19 @@ const MAX_POINTS: usize = 2_000_000;
 #[cfg(not(target_pointer_width = "32"))]
 const MAX_POINTS: usize = usize::MAX;
 
+/// Largest accepted `points_per_cell`. Each offer is O(points_per_cell) (a sorted
+/// insert of 344-byte entries), so an unbounded value would make dense cells
+/// quadratic; no thinning workflow needs more than this per cell.
+const MAX_POINTS_PER_CELL: usize = 1000;
+
+/// Largest cell index magnitude accepted (well inside `i64`, exactly representable in `f64`).
+const MAX_CELL_INDEX: f64 = 4.0e15;
+
 const METHODS: [&str; 3] = ["nearest_center", "lowest", "highest"];
 
-/// LAS "withheld" bit in the packed `flags` byte (synthetic=1, key-point=2, withheld=4).
+/// LAS "withheld" bit in `PointRecord::flags`. wblidar's LAS reader packs the top
+/// three bits of the classification byte into `flags` (synthetic=1, key-point=2,
+/// withheld=4), the same bit `wbtools_oss` tests in its own `is_withheld`.
 const FLAG_WITHHELD: u8 = 0x04;
 
 pub struct LidarGridThinTool;
@@ -84,7 +94,7 @@ impl Tool for LidarGridThinTool {
                 },
                 ToolParamSpec {
                     name: "points_per_cell",
-                    description: "Most points to keep in each cell, best first by method (default 1). Cells with fewer points keep them all.",
+                    description: "Most points to keep in each cell, best first by method (default 1, at most 1000). Cells with fewer points keep them all.",
                     required: false,
                 },
             ],
@@ -104,22 +114,38 @@ impl Tool for LidarGridThinTool {
 
         let mut grid = GridThinner::new(prm.cell_size, prm.method, prm.points_per_cell, MAX_POINTS);
         let crs = if memory_store::lidar_is_memory_path(input) {
-            let cloud = crate::lidar_common::load_input_cloud(input)?;
+            // Borrow the stored cloud; `load_input_cloud` would deep-copy it.
+            let id = memory_store::lidar_path_to_id(input).ok_or_else(|| {
+                ToolError::Validation("malformed in-memory lidar path".to_string())
+            })?;
+            let cloud = memory_store::get_lidar_arc_by_id(id).ok_or_else(|| {
+                ToolError::Validation(format!("unknown in-memory lidar id '{id}'"))
+            })?;
             for p in &cloud.points {
                 if !grid.offer(p) {
                     break;
                 }
             }
-            cloud.crs
+            cloud.crs.clone()
         } else {
             stream_points(input, |p| grid.offer(p))?
         };
 
+        if grid.bad_cell {
+            return Err(ToolError::Execution(format!(
+                "cell_size {} is too small for these coordinates (cell index out of range); increase cell_size",
+                prm.cell_size
+            )));
+        }
         if grid.overflowed {
             return Err(ToolError::Execution(format!(
                 "more than {} points would be kept (cell_size {}, points_per_cell {}), which exceeds the memory of this build; increase cell_size or lower points_per_cell",
                 grid.max_points, prm.cell_size, prm.points_per_cell
             )));
+        }
+        if crs.is_none() {
+            ctx.progress
+                .info("input has no readable CRS metadata; the output will have none");
         }
         let points_in = grid.seen;
         if grid.kept == 0 {
@@ -165,6 +191,8 @@ struct GridThinner {
     max_points: usize,
     /// Set when `max_points` was exceeded; the result is then discarded.
     overflowed: bool,
+    /// Set when a coordinate divided by `cell` does not fit a cell index.
+    bad_cell: bool,
 }
 
 impl GridThinner {
@@ -178,6 +206,7 @@ impl GridThinner {
             kept: 0,
             max_points,
             overflowed: false,
+            bad_cell: false,
         }
     }
 
@@ -206,10 +235,13 @@ impl GridThinner {
             return true;
         }
         self.seen += 1;
-        let key = (
-            (p.x / self.cell).floor() as i64,
-            (p.y / self.cell).floor() as i64,
-        );
+        let (fx, fy) = ((p.x / self.cell).floor(), (p.y / self.cell).floor());
+        // `as i64` saturates, which would silently merge distant cells into one.
+        if fx.abs() >= MAX_CELL_INDEX || fy.abs() >= MAX_CELL_INDEX {
+            self.bad_cell = true;
+            return false;
+        }
+        let key = (fx as i64, fy as i64);
         let rank = self.rank(p, key.0, key.1);
         let slot = self.cells.entry(key).or_default();
         // Ties go after existing entries, so the first point read wins.
@@ -350,10 +382,10 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         _ => Method::NearestCenter,
     };
     let points_per_cell = usize_or(args, "points_per_cell", 1)?;
-    if points_per_cell == 0 {
-        return Err(ToolError::Validation(
-            "'points_per_cell' must be at least 1".to_string(),
-        ));
+    if points_per_cell == 0 || points_per_cell > MAX_POINTS_PER_CELL {
+        return Err(ToolError::Validation(format!(
+            "'points_per_cell' must be between 1 and {MAX_POINTS_PER_CELL}"
+        )));
     }
     Ok(Params {
         cell_size,
@@ -594,6 +626,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Withheld points are recognized through the real LAS decoder, not just the
+    /// constant: write flags=4 to a file and let the streaming reader decode it.
+    #[test]
+    fn withheld_flag_matches_las_decoding() {
+        let dir = std::env::temp_dir().join(format!("lgt_wh_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("in.las");
+        let mut w = pt(1.0, 1.0, 100.0);
+        w.flags = 0x04;
+        let mut cloud = PointCloud::default();
+        cloud.points = vec![w, pt(2.0, 2.0, 4.0), pt(3.0, 3.0, 5.0)];
+        cloud.write(&src).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({
+            "input": src.to_str().unwrap(), "cell_size": 10.0, "method": "highest"
+        }))
+        .unwrap();
+        let out = LidarGridThinTool.run(&args, &ctx()).unwrap();
+        assert_eq!(out.outputs["points_in"], json!(2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A cell size far too small for the coordinates is an error, not silent merging.
+    #[test]
+    fn tiny_cell_size_is_rejected_not_saturated() {
+        let input = cloud_path(&[pt(500000.0, 4000000.0, 1.0), pt(500001.0, 4000001.0, 2.0)]);
+        let args: ToolArgs =
+            serde_json::from_value(json!({ "input": input, "cell_size": 1e-12 })).unwrap();
+        let err = LidarGridThinTool.run(&args, &ctx()).unwrap_err();
+        assert!(err.to_string().contains("too small"), "{err}");
+    }
+
     #[test]
     fn rejects_bad_params() {
         let bad = |v: serde_json::Value| {
@@ -605,6 +668,8 @@ mod tests {
         assert!(bad(json!({ "input": "a.laz", "cell_size": -2 })).is_err());
         assert!(bad(json!({ "input": "a.laz", "method": "bogus" })).is_err());
         assert!(bad(json!({ "input": "a.laz", "points_per_cell": 0 })).is_err());
+        assert!(bad(json!({ "input": "a.laz", "points_per_cell": 1001 })).is_err());
+        assert!(bad(json!({ "input": "a.laz", "points_per_cell": 1000 })).is_ok());
         assert!(bad(json!({ "input": "a.laz", "points_per_cell": 1.5 })).is_err());
         assert!(bad(json!({ "input": "a.laz", "points_per_cell": "3" })).is_ok());
         assert!(bad(json!({ "input": "a.laz" })).is_ok());

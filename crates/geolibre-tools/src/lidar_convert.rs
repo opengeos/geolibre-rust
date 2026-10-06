@@ -28,7 +28,7 @@ const MAX_POINTS: u64 = 5_000_000;
 #[cfg(not(target_pointer_width = "32"))]
 const MAX_POINTS: u64 = u64::MAX;
 
-const OUTPUT_EXTENSIONS: [&str; 4] = [".las", ".laz", ".copc.laz", ".copc.las"];
+const OUTPUT_EXTENSIONS: [&str; 3] = [".las", ".laz", ".copc.laz"];
 
 pub struct LidarConvertTool;
 
@@ -66,13 +66,16 @@ impl Tool for LidarConvertTool {
         let output = output_path(args)?;
 
         if !memory_store::lidar_is_memory_path(input) {
-            // Header-only; refuses a cloud too large to decode before trying.
-            if let Ok(count) = wblidar::frontend::read_point_count(input) {
-                if count > MAX_POINTS {
-                    return Err(ToolError::Execution(format!(
-                        "{count} points is more than this build can convert in memory (at most {MAX_POINTS}); thin the cloud first, e.g. with lidar_grid_thin"
-                    )));
-                }
+            // Header-only; refuses a cloud too large to decode before trying. A
+            // header that cannot be read would fail the full read anyway, so
+            // report it here rather than risk decoding an unknown size.
+            let count = wblidar::frontend::read_point_count(input).map_err(|e| {
+                ToolError::Execution(format!("failed reading input lidar header: {e}"))
+            })?;
+            if count > MAX_POINTS {
+                return Err(ToolError::Execution(format!(
+                    "{count} points is more than this build can convert in memory (at most {MAX_POINTS}); thin the cloud first, e.g. with lidar_grid_thin"
+                )));
             }
         }
 
@@ -107,10 +110,12 @@ fn input_path(args: &ToolArgs) -> Result<&str, ToolError> {
 
 /// The output path, if given, after checking its extension names a format.
 fn output_path(args: &ToolArgs) -> Result<Option<&str>, ToolError> {
-    let output = crate::common::parse_optional_output(args, "output")?;
+    let output = crate::common::parse_optional_output(args, "output")?.map(str::trim);
     if let Some(path) = output {
         let lower = path.to_ascii_lowercase();
-        if !OUTPUT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext)) {
+        // wblidar reads `.copc.las` as COPC, which this tool does not promise.
+        if lower.ends_with(".copc.las") || !OUTPUT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+        {
             return Err(ToolError::Validation(
                 "'output' must end in .las, .laz or .copc.laz".to_string(),
             ));
@@ -185,8 +190,34 @@ mod tests {
 
     #[test]
     fn rejects_an_unknown_output_extension() {
+        for output in ["x.ply", "x.copc.las"] {
+            let args: ToolArgs =
+                serde_json::from_value(json!({ "input": cloud_path(3), "output": output }))
+                    .unwrap();
+            assert!(LidarConvertTool.validate(&args).is_err(), "{output}");
+        }
+    }
+
+    #[test]
+    fn trims_a_padded_output_path() {
         let args: ToolArgs =
-            serde_json::from_value(json!({ "input": cloud_path(3), "output": "x.ply" })).unwrap();
-        assert!(LidarConvertTool.validate(&args).is_err());
+            serde_json::from_value(json!({ "input": cloud_path(3), "output": " out.laz " }))
+                .unwrap();
+        assert_eq!(output_path(&args).unwrap(), Some("out.laz"));
+    }
+
+    #[test]
+    fn reports_an_unreadable_header_before_decoding() {
+        let dir = std::env::temp_dir().join(format!("lidar_convert_bad_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bad = dir.join("bad.las");
+        std::fs::write(&bad, b"not a lidar file").unwrap();
+        let args: ToolArgs = serde_json::from_value(
+            json!({ "input": bad.to_string_lossy(), "output": dir.join("o.laz").to_string_lossy() }),
+        )
+        .unwrap();
+        let err = LidarConvertTool.run(&args, &ctx()).unwrap_err();
+        assert!(format!("{err:?}").contains("header"), "{err:?}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

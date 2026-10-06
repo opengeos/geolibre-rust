@@ -33,16 +33,16 @@ use wblidar::las::LasReader;
 use wblidar::laz::LazReader;
 use wblidar::{memory_store, PointCloud, PointReader, PointRecord};
 
-use crate::args_common::{choice_or, opt_positive_f64};
+use crate::args_common::{choice_or, opt_positive_f64, usize_or};
 use crate::lidar_common::write_or_store_cloud;
 
 /// Cap on surviving points on 32-bit targets (wasm32). Each survivor costs ~360 B
 /// in the cell table, and a single allocation above 2 GB aborts the tab, so fail
 /// with an actionable error well before that. Unlimited elsewhere.
 #[cfg(target_pointer_width = "32")]
-const MAX_CELLS: usize = 2_000_000;
+const MAX_POINTS: usize = 2_000_000;
 #[cfg(not(target_pointer_width = "32"))]
-const MAX_CELLS: usize = usize::MAX;
+const MAX_POINTS: usize = usize::MAX;
 
 const METHODS: [&str; 3] = ["nearest_center", "lowest", "highest"];
 
@@ -56,7 +56,7 @@ impl Tool for LidarGridThinTool {
         ToolMetadata {
             id: "lidar_grid_thin",
             display_name: "LiDAR Grid Thin",
-            summary: "Thin a LiDAR point cloud to one point per grid cell by streaming it, so peak memory scales with the output, not the input. Handles LAS/LAZ/COPC tiles with tens of millions of points that the bundled lidar_thin cannot load in a 32-bit WebAssembly tab.",
+            summary: "Thin a LiDAR point cloud to at most `points_per_cell` points (default one) per grid cell by streaming it, so peak memory scales with the output, not the input. Handles LAS/LAZ/COPC tiles with tens of millions of points that the bundled lidar_thin cannot load in a 32-bit WebAssembly tab.",
             category: ToolCategory::Lidar,
             license_tier: LicenseTier::Open,
             params: vec![
@@ -72,12 +72,17 @@ impl Tool for LidarGridThinTool {
                 },
                 ToolParamSpec {
                     name: "cell_size",
-                    description: "Grid cell size in CRS units; one point is kept per cell. Default 1.0.",
+                    description: "Grid cell size in CRS units; at most points_per_cell points are kept per cell. Default 1.0.",
                     required: false,
                 },
                 ToolParamSpec {
                     name: "method",
-                    description: "Which point survives in each cell: nearest_center (default), lowest, or highest.",
+                    description: "Which points survive in each cell: nearest_center (default), lowest, or highest.",
+                    required: false,
+                },
+                ToolParamSpec {
+                    name: "points_per_cell",
+                    description: "Most points to keep in each cell, best first by method (default 1). Cells with fewer points keep them all.",
                     required: false,
                 },
             ],
@@ -95,7 +100,7 @@ impl Tool for LidarGridThinTool {
         let prm = parse_params(args)?;
         let output = crate::common::parse_optional_output(args, "output")?;
 
-        let mut grid = GridThinner::new(prm.cell_size, prm.method, MAX_CELLS);
+        let mut grid = GridThinner::new(prm.cell_size, prm.method, prm.points_per_cell, MAX_POINTS);
         let crs = if memory_store::lidar_is_memory_path(input) {
             let cloud = crate::lidar_common::load_input_cloud(input)?;
             for p in &cloud.points {
@@ -108,17 +113,17 @@ impl Tool for LidarGridThinTool {
 
         if grid.overflowed {
             return Err(ToolError::Execution(format!(
-                "more than {} cells would be kept at cell_size {}, which exceeds the memory of this build; increase cell_size",
-                grid.max_cells, prm.cell_size
+                "more than {} points would be kept (cell_size {}, points_per_cell {}), which exceeds the memory of this build; increase cell_size or lower points_per_cell",
+                grid.max_points, prm.cell_size, prm.points_per_cell
             )));
         }
         let points_in = grid.seen;
-        if grid.cells.is_empty() {
+        if grid.kept == 0 {
             return Err(ToolError::Execution(
                 "no points to thin (input is empty or all points are withheld)".to_string(),
             ));
         }
-        let points_out = grid.cells.len();
+        let points_out = grid.kept;
         ctx.progress.info(&format!(
             "kept {points_out} of {points_in} points ({:.1}%)",
             100.0 * points_out as f64 / points_in.max(1) as f64
@@ -138,28 +143,36 @@ impl Tool for LidarGridThinTool {
     }
 }
 
-/// Keeps the best point seen so far for every occupied cell of an origin-anchored grid.
+/// Keeps the best `per_cell` points seen so far for every occupied cell of an
+/// origin-anchored grid.
 struct GridThinner {
     cell: f64,
     method: Method,
-    /// Occupied cell -> (rank, point). Lower rank wins (see [`Self::rank`]).
-    cells: HashMap<(i64, i64), (f64, PointRecord)>,
+    /// Most points kept in one cell.
+    per_cell: usize,
+    /// Occupied cell -> its kept `(rank, point)` pairs, best (lowest rank) first.
+    /// Lower rank wins (see [`Self::rank`]).
+    cells: HashMap<(i64, i64), Vec<(f64, PointRecord)>>,
     /// Points offered, excluding withheld ones.
     seen: usize,
-    /// Most cells that may be occupied before new cells are refused.
-    max_cells: usize,
-    /// Set when `max_cells` was exceeded; the result is then discarded.
+    /// Points currently kept across all cells.
+    kept: usize,
+    /// Most points that may be kept before new ones are refused.
+    max_points: usize,
+    /// Set when `max_points` was exceeded; the result is then discarded.
     overflowed: bool,
 }
 
 impl GridThinner {
-    fn new(cell: f64, method: Method, max_cells: usize) -> Self {
+    fn new(cell: f64, method: Method, per_cell: usize, max_points: usize) -> Self {
         Self {
             cell,
             method,
+            per_cell: per_cell.max(1),
             cells: HashMap::new(),
             seen: 0,
-            max_cells,
+            kept: 0,
+            max_points,
             overflowed: false,
         }
     }
@@ -187,23 +200,35 @@ impl GridThinner {
             (p.y / self.cell).floor() as i64,
         );
         let rank = self.rank(p, key.0, key.1);
-        if let Some(slot) = self.cells.get_mut(&key) {
-            if rank < slot.0 {
-                *slot = (rank, *p);
+        let slot = self.cells.entry(key).or_default();
+        // Ties go after existing entries, so the first point read wins.
+        let at = slot.partition_point(|e| e.0 <= rank);
+        if slot.len() < self.per_cell {
+            if self.kept >= self.max_points {
+                self.overflowed = true;
+                if slot.is_empty() {
+                    self.cells.remove(&key);
+                }
+                return;
             }
-        } else if self.cells.len() >= self.max_cells {
-            self.overflowed = true;
-        } else {
-            self.cells.insert(key, (rank, *p));
+            slot.insert(at, (rank, *p));
+            self.kept += 1;
+        } else if at < self.per_cell {
+            slot.insert(at, (rank, *p));
+            slot.pop();
         }
     }
 
-    /// Survivors in a stable (cell-row-major) order so output is reproducible.
+    /// Survivors in a stable order (cell row-major, best point first within a
+    /// cell) so output is reproducible.
     fn into_points(self) -> Vec<PointRecord> {
-        let mut entries: Vec<((i64, i64), PointRecord)> =
-            self.cells.into_iter().map(|(k, (_, p))| (k, p)).collect();
-        entries.sort_unstable_by_key(|(k, _)| (k.1, k.0));
-        entries.into_iter().map(|(_, p)| p).collect()
+        let mut cells: Vec<((i64, i64), Vec<(f64, PointRecord)>)> =
+            self.cells.into_iter().collect();
+        cells.sort_unstable_by_key(|(k, _)| (k.1, k.0));
+        cells
+            .into_iter()
+            .flat_map(|(_, pts)| pts.into_iter().map(|(_, p)| p))
+            .collect()
     }
 }
 
@@ -273,6 +298,7 @@ enum Method {
 struct Params {
     cell_size: f64,
     method: Method,
+    points_per_cell: usize,
 }
 
 fn input_path(args: &ToolArgs) -> Result<&str, ToolError> {
@@ -295,7 +321,17 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         "highest" => Method::Highest,
         _ => Method::NearestCenter,
     };
-    Ok(Params { cell_size, method })
+    let points_per_cell = usize_or(args, "points_per_cell", 1)?;
+    if points_per_cell == 0 {
+        return Err(ToolError::Validation(
+            "'points_per_cell' must be at least 1".to_string(),
+        ));
+    }
+    Ok(Params {
+        cell_size,
+        method,
+        points_per_cell,
+    })
 }
 
 #[cfg(test)]
@@ -421,12 +457,64 @@ mod tests {
     /// Exceeding the cell cap is flagged instead of growing without bound.
     #[test]
     fn cell_cap_sets_overflow() {
-        let mut g = GridThinner::new(1.0, Method::NearestCenter, 2);
+        let mut g = GridThinner::new(1.0, Method::NearestCenter, 1, 2);
         for i in 0..5 {
             g.offer(&pt(i as f64 + 0.5, 0.5, 0.0));
         }
         assert!(g.overflowed);
+        assert_eq!(g.kept, 2);
         assert_eq!(g.cells.len(), 2);
+    }
+
+    /// Keeps the N best per cell, best first, and never more than the cell holds.
+    #[test]
+    fn keeps_n_best_points_per_cell() {
+        let pts_in = [
+            pt(1.0, 1.0, 5.0),
+            pt(2.0, 2.0, 3.0),
+            pt(3.0, 3.0, 9.0),
+            pt(4.0, 4.0, 1.0),
+            pt(15.0, 5.0, 7.0), // a second cell with only one point
+        ];
+        let (out, low) = run(
+            json!({ "input": cloud_path(&pts_in), "cell_size": 10.0, "method": "lowest", "points_per_cell": 2 }),
+        );
+        assert_eq!(out.outputs["points_out"], json!(3));
+        // Cell (0,0): the two lowest, lowest first; then the lone point of cell (1,0).
+        let z: Vec<f64> = low.iter().map(|p| p.z).collect();
+        assert_eq!(z, vec![1.0, 3.0, 7.0]);
+        let (_o, high) = run(
+            json!({ "input": cloud_path(&pts_in), "cell_size": 10.0, "method": "highest", "points_per_cell": 2 }),
+        );
+        let z: Vec<f64> = high.iter().map(|p| p.z).collect();
+        assert_eq!(z, vec![9.0, 5.0, 7.0]);
+    }
+
+    /// Equal ranks keep the first points read.
+    #[test]
+    fn ties_keep_first_read() {
+        let mut a = pt(1.0, 1.0, 4.0);
+        a.intensity = 1;
+        let mut b = pt(2.0, 2.0, 4.0);
+        b.intensity = 2;
+        let mut c = pt(3.0, 3.0, 4.0);
+        c.intensity = 3;
+        let (_o, pts) = run(
+            json!({ "input": cloud_path(&[a, b, c]), "cell_size": 10.0, "method": "lowest", "points_per_cell": 2 }),
+        );
+        let ids: Vec<u16> = pts.iter().map(|p| p.intensity).collect();
+        assert_eq!(ids, vec![1, 2]);
+    }
+
+    /// The cap counts every kept point, not just occupied cells.
+    #[test]
+    fn point_cap_counts_all_kept_points() {
+        let mut g = GridThinner::new(10.0, Method::Lowest, 3, 2);
+        for i in 0..6 {
+            g.offer(&pt(1.0, 1.0, i as f64));
+        }
+        assert!(g.overflowed);
+        assert_eq!(g.kept, 2);
     }
 
     #[test]
@@ -439,6 +527,9 @@ mod tests {
         assert!(bad(json!({ "input": "a.laz", "cell_size": 0 })).is_err());
         assert!(bad(json!({ "input": "a.laz", "cell_size": -2 })).is_err());
         assert!(bad(json!({ "input": "a.laz", "method": "bogus" })).is_err());
+        assert!(bad(json!({ "input": "a.laz", "points_per_cell": 0 })).is_err());
+        assert!(bad(json!({ "input": "a.laz", "points_per_cell": 1.5 })).is_err());
+        assert!(bad(json!({ "input": "a.laz", "points_per_cell": "3" })).is_ok());
         assert!(bad(json!({ "input": "a.laz" })).is_ok());
         assert!(bad(json!({ "input": "a.laz", "method": "lowest", "cell_size": "2.5" })).is_ok());
     }

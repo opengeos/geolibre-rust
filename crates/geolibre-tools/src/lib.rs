@@ -3711,6 +3711,7 @@ pub fn geolibre_param_schemas(tool_id: &str) -> Option<BTreeMap<String, ToolPara
             ("output", lidar_out()),
             ("cell_size", float()),
             ("method", ToolParamSchema::enum_values(&["nearest_center", "lowest", "highest"])),
+            ("points_per_cell", int()),
         ]),
         "las_height_metrics" => schemas(&[
             ("input", lidar_in()),

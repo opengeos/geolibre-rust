@@ -37,4 +37,4 @@ __all__ = [
     "runtime_path",
 ]
 
-__version__ = "1.5.8"
+__version__ = "1.5.9"

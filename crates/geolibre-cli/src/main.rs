@@ -50,7 +50,9 @@ fn main() -> ExitCode {
             .stack_size(STACK_BYTES)
             .spawn(run_command)
         {
-            Ok(handle) => handle.join().unwrap_or(ExitCode::from(1)),
+            // A panic has already printed its message (and release builds abort
+            // instead of unwinding); exit like any other failure.
+            Ok(handle) => handle.join().unwrap_or_else(|_| ExitCode::from(1)),
             // No thread available: fall back to the main thread's stack.
             Err(_) => run_command(),
         }

@@ -190,9 +190,13 @@ jobs:
           if-no-files-found: error
 
   # One upload for all platforms, and only when every one of them built: a
-  # release never ends up with some platforms silently missing.
+  # release never ends up with some platforms silently missing. It waits for
+  # the `release` job so the two never create the release concurrently, but
+  # runs whatever that job's outcome: a wasm/npm failure doesn't hold back the
+  # native runners.
   native-publish:
-    needs: native
+    needs: [native, release]
+    if: ${{ !cancelled() && needs.native.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -209,6 +213,8 @@ jobs:
       - name: Attach to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
           files: |
             dist/*.tar.gz
             dist/*.zip

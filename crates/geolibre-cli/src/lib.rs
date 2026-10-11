@@ -251,21 +251,27 @@ pub fn manifests_with_metadata_params(registry: &ToolRegistry) -> Vec<ToolManife
                     .get(&manifest.id)
                     .map(Vec::as_slice)
                     .unwrap_or_default();
-                let from_schema_table = if PREFER_METADATA_PARAMS.contains(&manifest.id.as_str()) {
-                    None
-                } else {
-                    schema_table_params(&manifest.id, from_metadata)
-                };
-                if let Some(params) = from_schema_table
-                    .or_else(|| Some(from_metadata.to_vec()).filter(|p| !p.is_empty()))
-                    .or_else(|| fallback_params(&manifest.id))
-                {
-                    manifest.params = params;
-                }
+                backfill_params(&mut manifest, from_metadata);
             }
             manifest
         })
         .collect()
+}
+
+/// Fills an empty `params` list from the schema table, the tool's metadata, then
+/// [`fallback_params`], in that order (see [`manifests_with_metadata_params`]).
+fn backfill_params(manifest: &mut ToolManifest, from_metadata: &[ToolParamDescriptor]) {
+    let from_schema_table = if PREFER_METADATA_PARAMS.contains(&manifest.id.as_str()) {
+        None
+    } else {
+        schema_table_params(&manifest.id, from_metadata)
+    };
+    if let Some(params) = from_schema_table
+        .or_else(|| Some(from_metadata.to_vec()).filter(|p| !p.is_empty()))
+        .or_else(|| fallback_params(&manifest.id))
+    {
+        manifest.params = params;
+    }
 }
 
 /// Ids whose manifest declares no params, so [`manifests_with_metadata_params`]
@@ -306,7 +312,8 @@ fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<Strin
     }
 }
 
-/// Every tool's manifest as JSON, the shape `geolibre manifests` prints: params backfilled
+/// Every tool's manifest as JSON, the shape `geolibre manifests` prints (one pass
+/// over the registry; hosts should build it once and keep it): params backfilled
 /// where a tool's own manifest omits them, each param's I/O `schema`, `io_role` and
 /// `data_kind`, and a `source` tag (`"geolibre"` or `"whitebox"`).
 pub fn manifests_json(registry: &ToolRegistry) -> Vec<Value> {
@@ -323,11 +330,23 @@ pub fn manifests_json(registry: &ToolRegistry) -> Vec<Value> {
 }
 
 /// One tool's manifest as JSON (see [`manifests_json`]), or `None` for an unknown id.
+///
+/// The registry has no per-tool lookup, so this still builds every tool's bare
+/// manifest once; only the requested one is backfilled and enriched. A host that
+/// lists every tool should call [`manifests_json`] once and keep the result.
 pub fn manifest_json(registry: &ToolRegistry, id: &str) -> Option<Value> {
-    let backfilled = backfilled_tool_ids(registry);
-    let manifest = manifests_with_metadata_params(registry)
-        .into_iter()
-        .find(|m| m.id == id)?;
+    let mut manifest = registry.manifests().into_iter().find(|m| m.id == id)?;
+    let mut backfilled = HashSet::new();
+    if manifest.params.is_empty() {
+        let from_metadata: Vec<ToolParamDescriptor> = registry
+            .list()
+            .into_iter()
+            .find(|meta| meta.id == id)
+            .map(|meta| meta.params.iter().map(ToolParamDescriptor::from).collect())
+            .unwrap_or_default();
+        backfill_params(&mut manifest, &from_metadata);
+        backfilled.insert(manifest.id.clone());
+    }
     let mut value = enriched_manifest(&manifest, &backfilled);
     tag_source(&mut value, &geolibre_tool_ids());
     Some(value)
@@ -353,6 +372,22 @@ mod tests {
         assert_eq!(all.len(), registry.list().len());
         let slope = manifest_json(&registry, "slope").expect("slope manifest");
         assert_eq!(slope["source"], "whitebox");
+        // One tool's manifest is the same as its entry in the full list, whichever way
+        // its params were found: declared, schema table, metadata, fallback, GeoLibre.
+        let geolibre_id = geolibre_tool_ids()
+            .into_iter()
+            .next()
+            .expect("a GeoLibre tool");
+        for id in [
+            "slope",
+            "d8_pointer",
+            "unnest_basins",
+            "hillshade",
+            geolibre_id.as_str(),
+        ] {
+            let entry = all.iter().find(|m| m["id"] == id).expect("listed");
+            assert_eq!(manifest_json(&registry, id).as_ref(), Some(entry), "{id}");
+        }
         assert!(manifest_json(&registry, "no_such_tool").is_none());
     }
 
@@ -442,6 +477,15 @@ mod tests {
         }
     }
 
+    /// A scratch directory for this test process, so concurrent `cargo test` runs on
+    /// one host don't overwrite each other's fixtures.
+    fn scratch_dir() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "geolibre-cli-manifest-params-{}",
+            std::process::id()
+        ))
+    }
+
     const SAMPLE_DEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/sample.tif");
 
     /// A scratch directory holding the fixtures the run-based test feeds in: a
@@ -450,7 +494,7 @@ mod tests {
     /// walk the flow network, and handing them an arbitrary DEM instead sends
     /// `basins` into a non-terminating traversal rather than an error.
     fn fixtures(registry: &ToolRegistry) -> (std::path::PathBuf, std::path::PathBuf) {
-        let scratch = std::env::temp_dir().join("geolibre-cli-manifest-params");
+        let scratch = scratch_dir();
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let vector = scratch.join("points.geojson");
         std::fs::write(
@@ -489,7 +533,7 @@ mod tests {
         vector: &std::path::Path,
         pointer: &std::path::Path,
     ) -> String {
-        let scratch = std::env::temp_dir().join("geolibre-cli-manifest-params");
+        let scratch = scratch_dir();
         let json = enriched_manifest(manifest, &backfilled_tool_ids(registry));
         let mut args = ToolArgs::new();
         for param in json["params"].as_array().into_iter().flatten() {

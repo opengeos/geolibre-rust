@@ -120,7 +120,7 @@ dependencies = [
  "ahash",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.0",
  "chrono",
  "half",
  "hashbrown 0.17.1",
@@ -148,7 +148,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c88210023a2bfee1896af366309a3028fc3bcbd6515fa29a7990ee1baa08ee0"
 dependencies = [
  "arrow-buffer",
- "arrow-schema",
+ "arrow-schema 58.4.0",
  "half",
  "num-integer",
  "num-traits",
@@ -163,16 +163,22 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.0",
  "arrow-select",
  "flatbuffers 25.12.19",
 ]
 
 [[package]]
 name = "arrow-schema"
-version = "58.3.0"
+version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f633dbfdf39c039ada1bf9e34c694816eb71fbb7dc78f613993b7245e078a1ed"
+checksum = "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e"
+
+[[package]]
+name = "arrow-schema"
+version = "60.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
 
 [[package]]
 name = "arrow-select"
@@ -184,7 +190,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-data",
- "arrow-schema",
+ "arrow-schema 58.4.0",
  "num-traits",
 ]
 
@@ -1053,7 +1059,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-ipc",
- "arrow-schema",
+ "arrow-schema 60.0.0",
  "bytes",
  "console_error_panic_hook",
  "geolibre-pmtiles",
@@ -2275,7 +2281,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-data",
  "arrow-ipc",
- "arrow-schema",
+ "arrow-schema 58.4.0",
  "arrow-select",
  "base64",
  "brotli 8.0.4",

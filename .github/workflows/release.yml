@@ -116,22 +116,28 @@ jobs:
 
   # Native `geolibre` runners for desktop hosts (RustGIS runs one as a
   # subprocess for its GeoLibre tools): one archive per platform, attached to
-  # the same release. Built with the `dist` profile (speed-optimised).
+  # the same release. Built with the `dist` profile (speed-optimised). They
+  # don't wait for the wasm/npm job: a publishing problem there shouldn't hold
+  # them back.
   native:
-    needs: release
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
-          - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: macos-latest, target: x86_64-apple-darwin }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, runs: true }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, runs: true }
+          - { os: macos-latest, target: aarch64-apple-darwin, runs: true }
+          # Cross-built on an arm64 runner, which can't run it.
+          - { os: macos-latest, target: x86_64-apple-darwin, runs: false }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, runs: true }
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -143,6 +149,15 @@ jobs:
 
       - name: Build the runner
         run: cargo build --profile dist -p geolibre-cli --target ${{ matrix.target }}
+
+      - name: Smoke test the release build
+        if: matrix.runs
+        shell: bash
+        run: |
+          exe="target/${{ matrix.target }}/dist/geolibre"
+          "$exe" version
+          "$exe" slope --input=examples/sample.tif --output="$RUNNER_TEMP/slope.tif"
+          test -s "$RUNNER_TEMP/slope.tif"
 
       - name: Package (tar.gz)
         if: runner.os != 'Windows'
@@ -164,6 +179,32 @@ jobs:
           Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
           $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File -Encoding ascii "dist/$name.zip.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  # One upload for all platforms, and only when every one of them built: a
+  # release never ends up with some platforms silently missing.
+  native-publish:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: dist
+          merge-multiple: true
+
+      - name: Check every platform is present
+        run: |
+          ls -l dist
+          test "$(ls dist/*.tar.gz dist/*.zip | wc -l)" -eq 5
 
       - name: Attach to GitHub Release
         uses: softprops/action-gh-release@v3

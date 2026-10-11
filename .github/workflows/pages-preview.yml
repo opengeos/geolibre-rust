@@ -65,7 +65,7 @@ jobs:
       # a token that can write PR comments. The deploy step brings its own
       # credentials (PREVIEW_DEPLOY_TOKEN), so nothing here needs the persisted
       # ones.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

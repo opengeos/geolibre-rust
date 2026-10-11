@@ -215,6 +215,9 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           fail_on_unmatched_files: true
+          # When the release job failed before creating the release, this one
+          # creates it; keep its notes the same either way.
+          generate_release_notes: true
           files: |
             dist/*.tar.gz
             dist/*.zip

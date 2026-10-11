@@ -64,3 +64,32 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./python pytest
           pytest python/tests -q
+
+  # The native runner (released per platform for desktop hosts) must build and
+  # run on macOS and Windows too, not only Linux.
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the runner
+        run: cargo build -p geolibre-cli
+
+      # Run a real tool, not just the registry listing.
+      - name: Smoke test
+        shell: bash
+        run: |
+          ./target/debug/geolibre version
+          ./target/debug/geolibre manifest slope > /dev/null
+          ./target/debug/geolibre slope --input=examples/sample.tif --output="$RUNNER_TEMP/slope.tif"
+          test -s "$RUNNER_TEMP/slope.tif"

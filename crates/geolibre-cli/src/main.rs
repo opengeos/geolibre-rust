@@ -32,7 +32,34 @@ use geolibre_cli::wbcore::{AllowAllCapabilities, ProgressSink, ToolArgs, ToolCon
 use geolibre_cli::{build_registry, manifest_json, manifests_json};
 use serde_json::Value;
 
+/// Stack for the command on native targets. Windows gives the main thread only
+/// 1 MB, which a debug build can overflow while building the manifests, and some
+/// tools recurse deeply on large rasters; Linux and macOS default to 8 MB.
+#[cfg(not(target_family = "wasm"))]
+const STACK_BYTES: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    // WASI has no threads: run directly there.
+    #[cfg(target_family = "wasm")]
+    {
+        run_command()
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        match std::thread::Builder::new()
+            .stack_size(STACK_BYTES)
+            .spawn(run_command)
+        {
+            // A panic has already printed its message (and release builds abort
+            // instead of unwinding); exit like any other failure.
+            Ok(handle) => handle.join().unwrap_or_else(|_| ExitCode::from(1)),
+            // No thread available: fall back to the main thread's stack.
+            Err(_) => run_command(),
+        }
+    }
+}
+
+fn run_command() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some(command) = argv.first() else {
         eprintln!("usage: geolibre <list|manifests|manifest <id>|version|<tool> [--k=v ...]>");

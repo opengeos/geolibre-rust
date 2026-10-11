@@ -486,6 +486,22 @@ geolibre <tool> [--k=v ...]   # run a tool over /work
 type-inferred: `true`/`false` -> bool, numbers -> number, everything else
 (including `/work/...` paths) -> string.
 
+### Native runner
+
+The same `geolibre` command also builds natively, for desktop hosts that run the
+tools as a subprocess (RustGIS uses it for its GeoLibre toolboxes). Paths are then
+ordinary file paths rather than `/work/...`. Each release attaches a prebuilt
+runner per platform: `geolibre-<tag>-<target>.tar.gz` (Linux x86_64/aarch64,
+macOS arm64/x86_64) or `.zip` (Windows x86_64), each with a `.sha256`. To build
+one yourself:
+
+```bash
+cargo build --profile dist -p geolibre-cli   # -> target/dist/geolibre
+```
+
+The `dist` profile is the release profile optimised for speed instead of size
+(about 30% faster on large rasters; about 19 MB compressed).
+
 ## Build
 
 ```bash

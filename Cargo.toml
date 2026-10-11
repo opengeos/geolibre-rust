@@ -20,3 +20,10 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Native `geolibre` binaries for the release (desktop hosts such as RustGIS run
+# them as a tool runner): the release profile, but optimised for speed rather
+# than size, since native users run heavy rasters through them.
+[profile.dist]
+inherits = "release"
+opt-level = 3

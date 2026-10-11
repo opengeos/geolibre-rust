@@ -1,0 +1,90 @@
+# Dependabot keeps dependencies and their security advisories current. Updates
+# are grouped so the repo gets a few consolidated PRs per week rather than one
+# PR per dependency.
+version: 2
+updates:
+  # Rust: one workspace lockfile at the root covers every crate.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # A fork pinned to a reviewed rev on purpose (see geolibre-tools'
+      # Cargo.toml): upstream pins rayon/geo versions that can't resolve here.
+      - dependency-name: "freestiler-core"
+    groups:
+      # Security fixes land on their own, immediately actionable PRs.
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # The whitebox-wasm crates come from one git repository and move together.
+      whitebox:
+        applies-to: version-updates
+        patterns:
+          - "wb*"
+      # Routine minor/patch bumps are batched into one PR to cut review noise.
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # The npm package's runtime dependency (the WASI shim in npm/package.json).
+  - package-ecosystem: npm
+    directory: "/npm"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # The Python package (python/pyproject.toml).
+  - package-ecosystem: pip
+    directory: "/python"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      python-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      python-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Base images of the self-hosted demo image (Dockerfile).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+
+  # GitHub Actions used by the workflows in .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

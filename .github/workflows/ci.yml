@@ -52,7 +52,7 @@ jobs:
           npm install --no-save @bjorn3/browser_wasi_shim@^0.4.2
           node ../examples/node-demo.mjs
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

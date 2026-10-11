@@ -69,7 +69,7 @@ rstar = "0.12"
 # graph transitively via wbvector), used by gpx_to_features to read GPX
 # waypoints/tracks/routes. WASM-clean; reads through std::fs like the other
 # file-reading tools (gtfs_to_features, excel_to_table).
-quick-xml = "0.41"
+quick-xml = "0.42"
 # Pure-Rust ZIP reader (deflate only) used by kml_to_features to unpack KMZ
 # (a zipped KML). Already pulled in transitively by calamine; the deflate feature
 # supplies the one codec KMZ archives use. Compiles to the wasm targets.

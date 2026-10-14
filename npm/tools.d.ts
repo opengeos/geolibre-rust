@@ -104,6 +104,8 @@ export interface ToolManifest {
   display_name: string;
   summary: string;
   params: ToolParam[];
+  /** Where the tool sits in a menu, e.g. `{category: "Terrain", subcategory: "Derivatives"}`. */
+  taxonomy?: { category: string; subcategory: string };
   [key: string]: unknown;
 }
 

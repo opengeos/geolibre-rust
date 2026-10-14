@@ -462,7 +462,13 @@ in the Python original.
    description mentions a dataset (a flag that "sorts features" would read as a
    vector input). A unit test (`every_tool_has_explicit_param_schemas`) fails if a
    tool's param is left without a schema.
-4. Rebuild (`./build.sh`); it appears in `listTools()` automatically.
+4. **Give it a place in the menu**: add a row to
+   `crates/geolibre-cli/src/taxonomy.tsv` (`id`, category, subcategory, e.g.
+   `slope	Terrain	Derivatives`), reusing an existing subcategory where one fits.
+   Manifests carry it as `"taxonomy": {"category", "subcategory"}`, which hosts
+   group their tool menus by. A unit test (`every_tool_has_a_taxonomy`) fails for
+   a tool without a row, including new whitebox tools after an upgrade.
+5. Rebuild (`./build.sh`); it appears in `listTools()` automatically.
 
 The crate depends only on `wbcore` plus the data crates a tool needs (e.g.
 `wbraster`), so the same tools can later back a native CLI or the Python sidecar,
@@ -636,7 +642,7 @@ pip install geolibre-wasm
 import geolibre_wasm as gl
 
 tools = gl.list_tools()                 # every tool id
-manifests = gl.list_manifests()         # schemas + "source": geolibre|whitebox
+manifests = gl.list_manifests()         # schemas, "source", "taxonomy"
 
 res = gl.run_tool(
     "slope",

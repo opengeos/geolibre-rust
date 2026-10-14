@@ -1,0 +1,1068 @@
+# Where each tool sits in a menu: id, category, subcategory (tab-separated), one
+# row per registered tool; `geolibre manifests` emits it as each manifest's
+# "taxonomy". Whitebox tools follow the Whitebox Next Gen taxonomy (as in the
+# Whitebox-Next-Gen-ArcGIS catalog snapshot, "Category - Subcategory", with a bare
+# category as "General"); GeoLibre's own tools are placed in the same vocabulary.
+# A new tool needs a row: `every_tool_has_a_taxonomy` fails without one.
+abs	Raster	General
+accumulation_curvature	Terrain	Derivatives
+adaptive_filter	Remote Sensing	Filters
+add	Raster	Overlay Math
+add_field	Vector	Attribute Analysis
+add_geometry_attributes	Vector	Attribute Analysis
+add_point_coordinates_to_table	Conversion	Vector & Table I/O
+add_surface_information	Terrain	General
+add_z_information	Vector	3D Features
+adjust_3d_z	Vector	3D Features
+adjust_stream_to_raster	Hydrology	Streams - Network Extraction
+aggregate_multidimensional_raster	Raster	Multidimensional
+aggregate_points	Vector	Cartography & Generalization
+aggregate_polygons	Vector	Cartography & Generalization
+aggregate_raster	Raster	General
+align_features	Vector	Geometry Processing
+analyze_changes_ccdc	Remote Sensing	Change Detection
+anisotropic_diffusion_filter	Remote Sensing	Filters
+anova	Raster	General
+apply_radiometric_calibration	Remote Sensing	SAR
+apportion_polygon	Vector	Overlay Analysis
+arccos	Raster	General
+arcosh	Raster	General
+arcsin	Raster	General
+arctan	Raster	General
+areal_interpolation	Vector	Spatial Statistics
+arsinh	Raster	General
+artanh	Raster	General
+ascii_to_las	LiDAR	I/O & Management
+aspect	Terrain	Derivatives
+assess_route	Terrain	General
+assign_projection_lidar	Projection	Georeferencing
+assign_projection_raster	Projection	Georeferencing
+assign_projection_vector	Projection	Georeferencing
+atan2	Raster	General
+attribute_correlation	Vector	Attribute Analysis
+attribute_histogram	Vector	Attribute Analysis
+attribute_scattergram	Vector	Attribute Analysis
+attribute_uncertainty	Vector	Spatial Statistics
+average_flowpath_slope	Hydrology	Flow Routing
+average_horizon_distance	Terrain	Visibility
+average_normal_vector_angular_deviation	Terrain	Roughness & Texture
+average_overlay	Raster	Overlay Math
+average_upslope_flowpath_length	Hydrology	Flow Routing
+balance_contrast_enhancement	Remote Sensing	Enhancement & Contrast
+band_collection_statistics	Remote Sensing	Spectral Analytics
+basins	Hydrology	Watersheds & Basins
+bilateral_filter	Remote Sensing	Filters
+bivariate_spatial_association	Vector	Spatial Statistics
+block_maximum	Raster	General
+block_minimum	Raster	General
+block_statistics	Raster	Local Neighborhood
+bool_and	Raster	Overlay Math
+bool_not	Raster	Overlay Math
+bool_or	Raster	Overlay Math
+bool_xor	Raster	Overlay Math
+boundary_clean	Raster	Reclassify & Mask
+boundary_shape_complexity	Raster	General
+brdf_normalization	Remote Sensing	Radiometric Correction
+breach_depressions_least_cost	Hydrology	Depressions & Storage
+breach_single_cell_pits	Hydrology	Depressions & Storage
+breakline_mapping	Terrain	General
+buffer_3d	Vector	3D Features
+buffer_raster	Raster	Distance & Cost
+buffer_vector	Vector	Geometry Processing
+build_balanced_zones	Vector	Spatial Statistics
+build_network_topology	Vector	Network Analysis
+build_object_hierarchy_multiscale	Remote Sensing	OBIA
+build_seamlines	Raster	General
+burn_streams	Hydrology	Depressions & Storage
+burn_streams_at_roads	Hydrology	Depressions & Storage
+calculate_adjacent_fields	Vector	Cartography & Generalization
+calculate_central_meridian_and_parallels	Vector	Cartography & Generalization
+calculate_composite_index	Vector	Attribute Analysis
+calculate_distance_band	Vector	Spatial Statistics
+calculate_end_time	Vector	Space-Time Analysis
+calculate_grid_convergence_angle	Projection	Georeferencing
+calculate_missing_z_values	Vector	3D Features
+calculate_motion_statistics	Vector	Space-Time Analysis
+calculate_polygon_main_angle	Vector	Shape Metrics
+calculate_rates	Vector	Spatial Statistics
+calculate_transformation_errors	Projection	Georeferencing
+calculate_transit_service_frequency	Vector	Network Analysis
+calculate_utm_zone	Projection	Georeferencing
+canny_edge_detection	Remote Sensing	Edge & Feature Detection
+cartogram	Vector	Cartography & Generalization
+casorati_curvature	Terrain	Derivatives
+causal_inference_analysis	Vector	Spatial Statistics
+ceil	Raster	General
+cell_position_statistics	Raster	Overlay Math
+cell_records_to_sectors	Vector	Network Analysis
+cell_statistics	Raster	Overlay Math
+central_feature	Vector	Spatial Statistics
+centroid_raster	Raster	General
+centroid_vector	Vector	Geometry Processing
+change_point_detection	Vector	Space-Time Analysis
+change_vector_analysis	Remote Sensing	Change Detection
+circular_variance_of_aspect	Terrain	Roughness & Texture
+classification_accuracy_assessment	Remote Sensing	Classification
+classify_buildings_in_lidar	LiDAR	Filtering & Classification
+classify_lidar	LiDAR	Filtering & Classification
+classify_objects_ensemble_pro	Remote Sensing	OBIA
+classify_objects_random_forest	Remote Sensing	OBIA
+classify_objects_rules_basic	Remote Sensing	OBIA
+classify_objects_rules_hierarchical	Remote Sensing	OBIA
+classify_objects_svm	Remote Sensing	OBIA
+classify_overlap_points	LiDAR	Filtering & Classification
+clean_vector	Conversion	Vector & Table I/O
+clip	Vector	Overlay Analysis
+clip_lidar_to_polygon	LiDAR	Filtering & Classification
+clip_raster_to_polygon	Raster	General
+closest_facility_network	Vector	Network Analysis
+closing	Remote Sensing	Filters
+cloude_pottier_decomposition	Remote Sensing	SAR
+clump	Raster	General
+collapse_dual_lines_to_centerline	Vector	Cartography & Generalization
+collapse_hydro_polygon	Vector	Cartography & Generalization
+collapse_road_detail	Vector	Cartography & Generalization
+collect_events	Vector	Spatial Statistics
+colocation_analysis	Vector	Spatial Statistics
+color_polygons	Vector	Cartography & Generalization
+colourize_based_on_class	LiDAR	Analysis Metrics
+colourize_based_on_point_returns	LiDAR	Analysis Metrics
+combine	Raster	Overlay Math
+compactness_ratio	Vector	Shape Metrics
+compare_spatial_weights	Vector	Spatial Statistics
+composite_bands	Raster	General
+compute_accuracy_for_object_detection	Remote Sensing	Classification
+compute_sar_indices	Remote Sensing	SAR
+concave_hull	Vector	Geometry Processing
+conditional_evaluation	Raster	Reclassify & Mask
+conservative_smoothing_filter	Remote Sensing	Filters
+construct_sight_lines	Vector	3D Features
+construct_vector_tin	Vector	Sampling & Gridding
+contiguous_cartogram	Vector	Cartography & Generalization
+continuum_removal	Remote Sensing	Spectral Analytics
+contour_list	Vector	Sampling & Gridding
+contour_with_barriers	Vector	Sampling & Gridding
+contours_from_points	Vector	Sampling & Gridding
+contours_from_raster	Vector	Sampling & Gridding
+convergence_index	Terrain	General
+convert_coordinate_notation	Projection	Georeferencing
+convert_nodata_to_zero	Conversion	Raster/Vector Conversion
+convert_sar_units	Remote Sensing	SAR
+coregister_rasters	Projection	Georeferencing
+corner_detection	Remote Sensing	Edge & Feature Detection
+correct_vignetting	Remote Sensing	Radiometric Correction
+corridor	Raster	Distance & Cost
+cos	Raster	General
+cosh	Raster	General
+cost_allocation	Raster	Distance & Cost
+cost_back_link	Raster	Distance & Cost
+cost_connectivity	Raster	Distance & Cost
+cost_distance	Raster	Distance & Cost
+cost_pathway	Raster	Distance & Cost
+count_if	Raster	Overlay Math
+count_overlapping_features	Vector	Overlay Analysis
+create_accuracy_assessment_points	Vector	Sampling & Gridding
+create_cartographic_partitions	Vector	Cartography & Generalization
+create_colour_composite	Remote Sensing	Enhancement & Contrast
+create_overpass	Vector	Cartography & Generalization
+create_plane	Raster	General
+create_routes	Vector	Linear Referencing
+create_spatial_sampling_locations	Vector	Sampling & Gridding
+create_spatially_balanced_points	Vector	Sampling & Gridding
+create_underpass	Vector	Cartography & Generalization
+crispness_index	Raster	General
+cross_tabulation	Raster	Zonal
+csv_points_to_vector	Conversion	Vector & Table I/O
+cul_de_sac_masks	Vector	Cartography & Generalization
+cumulative_distribution	Raster	General
+curvedness	Terrain	Derivatives
+cut_fill	Terrain	General
+d8_flow_accum	Hydrology	Flow Routing
+d8_mass_flux	Hydrology	Flow Routing
+d8_pointer	Hydrology	Flow Routing
+darcy_flow	Hydrology	Hydrologic Indices
+dark_object_subtraction	Remote Sensing	Radiometric Correction
+dbscan	Raster	General
+decrement	Raster	General
+delete_field	Vector	Attribute Analysis
+delineate_built_up_areas	Vector	Cartography & Generalization
+delineate_depressions	Hydrology	Depressions & Storage
+delineate_mounts	Terrain	Landform Indices
+dem_filter	Terrain	General
+dem_void_filling	Terrain	General
+dendrogram	Remote Sensing	Classification
+densify_features	Vector	Geometry Processing
+densify_sampling_network	Vector	Spatial Statistics
+depth_in_sink	Hydrology	Depressions & Storage
+depth_to_water	Hydrology	Hydrologic Indices
+detect_bright_ocean_objects	Remote Sensing	SAR
+detect_dark_ocean_areas	Remote Sensing	SAR
+detect_feature_changes	Vector	Overlay Analysis
+detect_graphic_conflict	Vector	Cartography & Generalization
+detect_image_anomalies	Remote Sensing	Spectral Analytics
+detect_incidents	Vector	Space-Time Analysis
+deviation_from_mean_elevation	Terrain	General
+deviation_from_regional_direction	Vector	Shape Metrics
+dice	Vector	Geometry Processing
+diff_of_gaussians_filter	Remote Sensing	Filters
+difference	Vector	Overlay Analysis
+difference_3d	Vector	3D Features
+difference_curvature	Terrain	Derivatives
+difference_from_mean_elevation	Terrain	General
+diffusion_interpolation_with_barriers	Raster	Interpolation
+dimension_reduction	Vector	Spatial Statistics
+dimensional_moving_statistics	Raster	Multidimensional
+dinf_flow_accum	Hydrology	Flow Routing
+dinf_mass_flux	Hydrology	Flow Routing
+dinf_pointer	Hydrology	Flow Routing
+direct_decorrelation_stretch	Remote Sensing	Enhancement & Contrast
+directional_distribution	Vector	Spatial Statistics
+directional_relief	Terrain	General
+directional_trend	Vector	Spatial Statistics
+directional_variogram	Vector	Spatial Statistics
+disperse_markers	Vector	Cartography & Generalization
+dissolve	Vector	Overlay Analysis
+dissolve_route_events	Vector	Linear Referencing
+distance_to_outlet	Hydrology	Hydrologic Indices
+diversity_filter	Remote Sensing	Filters
+divide	Raster	Overlay Math
+dn_to_toa_reflectance	Remote Sensing	Radiometric Correction
+download_osm_vector	Vector	Online Data
+downslope_distance_to_stream	Hydrology	Hydrologic Indices
+downslope_flowpath_length	Hydrology	Flow Routing
+downslope_index	Hydrology	Hydrologic Indices
+edge_contamination	Hydrology	Hydrologic Indices
+edge_density	Terrain	Roughness & Texture
+edge_preserving_mean_filter	Remote Sensing	Filters
+edge_proportion	Raster	General
+edgematch_features	Vector	Geometry Processing
+eighty_twenty_analysis	Vector	Spatial Statistics
+elev_above_pit	Terrain	General
+elev_above_pit_dist	Terrain	General
+elev_relative_to_min_max	Terrain	Landform Indices
+elev_relative_to_watershed_min_max	Hydrology	Hydrologic Indices
+elevation_above_stream	Hydrology	Hydrologic Indices
+elevation_above_stream_euclidean	Hydrology	Hydrologic Indices
+elevation_percentile	Terrain	General
+eliminate_coincident_points	Vector	Geometry Processing
+eliminate_polygon_part	Vector	Geometry Processing
+eliminate_polygons	Vector	Geometry Processing
+elongation_ratio	Vector	Shape Metrics
+embankment_mapping	Terrain	General
+emboss_filter	Remote Sensing	Filters
+emerging_hot_spot_analysis	Vector	Space-Time Analysis
+empirical_bayesian_kriging	Raster	Interpolation
+enclose_multipatch	Vector	3D Features
+enforce_river_monotonicity	Hydrology	Depressions & Storage
+enhanced_lee_filter	Remote Sensing	SAR
+envelope_test	Vector	Spatial Statistics
+equal_to	Raster	General
+erase	Vector	Overlay Analysis
+erase_polygon_from_lidar	LiDAR	Filtering & Classification
+erase_polygon_from_raster	Raster	General
+estimate_time_to_event	Vector	Spatial Statistics
+estimate_variogram	Vector	Spatial Statistics
+euclidean_allocation	Raster	Distance & Cost
+euclidean_direction	Raster	Distance & Cost
+euclidean_distance	Raster	Distance & Cost
+evaluate_bin_sizes	Vector	Spatial Statistics
+evaluate_object_classification_accuracy	Remote Sensing	OBIA
+evaluate_segmentation_quality_pro	Remote Sensing	OBIA
+evaluate_training_sites	Remote Sensing	Classification
+evaluate_variable_influence	Vector	Spatial Statistics
+excel_to_table	Conversion	Vector & Table I/O
+exp	Raster	General
+exp2	Raster	General
+expand_shrink	Raster	Reclassify & Mask
+exploratory_interpolation	Vector	Spatial Statistics
+exploratory_regression	Vector	Spatial Statistics
+export_table_to_csv	Conversion	Vector & Table I/O
+exposure_towards_wind_flux	Terrain	General
+extend_vector_lines	Vector	Geometry Processing
+extract_by_attribute	Vector	Attribute Analysis
+extract_locations_from_text	Conversion	Vector & Table I/O
+extract_nodes	Vector	Sampling & Gridding
+extract_ocean_winds	Remote Sensing	SAR
+extract_raster_values_at_points	Vector	Sampling & Gridding
+extract_scanned_features	Conversion	Raster/Vector Conversion
+extract_sinks	Hydrology	Depressions & Storage
+extract_spectra_from_image	Remote Sensing	Spectral Analytics
+extract_streams	Hydrology	Streams - Network Extraction
+extract_valleys	Hydrology	Streams - Network Extraction
+extract_water_sar	Remote Sensing	SAR
+extrude_between	Vector	3D Features
+farthest_channel_head	Hydrology	Streams - Longitudinal Analysis
+fast_almost_gaussian_filter	Remote Sensing	Filters
+fd8_flow_accum	Hydrology	Flow Routing
+fd8_pointer	Hydrology	Flow Routing
+feature_outline_masks	Vector	Cartography & Generalization
+feature_preserving_smoothing	Terrain	General
+feature_preserving_smoothing_multiscale	Terrain	General
+feature_to_line	Conversion	Geometry & Topology
+feature_vertices_to_points	Vector	Geometry Processing
+features_to_gpx	Conversion	Vector & Table I/O
+features_to_gtfs	Conversion	Vector & Table I/O
+features_to_kml	Conversion	Vector & Table I/O
+fence_diagram	Vector	3D Features
+fetch_analysis	Terrain	General
+fft_random_field	Raster	General
+field_calculator	Vector	Attribute Analysis
+fill_burn	Hydrology	Depressions & Storage
+fill_depressions	Hydrology	Depressions & Storage
+fill_depressions_planchon_and_darboux	Hydrology	Depressions & Storage
+fill_depressions_wang_and_liu	Hydrology	Depressions & Storage
+fill_missing_data	Terrain	General
+fill_missing_values	Vector	Spatial Statistics
+fill_pits	Hydrology	Depressions & Storage
+fill_spill_merge	Hydrology	Depressions & Storage
+filter_lidar	LiDAR	Filtering & Classification
+filter_lidar_by_percentile	LiDAR	Filtering & Classification
+filter_lidar_by_reference_surface	LiDAR	Filtering & Classification
+filter_lidar_classes	LiDAR	Filtering & Classification
+filter_lidar_noise	LiDAR	Filtering & Classification
+filter_lidar_scan_angles	LiDAR	Filtering & Classification
+filter_raster_features_by_area	Raster	General
+filter_vector_features_by_area	Vector	Attribute Analysis
+find_argument_statistics	Raster	Multidimensional
+find_dwell_locations	Vector	Space-Time Analysis
+find_flightline_edge_points	LiDAR	Analysis Metrics
+find_identical	Vector	Attribute Analysis
+find_lowest_or_highest_points	Vector	Sampling & Gridding
+find_main_stem	Hydrology	Streams - Longitudinal Analysis
+find_meeting_locations	Vector	Space-Time Analysis
+find_noflow_cells	Hydrology	Hydrologic Indices
+find_parallel_flow	Hydrology	Hydrologic Indices
+find_patch_edge_cells	Raster	General
+find_ridges	Terrain	General
+find_space_time_matches	Vector	Space-Time Analysis
+fit_variogram	Vector	Spatial Statistics
+fix_dangling_arcs	Conversion	Geometry & Topology
+flatten_interferogram	Remote Sensing	SAR
+flatten_lakes	Hydrology	Depressions & Storage
+flightline_overlap	LiDAR	Interpolation & Gridding
+flip_image	Remote Sensing	Filters
+flip_line	Vector	Geometry Processing
+flood_order	Hydrology	Watersheds & Basins
+floor	Raster	General
+flow_accum_full_workflow	Hydrology	Flow Routing
+flow_length_diff	Hydrology	Flow Routing
+focal_flow	Hydrology	Flow Routing
+focal_statistics	Raster	Local Neighborhood
+forest_based_forecast	Vector	Space-Time Analysis
+frangi_filter	Remote Sensing	Filters
+freeman_durden_decomposition	Remote Sensing	SAR
+frequency_comparison	Raster	Overlay Math
+frost_filter	Remote Sensing	SAR
+fuzzy_knn_classification	Remote Sensing	Classification
+fuzzy_overlay	Raster	Overlay Math
+gabor_filter_bank	Remote Sensing	Filters
+gamma_correction	Remote Sensing	Enhancement & Contrast
+gamma_map_filter	Remote Sensing	SAR
+gaussian_contrast_stretch	Remote Sensing	Enhancement & Contrast
+gaussian_curvature	Terrain	Derivatives
+gaussian_filter	Remote Sensing	Filters
+gaussian_geostatistical_simulations	Raster	Spatial Statistics
+generalize_classified_raster	Remote Sensing	Classification
+generalize_with_similarity	Remote Sensing	Classification
+generalized_linear_regression	Vector	Spatial Statistics
+generate_breach_lines	Hydrology	Depressions & Storage
+generate_near_table	Vector	Overlay Analysis
+generate_network_nodes	Vector	Network Analysis
+generate_network_swm	Vector	Network Analysis
+generate_od_links	Vector	Network Analysis
+generate_points_along_3d_lines	Vector	3D Features
+generate_spatial_weights_matrix	Vector	Spatial Statistics
+generate_subset_polygons	Vector	Sampling & Gridding
+generate_transects_along_lines	Vector	Sampling & Gridding
+generate_trend_raster	Raster	Multidimensional
+generating_function	Terrain	Derivatives
+geodetic_densify	Vector	Geometry Processing
+geographically_weighted_regression	Vector	Spatial Statistics
+geographically_weighted_regression_raster	Raster	Spatial Statistics
+geomorphons	Terrain	Landform Indices
+georeference_raster_from_control_points	Projection	Georeferencing
+geotagged_photos_to_points	Conversion	Vector & Table I/O
+getis_ord_general_g	Vector	Spatial Statistics
+getis_ord_gi_star	Vector	Spatial Statistics
+getis_ord_gi_star_raster	Raster	Spatial Statistics
+glcm_texture	Remote Sensing	Filters
+global_morans_i	Vector	Spatial Statistics
+goldstein_phase_filter	Remote Sensing	SAR
+gpx_to_features	Conversion	Vector & Table I/O
+graphic_buffer	Vector	Cartography & Generalization
+greater_than	Raster	General
+greater_than_or_equal_to	Raster	General
+grid_index_features	Vector	Cartography & Generalization
+group_by_proximity	Vector	Spatial Statistics
+gtfs_to_features	Conversion	Vector & Table I/O
+guided_filter	Remote Sensing	Filters
+h3_polyfill	Conversion	Tiles & Web Formats
+h3_to_vector	Conversion	Tiles & Web Formats
+h_alpha_wisart_classification	Remote Sensing	SAR
+hack_stream_order	Hydrology	Streams - Ordering Metrics
+hdbscan	Vector	Spatial Statistics
+heat_map	Raster	General
+height_above_ground	LiDAR	Filtering & Classification
+hexagonal_grid_from_raster_base	Vector	Sampling & Gridding
+hexagonal_grid_from_vector_base	Vector	Sampling & Gridding
+high_pass_bilateral_filter	Remote Sensing	Filters
+high_pass_filter	Remote Sensing	Filters
+high_pass_median_filter	Remote Sensing	Filters
+highest_position	Raster	Overlay Math
+hillshade	Terrain	General
+hillslopes	Hydrology	Watersheds & Basins
+histogram_equalization	Remote Sensing	Enhancement & Contrast
+histogram_matching	Remote Sensing	Enhancement & Contrast
+histogram_matching_two_images	Remote Sensing	Enhancement & Contrast
+hole_proportion	Vector	Shape Metrics
+horizon_angle	Terrain	Visibility
+horizon_area	Terrain	Visibility
+horizontal_excess_curvature	Terrain	Derivatives
+horton_ratios	Hydrology	Streams - Ordering Metrics
+horton_stream_order	Hydrology	Streams - Ordering Metrics
+hot_spot_analysis_comparison	Vector	Spatial Statistics
+hotspot_vs_process	Vector	Spatial Statistics
+hydrologic_connectivity	Hydrology	Hydrologic Indices
+hypsometric_analysis	Terrain	Landform Indices
+hypsometrically_tinted_hillshade	Terrain	General
+identify_narrow_polygons	Vector	Shape Metrics
+identity	Vector	Overlay Analysis
+idw_3d	Raster	Interpolation
+idw_interpolation	Raster	Interpolation
+ihs_to_rgb	Remote Sensing	Enhancement & Contrast
+image_autocorrelation	Raster	General
+image_correlation	Raster	General
+image_correlation_neighbourhood_analysis	Raster	Local Neighborhood
+image_difference_change_detection	Remote Sensing	Change Detection
+image_regression	Raster	General
+image_segmentation	Remote Sensing	OBIA
+image_slider	Remote Sensing	OBIA
+image_stack_profile	Remote Sensing	OBIA
+impoundment_size_index	Hydrology	Depressions & Storage
+improved_ground_point_filter	LiDAR	Filtering & Classification
+increment	Raster	General
+incremental_spatial_autocorrelation	Vector	Spatial Statistics
+individual_tree_detection	LiDAR	Analysis Metrics
+individual_tree_segmentation	LiDAR	Filtering & Classification
+inhomogeneous_baseline	Vector	Spatial Statistics
+inhomogeneous_intensity_raster	Raster	Spatial Statistics
+inplace_add	Raster	General
+inplace_divide	Raster	General
+inplace_multiply	Raster	General
+inplace_subtract	Raster	General
+insert_dams	Hydrology	Depressions & Storage
+inside_3d	Vector	3D Features
+integer_division	Raster	General
+integral_image_transform	Remote Sensing	Filters
+integrate	Vector	Geometry Processing
+interpolate_from_spatiotemporal_points	Raster	Interpolation
+interpolate_shape	Terrain	General
+interpolate_with_barriers	Raster	Interpolation
+intersect	Vector	Overlay Analysis
+intersect_3d	Vector	3D Features
+intersect_3d_line_with_surface	Vector	3D Features
+intersecting_layers_masks	Vector	Cartography & Generalization
+intervisibility	Vector	3D Features
+inverse_pca	Raster	General
+is_closed_3d	Vector	3D Features
+is_nodata	Raster	General
+isobasins	Hydrology	Watersheds & Basins
+jenson_snap_pour_points	Hydrology	Watersheds & Basins
+join_tables	Conversion	Vector & Table I/O
+k_means_clustering	Remote Sensing	Classification
+k_nearest_mean_filter	Remote Sensing	Filters
+k_shortest_paths_network	Vector	Network Analysis
+kappa_index	Raster	General
+kernel_density_ratio	Raster	Spatial Statistics
+kernel_interpolation_with_barriers	Raster	Interpolation
+kml_to_features	Conversion	Vector & Table I/O
+knn_classification	Remote Sensing	Classification
+knn_regression	Remote Sensing	Classification
+ks_normality_test	Raster	General
+kuan_filter	Remote Sensing	SAR
+kuwahara_filter	Remote Sensing	Filters
+land_surface_temperature_single_channel	Remote Sensing	Thermal & Emissivity
+land_surface_temperature_split_window	Remote Sensing	Thermal & Emissivity
+landtrendr	Remote Sensing	Change Detection
+laplacian_filter	Remote Sensing	Edge & Feature Detection
+laplacian_of_gaussians_filter	Remote Sensing	Edge & Feature Detection
+las_height_metrics	LiDAR	Analysis Metrics
+las_to_ascii	LiDAR	I/O & Management
+las_to_shapefile	LiDAR	I/O & Management
+layer_footprint_raster	Vector	Sampling & Gridding
+layer_footprint_vector	Vector	Sampling & Gridding
+lee_filter	Remote Sensing	Filters
+length_of_upstream_channels	Hydrology	Streams - Longitudinal Analysis
+less_than	Raster	General
+less_than_or_equal_to	Raster	General
+lidar_block_maximum	LiDAR	Interpolation & Gridding
+lidar_block_minimum	LiDAR	Interpolation & Gridding
+lidar_classify_subset	LiDAR	Filtering & Classification
+lidar_colourize	LiDAR	I/O & Management
+lidar_construct_vector_tin	LiDAR	Interpolation & Gridding
+lidar_contour	LiDAR	Interpolation & Gridding
+lidar_convert	LiDAR	I/O & Management
+lidar_digital_surface_model	LiDAR	Interpolation & Gridding
+lidar_eigenvalue_features	LiDAR	Analysis Metrics
+lidar_elevation_slice	LiDAR	Filtering & Classification
+lidar_grid_thin	LiDAR	Interpolation & Gridding
+lidar_ground_point_filter	Remote Sensing	Filters
+lidar_hex_bin	LiDAR	Interpolation & Gridding
+lidar_hillshade	LiDAR	Interpolation & Gridding
+lidar_histogram	LiDAR	Analysis Metrics
+lidar_idw_interpolation	LiDAR	Interpolation & Gridding
+lidar_info	LiDAR	Analysis Metrics
+lidar_join	LiDAR	I/O & Management
+lidar_kappa	LiDAR	Analysis Metrics
+lidar_nearest_neighbour_gridding	LiDAR	Interpolation & Gridding
+lidar_point_density	LiDAR	Analysis Metrics
+lidar_point_return_analysis	LiDAR	Analysis Metrics
+lidar_point_stats	LiDAR	Analysis Metrics
+lidar_radial_basis_function_interpolation	LiDAR	Interpolation & Gridding
+lidar_ransac_planes	LiDAR	Analysis Metrics
+lidar_remove_outliers	LiDAR	Filtering & Classification
+lidar_rooftop_analysis	LiDAR	Analysis Metrics
+lidar_segmentation	LiDAR	Filtering & Classification
+lidar_segmentation_based_filter	LiDAR	Filtering & Classification
+lidar_shift	LiDAR	I/O & Management
+lidar_sibson_interpolation	LiDAR	Interpolation & Gridding
+lidar_thin	LiDAR	Interpolation & Gridding
+lidar_thin_high_density	LiDAR	Interpolation & Gridding
+lidar_tile	LiDAR	I/O & Management
+lidar_tile_footprint	LiDAR	Interpolation & Gridding
+lidar_tin_gridding	LiDAR	Interpolation & Gridding
+lidar_tophat_transform	LiDAR	I/O & Management
+line_density	Raster	Local Neighborhood
+line_detection_filter	Remote Sensing	Filters
+line_intersections	Vector	Overlay Analysis
+line_of_sight	Terrain	Visibility
+line_polygon_clip	Vector	Overlay Analysis
+line_statistics	Raster	Local Neighborhood
+line_thinning	Remote Sensing	Filters
+linear_spectral_unmixing	Remote Sensing	Spectral Analytics
+linearity_index	Vector	Shape Metrics
+lines_to_polygons	Conversion	Geometry & Topology
+list_unique_values	Vector	Attribute Analysis
+list_unique_values_raster	Raster	General
+ln	Raster	General
+local_bivariate_relationships	Vector	Spatial Statistics
+local_hypsometric_analysis	Terrain	General
+local_kriging	Raster	Interpolation
+local_morans_i_lisa	Vector	Spatial Statistics
+local_morans_i_lisa_raster	Raster	Spatial Statistics
+local_outlier_analysis	Vector	Space-Time Analysis
+local_polynomial_interpolation	Raster	Interpolation
+locate_lines_along_routes	Vector	Linear Referencing
+locate_points_along_routes	Vector	Linear Referencing
+locate_regions	Raster	General
+location_allocation_network	Vector	Network Analysis
+log10	Raster	General
+log2	Raster	General
+logistic_regression	Remote Sensing	Classification
+long_profile	Hydrology	Streams - Longitudinal Analysis
+long_profile_from_points	Hydrology	Streams - Longitudinal Analysis
+longest_flowpath	Hydrology	Watersheds & Basins
+low_points_on_headwater_divides	Terrain	General
+lowest_position	Raster	Overlay Math
+majority_filter	Remote Sensing	Filters
+map_features	Raster	General
+map_matching_v1	Vector	Network Analysis
+map_off_terrain_objects	Terrain	General
+matched_filter_target_detection	Remote Sensing	Spectral Analytics
+max	Raster	General
+max_absolute_overlay	Raster	Overlay Math
+max_anisotropy_dev	Terrain	Multiscale Signatures
+max_anisotropy_dev_signature	Terrain	Multiscale Signatures
+max_branch_length	Hydrology	Watersheds & Basins
+max_difference_from_mean	Terrain	Multiscale Signatures
+max_downslope_elev_change	Terrain	General
+max_elev_dev_signature	Terrain	Multiscale Signatures
+max_elevation_deviation	Terrain	Multiscale Signatures
+max_overlay	Raster	Overlay Math
+max_upslope_elev_change	Terrain	General
+max_upslope_flowpath_length	Hydrology	Flow Routing
+max_upslope_value	Hydrology	Flow Routing
+maximal_curvature	Terrain	Derivatives
+maximum_filter	Remote Sensing	Filters
+maximum_likelihood_classification	Remote Sensing	Classification
+mdinf_flow_accum	Hydrology	Flow Routing
+mean_curvature	Terrain	Derivatives
+mean_filter	Remote Sensing	Filters
+median_center	Vector	Spatial Statistics
+median_filter	Remote Sensing	Filters
+medoid	Vector	Sampling & Gridding
+merge_divided_roads	Vector	Cartography & Generalization
+merge_line_segments	Vector	Geometry Processing
+merge_lines_by_pseudo_node	Vector	Geometry Processing
+merge_multidimensional_rasters	Raster	Multidimensional
+merge_table_with_csv	Conversion	Vector & Table I/O
+merge_vectors	Conversion	Vector & Table I/O
+mgwr	Vector	Spatial Statistics
+min	Raster	General
+min_absolute_overlay	Raster	Overlay Math
+min_dist_classification	Remote Sensing	Classification
+min_downslope_elev_change	Terrain	General
+min_max_contrast_stretch	Remote Sensing	Enhancement & Contrast
+min_overlay	Raster	Overlay Math
+minimal_curvature	Terrain	Derivatives
+minimal_dispersion_flow_algorithm	Hydrology	Flow Routing
+minimum_bounding_box	Vector	Geometry Processing
+minimum_bounding_circle	Vector	Geometry Processing
+minimum_bounding_envelope	Vector	Geometry Processing
+minimum_bounding_volume	Vector	3D Features
+minimum_convex_hull	Vector	Geometry Processing
+minimum_filter	Remote Sensing	Filters
+minimum_noise_fraction	Remote Sensing	Spectral Analytics
+modified_k_means_clustering	Remote Sensing	Classification
+modified_shepard_interpolation	Raster	Interpolation
+modify_lidar	LiDAR	Filtering & Classification
+modify_nodata_value	Conversion	Raster/Vector Conversion
+modulo	Raster	Overlay Math
+mosaic	Remote Sensing	Enhancement & Contrast
+mosaic_with_feathering	Remote Sensing	Enhancement & Contrast
+multicriteria_overlay	Raster	Overlay Math
+multidimensional_anomaly	Raster	Multidimensional
+multidimensional_principal_components	Raster	Multidimensional
+multidimensional_raster_correlation	Raster	Multidimensional
+multidirectional_hillshade	Terrain	General
+multilook	Remote Sensing	SAR
+multimodal_od_cost_matrix	Vector	Network Analysis
+multimodal_routes_from_od	Vector	Network Analysis
+multimodal_shortest_path	Vector	Network Analysis
+multipart_to_singlepart	Conversion	Geometry & Topology
+multipatch_footprint	Vector	3D Features
+multipatch_to_mesh	Conversion	Vector & Table I/O
+multiple_ring_buffer	Vector	Geometry Processing
+multiply	Raster	Overlay Math
+multiply_overlay	Raster	Overlay Math
+multiscale_curvatures	Terrain	Multiscale Signatures
+multiscale_elevated_index	Terrain	Multiscale Signatures
+multiscale_elevation_percentile	Terrain	Multiscale Signatures
+multiscale_low_lying_index	Terrain	Multiscale Signatures
+multiscale_roughness	Terrain	Multiscale Signatures
+multiscale_roughness_signature	Terrain	Multiscale Signatures
+multiscale_std_dev_normals	Terrain	Multiscale Signatures
+multiscale_std_dev_normals_signature	Terrain	Multiscale Signatures
+multiscale_topographic_position_class	Terrain	Landform Indices
+multiscale_topographic_position_image	Terrain	Multiscale Signatures
+multitemporal_coherence	Remote Sensing	SAR
+multivariate_clustering	Vector	Spatial Statistics
+narrowness_index	Raster	General
+narrowness_index_vector	Vector	Shape Metrics
+natural_neighbour_interpolation	Raster	Interpolation
+ndvi_based_emissivity	Remote Sensing	Thermal & Emissivity
+near	Vector	Overlay Analysis
+near_3d	Vector	3D Features
+nearest_neighbour_index	Vector	Spatial Statistics
+nearest_neighbour_interpolation	Raster	Interpolation
+negate	Raster	General
+neighborhood_summary_statistics	Vector	Spatial Statistics
+network_accessibility_metrics	Vector	Network Analysis
+network_centrality_metrics	Vector	Network Analysis
+network_connected_components	Vector	Network Analysis
+network_node_degree	Vector	Network Analysis
+network_od_cost_matrix	Vector	Network Analysis
+network_routes_from_od	Vector	Network Analysis
+network_service_area	Vector	Network Analysis
+network_topology_audit	Vector	Network Analysis
+new_raster_from_base_raster	Conversion	Raster/Vector Conversion
+new_raster_from_base_vector	Conversion	Raster/Vector Conversion
+nibble	Raster	General
+nnd_classification	Remote Sensing	Classification
+non_local_means_filter	Remote Sensing	Filters
+non_maximum_suppression	Vector	Overlay Analysis
+normal_vectors	LiDAR	Analysis Metrics
+normalize_lidar	LiDAR	Filtering & Classification
+normalized_difference_index	Remote Sensing	Enhancement & Contrast
+not_equal_to	Raster	General
+num_downslope_neighbours	Terrain	General
+num_inflowing_neighbours	Hydrology	Flow Routing
+num_upslope_neighbours	Terrain	General
+obia_audit_report_pro	Remote Sensing	OBIA
+obia_batch_orchestrator_pro	Remote Sensing	OBIA
+obia_pipeline_basic	Remote Sensing	OBIA
+object_class_probability_maps	Remote Sensing	OBIA
+object_features_context_neighbors	Remote Sensing	OBIA
+object_features_shape_basic	Remote Sensing	OBIA
+object_features_spectral_basic	Remote Sensing	OBIA
+object_features_texture_glcm_basic	Remote Sensing	OBIA
+object_features_topology_relations	Remote Sensing	OBIA
+object_uncertainty_diagnostics_pro	Remote Sensing	OBIA
+objects_boundary_refinement_pro	Remote Sensing	OBIA
+objects_enforce_min_mapping_unit	Remote Sensing	OBIA
+observer_points	Terrain	Visibility
+od_sensitivity_analysis	Vector	Network Analysis
+olympic_filter	Remote Sensing	Filters
+opening	Remote Sensing	Filters
+openness	Terrain	Visibility
+optics_clustering	Vector	Spatial Statistics
+optimal_corridor_connections	Raster	Distance & Cost
+optimal_interpolation	Raster	Interpolation
+optimal_path_as_line	Raster	Distance & Cost
+optimized_hot_spot_analysis	Vector	Spatial Statistics
+optimized_outlier_analysis	Vector	Spatial Statistics
+ordinary_cokriging	Raster	Interpolation
+ordinary_kriging	Raster	Interpolation
+orthorectification	Projection	Georeferencing
+otsu_thresholding	Remote Sensing	Classification
+paired_sample_t_test	Raster	General
+pairwise_comparison_weights	Vector	Attribute Analysis
+panchromatic_sharpening	Remote Sensing	Enhancement & Contrast
+parallelepiped_classification	Remote Sensing	Classification
+patch_orientation	Vector	Shape Metrics
+path_distance	Raster	Distance & Cost
+pca_based_change_detection	Remote Sensing	Change Detection
+pennock_landform_classification	Terrain	Landform Indices
+percent_elev_range	Terrain	Landform Indices
+percent_equal_to	Raster	Overlay Math
+percent_greater_than	Raster	Overlay Math
+percent_less_than	Raster	Overlay Math
+percentage_contrast_stretch	Remote Sensing	Enhancement & Contrast
+percentile_contours	Vector	Sampling & Gridding
+percentile_filter	Remote Sensing	Filters
+perimeter_area_ratio	Vector	Shape Metrics
+phi_coefficient	Raster	General
+pick_from_list	Raster	Overlay Math
+piecewise_contrast_stretch	Remote Sensing	Enhancement & Contrast
+pivot_table	Vector	Attribute Analysis
+plan_curvature	Terrain	Derivatives
+pmtiles_extract	Conversion	Tiles & Web Formats
+point_pattern_envelope	Vector	Spatial Statistics
+point_process_residuals	Vector	Spatial Statistics
+point_process_residuals_comparison	Vector	Spatial Statistics
+point_statistics	Raster	Local Neighborhood
+points_along_lines	Vector	Linear Referencing
+points_to_line	Conversion	Geometry & Topology
+points_to_path	Vector	Space-Time Analysis
+polygon_area	Vector	Shape Metrics
+polygon_long_axis	Vector	Shape Metrics
+polygon_neighbors	Vector	Overlay Analysis
+polygon_perimeter	Vector	Shape Metrics
+polygon_short_axis	Vector	Shape Metrics
+polygon_volume	Terrain	General
+polygonize	Vector	Geometry Processing
+polygons_to_lines	Conversion	Geometry & Topology
+polygons_to_segments	Remote Sensing	OBIA
+porous_puff	Hydrology	Hydrologic Indices
+post_classification_change	Remote Sensing	Change Detection
+power	Raster	Overlay Math
+predict_using_trend_raster	Raster	Multidimensional
+presence_only_prediction	Raster	Spatial Statistics
+prewitt_filter	Remote Sensing	Edge & Feature Detection
+principal_component_analysis	Raster	General
+principal_curvature_direction	Terrain	Derivatives
+print_geotiff_tags	Raster	General
+profile	Terrain	General
+profile_curvature	Terrain	Derivatives
+propagate_displacement	Vector	Cartography & Generalization
+propagate_labels_across_hierarchy	Remote Sensing	OBIA
+prune_vector_streams	Hydrology	Streams - Network Extraction
+pycnophylactic_interpolation	Raster	Interpolation
+qin_flow_accumulation	Hydrology	Flow Routing
+quadrat_count_test	Vector	Spatial Statistics
+quantiles	Raster	General
+quinn_flow_accumulation	Hydrology	Flow Routing
+radial_basis_function_interpolation	Raster	Interpolation
+radiometric_terrain_flattening	Remote Sensing	SAR
+radius_of_gyration	Raster	General
+raise_walls	Hydrology	Depressions & Storage
+random_field	Raster	General
+random_forest_classification	Remote Sensing	Classification
+random_forest_classification_fit	Raster	General
+random_forest_classification_predict	Raster	General
+random_forest_regression	Remote Sensing	Classification
+random_forest_regression_fit	Raster	General
+random_forest_regression_predict	Raster	General
+random_points_in_polygon	Vector	Sampling & Gridding
+random_sample	Raster	General
+range_filter	Remote Sensing	Filters
+raster_area	Raster	General
+raster_calculator	Raster	General
+raster_cell_assignment	Raster	General
+raster_domain	Conversion	Raster/Vector Conversion
+raster_histogram	Raster	General
+raster_normalize	Raster	General
+raster_perimeter	Raster	General
+raster_streams_to_vector	Hydrology	Streams - Network Extraction
+raster_summary_stats	Raster	General
+raster_to_h3	Conversion	Tiles & Web Formats
+raster_to_tiles	Conversion	Tiles & Web Formats
+raster_to_vector_lines	Conversion	Raster/Vector Conversion
+raster_to_vector_points	Conversion	Raster/Vector Conversion
+raster_to_vector_polygons	Conversion	Raster/Vector Conversion
+raster_to_weighted_points	Conversion	Raster/Vector Conversion
+rasterize_streams	Hydrology	Streams - Network Extraction
+read_geoparquet	Conversion	Vector & Table I/O
+reciprocal	Raster	General
+reclass	Raster	Reclassify & Mask
+reclass_equal_interval	Raster	Reclassify & Mask
+reclassify_field	Vector	Attribute Analysis
+reconstruct_tracks	Vector	Space-Time Analysis
+recover_flightline_info	LiDAR	I/O & Management
+rectangular_grid_from_raster_base	Vector	Sampling & Gridding
+rectangular_grid_from_vector_base	Vector	Sampling & Gridding
+reduce_point_density	Vector	Sampling & Gridding
+refined_lee_filter	Remote Sensing	SAR
+regression_kriging	Raster	Interpolation
+regularize_adjacent_building_footprint	Vector	Cartography & Generalization
+regularize_building_footprints	Vector	Cartography & Generalization
+reinitialize_attribute_table	Conversion	Vector & Table I/O
+related_circumscribing_circle	Vector	Shape Metrics
+relative_aspect	Terrain	Derivatives
+relative_stream_power_index	Hydrology	Hydrologic Indices
+relative_topographic_position	Terrain	Landform Indices
+remove_duplicates	LiDAR	Filtering & Classification
+remove_off_terrain_objects	Terrain	General
+remove_overlap_multiple	Vector	Geometry Processing
+remove_polygon_holes	Conversion	Geometry & Topology
+remove_raster_polygon_holes	Conversion	Raster/Vector Conversion
+remove_short_streams	Hydrology	Streams - Network Extraction
+remove_spurs	Remote Sensing	Filters
+remove_thermal_noise	Remote Sensing	SAR
+rename_field	Vector	Attribute Analysis
+render_raster_png	Raster	General
+render_vector_png	Vector	Cartography & Generalization
+repair_geometry	Vector	Geometry Processing
+repair_stream_vector_topology	Hydrology	Streams - Network Extraction
+representative_point_vector	Vector	Geometry Processing
+reproject_raster	Projection	Georeferencing
+reproject_vector	Projection	Georeferencing
+resample	Remote Sensing	Enhancement & Contrast
+rescale_by_function	Raster	Overlay Math
+rescale_value_range	Raster	General
+resolve_building_conflicts	Vector	Cartography & Generalization
+resolve_road_conflicts	Vector	Cartography & Generalization
+rgb_to_ihs	Remote Sensing	Enhancement & Contrast
+rho8_flow_accum	Hydrology	Flow Routing
+rho8_pointer	Hydrology	Flow Routing
+ridge_and_valley_vectors	Terrain	General
+ring_curvature	Terrain	Derivatives
+ripleys_k	Vector	Spatial Statistics
+ripleys_k_function	Vector	Spatial Statistics
+ripleys_k_test	Vector	Spatial Statistics
+river_centerlines	Hydrology	Streams - Network Extraction
+roberts_cross_filter	Remote Sensing	Edge & Feature Detection
+root_mean_square_error	Raster	General
+rotor	Terrain	Derivatives
+round	Raster	General
+route_calibrate	Vector	Linear Referencing
+route_event_lines_from_layer	Vector	Linear Referencing
+route_event_lines_from_table	Vector	Linear Referencing
+route_event_merge	Vector	Linear Referencing
+route_event_overlay	Vector	Linear Referencing
+route_event_points_from_layer	Vector	Linear Referencing
+route_event_points_from_table	Vector	Linear Referencing
+route_event_split	Vector	Linear Referencing
+route_measure_qa	Vector	Linear Referencing
+route_recalibrate	Vector	Linear Referencing
+rubbersheet_features	Vector	Geometry Processing
+ruggedness_index	Terrain	Roughness & Texture
+sar_coherence	Remote Sensing	SAR
+savitzky_golay_2d_filter	Remote Sensing	Filters
+scharr_filter	Remote Sensing	Filters
+sediment_transport_index	Hydrology	Hydrologic Indices
+segment_graph_felzenszwalb	Remote Sensing	OBIA
+segment_multiresolution_hierarchical	Remote Sensing	OBIA
+segment_scale_parameter_optimizer	Remote Sensing	OBIA
+segment_slic_superpixels	Remote Sensing	OBIA
+segment_watershed_markers	Remote Sensing	OBIA
+segments_merge_small_regions	Remote Sensing	OBIA
+segments_split_low_cohesion	Remote Sensing	OBIA
+segments_to_polygons	Remote Sensing	OBIA
+select_by_location	Vector	Overlay Analysis
+select_tiles_by_polygon	LiDAR	I/O & Management
+semivariogram_sensitivity	Vector	Spatial Statistics
+set_nodata_value	Conversion	Raster/Vector Conversion
+shadow_animation	Terrain	Visibility
+shadow_image	Terrain	Visibility
+shape_complexity_index_raster	Raster	General
+shape_complexity_index_vector	Vector	Shape Metrics
+shape_index	Terrain	Derivatives
+shortest_path_network	Vector	Network Analysis
+shreve_stream_magnitude	Hydrology	Streams - Ordering Metrics
+sieve	Raster	General
+sigmoidal_contrast_stretch	Remote Sensing	Enhancement & Contrast
+similarity_search	Vector	Spatial Statistics
+simple_kriging	Raster	Interpolation
+simplify_3d_line	Vector	3D Features
+simplify_building	Vector	Cartography & Generalization
+simplify_by_circular_arcs	Vector	Cartography & Generalization
+simplify_by_tangent_segments	Vector	Cartography & Generalization
+simplify_features	Vector	Geometry Processing
+simplify_shared_edges	Vector	Cartography & Generalization
+sin	Raster	General
+singlepart_to_multipart	Conversion	Geometry & Topology
+sinh	Raster	General
+sink	Hydrology	Depressions & Storage
+sky_view_factor	Terrain	Visibility
+skyline_analysis	Terrain	Visibility
+slice_raster	Raster	Reclassify & Mask
+slope	Terrain	Derivatives
+slope_vs_aspect_plot	Terrain	General
+slope_vs_elev_plot	Terrain	General
+smooth_natural_features	Vector	Cartography & Generalization
+smooth_shared_edges	Vector	Cartography & Generalization
+smooth_vectors	Vector	Geometry Processing
+smooth_vegetation_residual	Terrain	General
+snap_endnodes	Vector	Geometry Processing
+snap_events_to_routes	Vector	Linear Referencing
+snap_points_to_network	Vector	Network Analysis
+snap_pour_points	Hydrology	Watersheds & Basins
+snap_tracks	Vector	Network Analysis
+sobel_filter	Remote Sensing	Edge & Feature Detection
+solar_radiation	Terrain	General
+sort_features	Vector	Attribute Analysis
+sort_lidar	LiDAR	I/O & Management
+space_time_kernel_density	Raster	Spatial Statistics
+spacetime_kriging	Raster	Interpolation
+spatial_association_between_zones	Raster	Zonal
+spatial_eigenvector_filtering	Vector	Spatial Statistics
+spatial_error_regression	Vector	Spatial Statistics
+spatial_error_regression_raster	Raster	Spatial Statistics
+spatial_join	Vector	Overlay Analysis
+spatial_lag_regression	Vector	Spatial Statistics
+spatial_lag_regression_raster	Raster	Spatial Statistics
+spatial_outlier_detection	Vector	Spatial Statistics
+spatially_constrained_multivariate_clustering	Vector	Spatial Statistics
+spectral_angle_mapper	Remote Sensing	Spectral Analytics
+spectral_index	Remote Sensing	Enhancement & Contrast
+spectral_library_matching	Remote Sensing	Spectral Analytics
+spherical_std_dev_of_normals	Terrain	Roughness & Texture
+split_by_attributes	Conversion	Vector & Table I/O
+split_by_features	Conversion	Vector & Table I/O
+split_colour_composite	Remote Sensing	Enhancement & Contrast
+split_lidar	LiDAR	I/O & Management
+split_line_at_point	Vector	Geometry Processing
+split_lines_at_intersections	Vector	Network Analysis
+split_raster	Raster	General
+split_vector_lines	Vector	Geometry Processing
+split_with_lines	Vector	Geometry Processing
+sqrt	Raster	General
+square	Raster	General
+stack_profile	Vector	Sampling & Gridding
+standard_deviation_contrast_stretch	Remote Sensing	Enhancement & Contrast
+standard_deviation_filter	Remote Sensing	Filters
+standard_deviation_of_slope	Terrain	Roughness & Texture
+standard_deviation_overlay	Raster	Overlay Math
+stochastic_depression_analysis	Hydrology	Depressions & Storage
+storage_capacity	Hydrology	Depressions & Storage
+strahler_order_basins	Hydrology	Streams - Ordering Metrics
+strahler_stream_order	Hydrology	Streams - Ordering Metrics
+stream_link_class	Hydrology	Streams - Ordering Metrics
+stream_link_identifier	Hydrology	Streams - Ordering Metrics
+stream_link_length	Hydrology	Streams - Ordering Metrics
+stream_link_slope	Hydrology	Streams - Ordering Metrics
+stream_slope_continuous	Hydrology	Streams - Ordering Metrics
+strip_map_index_features	Vector	Cartography & Generalization
+subbasins	Hydrology	Watersheds & Basins
+subdivide_polygon	Vector	Geometry Processing
+subset_features	Vector	Attribute Analysis
+subset_multidimensional_raster	Raster	Multidimensional
+subtract	Raster	Overlay Math
+sum_overlay	Raster	Overlay Math
+summarize_categorical_raster	Raster	Zonal
+summarize_nearby	Vector	Overlay Analysis
+summarize_percent_change	Vector	Overlay Analysis
+summarize_within	Vector	Overlay Analysis
+summary_statistics	Vector	Attribute Analysis
+sun_shadow_volume	Vector	3D Features
+surface_area_ratio	Terrain	General
+surface_difference	Terrain	General
+surface_parameters	Terrain	Derivatives
+surface_volume	Terrain	General
+svm_classification	Remote Sensing	Classification
+svm_regression	Remote Sensing	Classification
+symmetrical_difference	Vector	Overlay Analysis
+table_to_geometry	Conversion	Vector & Table I/O
+tabulate_intersection	Vector	Overlay Analysis
+tan	Raster	General
+tangential_curvature	Terrain	Derivatives
+tanh	Raster	General
+terrain_corrected_optical_analytics	Remote Sensing	Radiometric Correction
+thicken_raster_line	Remote Sensing	Filters
+thin_road_network	Vector	Cartography & Generalization
+tile_grid_polygons	Vector	Sampling & Gridding
+time_in_daylight	Terrain	Visibility
+time_series_clustering	Vector	Space-Time Analysis
+time_series_cross_correlation	Raster	Multidimensional
+time_series_forecast	Vector	Space-Time Analysis
+time_series_smoothing	Vector	Space-Time Analysis
+tin_interpolation	Raster	Interpolation
+to_degrees	Raster	General
+to_radians	Raster	General
+tophat_transform	Remote Sensing	Filters
+topo_render	Terrain	Workflow Products
+topo_to_raster	Raster	Interpolation
+topographic_hachures	Terrain	General
+topographic_position_animation	Terrain	Multiscale Signatures
+topological_breach_burn	Hydrology	Depressions & Storage
+topological_stream_order	Hydrology	Streams - Ordering Metrics
+topology_rule_autofix	Conversion	Geometry & Topology
+topology_rule_validate	Conversion	Geometry & Topology
+topology_validation_report	Conversion	Geometry & Topology
+total_curvature	Terrain	Derivatives
+total_filter	Remote Sensing	Filters
+trace_downslope_flowpaths	Hydrology	Flow Routing
+trace_proximity_events	Vector	Space-Time Analysis
+transfer_attributes	Vector	Network Analysis
+transform_features	Vector	Geometry Processing
+transform_fields	Vector	Attribute Analysis
+transform_route_events	Vector	Linear Referencing
+transpose_fields	Vector	Attribute Analysis
+travelling_salesman_problem	Vector	Network Analysis
+trend_surface	Raster	General
+trend_surface_vector_points	Raster	General
+tributary_identifier	Hydrology	Streams - Ordering Metrics
+trim_line	Vector	Geometry Processing
+truncate	Raster	General
+turning_bands_simulation	Raster	General
+two_sample_ks_test	Raster	General
+union	Vector	Overlay Analysis
+union_3d	Vector	3D Features
+universal_kriging	Raster	Interpolation
+unnest_basins	Hydrology	Watersheds & Basins
+unsharp_masking	Remote Sensing	Filters
+unsphericity	Terrain	Derivatives
+unwrap_phase	Remote Sensing	SAR
+update	Vector	Overlay Analysis
+update_nodata_cells	Raster	Overlay Math
+upslope_depression_storage	Hydrology	Depressions & Storage
+user_defined_weights_filter	Remote Sensing	Filters
+validate_flow_direction	Hydrology	Flow Routing
+vector_convert	Conversion	Vector & Table I/O
+vector_hex_binning	Vector	Sampling & Gridding
+vector_lines_to_raster	Conversion	Raster/Vector Conversion
+vector_points_to_raster	Conversion	Raster/Vector Conversion
+vector_polygons_to_raster	Conversion	Raster/Vector Conversion
+vector_stream_network_analysis	Hydrology	Streams - Ordering Metrics
+vector_summary_statistics	Conversion	Vector & Table I/O
+vector_to_h3	Conversion	Tiles & Web Formats
+vector_to_pmtiles	Conversion	Tiles & Web Formats
+vehicle_routing_cvrp	Vector	Network Analysis
+vehicle_routing_pickup_delivery	Vector	Network Analysis
+vehicle_routing_vrptw	Vector	Network Analysis
+vertical_excess_curvature	Terrain	Derivatives
+viewshed	Terrain	Visibility
+visibility_index	Terrain	Visibility
+voronoi_diagram	Vector	Sampling & Gridding
+voxel_isosurface	Vector	3D Features
+warp_raster	Projection	Georeferencing
+watershed	Hydrology	Watersheds & Basins
+watershed_from_raster_pour_points	Hydrology	Watersheds & Basins
+weighted_overlay	Raster	Overlay Math
+weighted_sum	Raster	Overlay Math
+weighted_voronoi	Raster	Distance & Cost
+wetness_index	Hydrology	Hydrologic Indices
+wiener_filter	Remote Sensing	Filters
+wilcoxon_signed_rank_test	Raster	General
+wisart_iterative_clustering	Remote Sensing	SAR
+write_function_memory_insertion	Remote Sensing	Change Detection
+write_geoparquet	Conversion	Vector & Table I/O
+write_pmtiles	Conversion	Tiles & Web Formats
+yamaguchi_4component_decomposition	Remote Sensing	SAR
+z_scores	Raster	General
+zonal_characterization	Raster	Zonal
+zonal_fill	Raster	Zonal
+zonal_geometry	Raster	Zonal
+zonal_histogram	Raster	Zonal
+zonal_statistics	Raster	Zonal

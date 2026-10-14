@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-cli"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "geolibre-tools",
  "serde_json",
@@ -1045,14 +1045,14 @@ dependencies = [
 
 [[package]]
 name = "geolibre-pmtiles"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "flate2",
 ]
 
 [[package]]
 name = "geolibre-tools"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "calamine",
  "flate2",
@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "geolibre-wasm"
-version = "1.6.0"
+version = "1.7.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",

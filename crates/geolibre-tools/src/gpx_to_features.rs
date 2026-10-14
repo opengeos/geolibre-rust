@@ -238,10 +238,8 @@ fn read_lat_lon(e: &BytesStart) -> (Option<f64>, Option<f64>) {
     for attr in e.attributes().flatten() {
         let key = attr.key.local_name();
         // lat/lon are plain decimal numbers, so no XML unescaping is needed.
-        let val = std::str::from_utf8(attr.value.as_ref())
-            .ok()
-            .and_then(|v| v.trim().parse::<f64>().ok());
-        match key.as_ref() {
+        let val = attr.value.trim().parse::<f64>().ok();
+        match key.as_ref().as_bytes() {
             b"lat" => lat = val,
             b"lon" => lon = val,
             _ => {}
@@ -277,7 +275,7 @@ fn parse_gpx(text: &str) -> Result<ParsedGpx, ToolError> {
     // Handles a Start (or Empty, via the caller) element open.
     macro_rules! on_open {
         ($e:expr) => {{
-            let name = $e.local_name().as_ref().to_vec();
+            let name = $e.local_name().as_ref().as_bytes().to_vec();
             match name.as_slice() {
                 b"wpt" | b"trkpt" | b"rtept" => {
                     let (lat, lon) = read_lat_lon(&$e);
@@ -407,20 +405,17 @@ fn parse_gpx(text: &str) -> Result<ParsedGpx, ToolError> {
         match reader.read_event() {
             Ok(Event::Start(e)) => on_open!(e),
             Ok(Event::Empty(e)) => {
-                let name = e.local_name().as_ref().to_vec();
+                let name = e.local_name().as_ref().as_bytes().to_vec();
                 on_open!(e);
                 on_close!(name);
             }
             Ok(Event::Text(e)) => {
                 if collecting.is_some() {
-                    let t = e
-                        .decode()
-                        .map_err(|err| ToolError::Execution(format!("GPX text decode: {err}")))?;
-                    text_buf.push_str(&t);
+                    text_buf.push_str(&e);
                 }
             }
             Ok(Event::End(e)) => {
-                let name = e.local_name().as_ref().to_vec();
+                let name = e.local_name().as_ref().as_bytes().to_vec();
                 on_close!(name);
             }
             Ok(Event::Eof) => break,

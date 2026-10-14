@@ -270,7 +270,7 @@ fn parse_placemarks(xml: &str) -> Result<Vec<Placemark>, ToolError> {
         match ev {
             Event::Eof => break,
             Event::Start(e) => {
-                let local = e.local_name().as_ref().to_vec();
+                let local = e.local_name().as_ref().as_bytes().to_vec();
                 match local.as_slice() {
                     b"Placemark" => {
                         pm = Some(Placemark {
@@ -302,29 +302,21 @@ fn parse_placemarks(xml: &str) -> Result<Vec<Placemark>, ToolError> {
             Event::Text(e) => {
                 // The reader hands entity references as separate GeneralRef
                 // events, so text spans carry no escapes to expand here.
-                let raw = e
-                    .decode()
-                    .map_err(|e| ToolError::Execution(format!("bad KML text encoding: {e}")))?;
-                text.push_str(&raw);
+                text.push_str(&e);
             }
             Event::GeneralRef(e) => {
                 // Resolve `&amp;`/`&lt;`/`&#48;` etc. into their character(s).
                 if let Ok(Some(ch)) = e.resolve_char_ref() {
                     text.push(ch);
-                } else if let Ok(name) = e.decode() {
-                    if let Some(rep) = quick_xml::escape::resolve_predefined_entity(&name) {
-                        text.push_str(rep);
-                    }
+                } else if let Some(rep) = quick_xml::escape::resolve_predefined_entity(&e) {
+                    text.push_str(rep);
                 }
             }
             Event::CData(e) => {
-                let raw = e
-                    .decode()
-                    .map_err(|e| ToolError::Execution(format!("bad KML CDATA encoding: {e}")))?;
-                text.push_str(&raw);
+                text.push_str(&e);
             }
             Event::End(e) => {
-                let local = e.local_name().as_ref().to_vec();
+                let local = e.local_name().as_ref().as_bytes().to_vec();
                 stack.pop();
                 let parent = stack.last().map(Vec::as_slice);
                 match local.as_slice() {

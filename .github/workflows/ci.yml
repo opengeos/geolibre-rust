@@ -36,7 +36,7 @@ jobs:
           echo "AR_wasm32_wasip1=$sdk/bin/llvm-ar" >> "$GITHUB_ENV"
           echo "CFLAGS_wasm32_wasip1=--sysroot=$sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 

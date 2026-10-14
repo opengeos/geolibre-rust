@@ -243,7 +243,8 @@ def list_manifests(wasm_path: Optional[PathLike] = None) -> list[dict]:
 
     Returns:
         A list of manifest dicts, each including a ``"source"`` field of
-        ``"geolibre"`` or ``"whitebox"``.
+        ``"geolibre"`` or ``"whitebox"`` and a ``"taxonomy"`` field
+        (``{"category": "Terrain", "subcategory": "Derivatives"}``).
     """
     result = _exec(["manifests"], wasm_path=wasm_path)
     return json.loads("".join(result.stdout))

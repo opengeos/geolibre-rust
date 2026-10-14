@@ -60,6 +60,55 @@ fn tag_source(manifest: &mut Value, geolibre_ids: &HashSet<String>) {
     }
 }
 
+/// The top-level categories of [`TAXONOMY`], in menu order.
+pub const TAXONOMY_CATEGORIES: [&str; 8] = [
+    "Conversion",
+    "Hydrology",
+    "LiDAR",
+    "Projection",
+    "Raster",
+    "Remote Sensing",
+    "Terrain",
+    "Vector",
+];
+
+/// Where each tool sits in a menu: `id \t category \t subcategory`, one line per
+/// registered tool (`#` lines are comments). The manifest's own `category` is
+/// wbcore's coarse `ToolCategory`; this is the finer grouping hosts show tools in.
+const TAXONOMY: &str = include_str!("taxonomy.tsv");
+
+/// Each tool's `(category, subcategory)` from [`TAXONOMY`].
+pub fn taxonomy() -> BTreeMap<&'static str, (&'static str, &'static str)> {
+    TAXONOMY
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut fields = line.split('\t');
+            Some((fields.next()?, (fields.next()?, fields.next()?)))
+        })
+        .collect()
+}
+
+/// Adds a `"taxonomy": {"category", "subcategory"}` object to a manifest JSON
+/// object (e.g. `Terrain` › `Derivatives` for `slope`), when its tool has one.
+fn tag_taxonomy(
+    manifest: &mut Value,
+    taxonomy: &BTreeMap<&'static str, (&'static str, &'static str)>,
+) {
+    if let Some(obj) = manifest.as_object_mut() {
+        let place = obj
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| taxonomy.get(id));
+        if let Some((category, subcategory)) = place {
+            obj.insert(
+                "taxonomy".to_string(),
+                serde_json::json!({"category": category, "subcategory": subcategory}),
+            );
+        }
+    }
+}
+
 /// Parameters for the two tools that declare none anywhere -- not in their
 /// manifest, not in their metadata, and not in a schema table -- so there is
 /// nothing to backfill them from.
@@ -315,15 +364,18 @@ fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<Strin
 /// Every tool's manifest as JSON, the shape `geolibre manifests` prints (one pass
 /// over the registry; hosts should build it once and keep it): params backfilled
 /// where a tool's own manifest omits them, each param's I/O `schema`, `io_role` and
-/// `data_kind`, and a `source` tag (`"geolibre"` or `"whitebox"`).
+/// `data_kind`, a `source` tag (`"geolibre"` or `"whitebox"`) and the tool's
+/// `taxonomy` (see [`taxonomy`]).
 pub fn manifests_json(registry: &ToolRegistry) -> Vec<Value> {
     let geolibre_ids = geolibre_tool_ids();
+    let taxonomy = taxonomy();
     let backfilled = backfilled_tool_ids(registry);
     manifests_with_metadata_params(registry)
         .iter()
         .map(|m| {
             let mut value = enriched_manifest(m, &backfilled);
             tag_source(&mut value, &geolibre_ids);
+            tag_taxonomy(&mut value, &taxonomy);
             value
         })
         .collect()
@@ -349,6 +401,7 @@ pub fn manifest_json(registry: &ToolRegistry, id: &str) -> Option<Value> {
     }
     let mut value = enriched_manifest(&manifest, &backfilled);
     tag_source(&mut value, &geolibre_tool_ids());
+    tag_taxonomy(&mut value, &taxonomy());
     Some(value)
 }
 
@@ -389,6 +442,51 @@ mod tests {
             assert_eq!(manifest_json(&registry, id).as_ref(), Some(entry), "{id}");
         }
         assert!(manifest_json(&registry, "no_such_tool").is_none());
+    }
+
+    /// Every registered tool has exactly one taxonomy row, under a known category,
+    /// and no row names a tool that isn't registered: a new tool fails here until
+    /// it is given its place in `taxonomy.tsv`.
+    #[test]
+    fn every_tool_has_a_taxonomy() {
+        let registry = build_registry();
+        let ids: HashSet<String> = registry.list().iter().map(|m| m.id.to_string()).collect();
+        let taxonomy = taxonomy();
+        let rows = TAXONOMY
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .count();
+        assert_eq!(
+            rows,
+            taxonomy.len(),
+            "a tool is listed twice, or a row is malformed"
+        );
+        let mut missing: Vec<&String> = ids
+            .iter()
+            .filter(|id| !taxonomy.contains_key(id.as_str()))
+            .collect();
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "add these tools to taxonomy.tsv: {missing:?}"
+        );
+        let stale: Vec<&&str> = taxonomy.keys().filter(|id| !ids.contains(**id)).collect();
+        assert!(
+            stale.is_empty(),
+            "taxonomy.tsv names unregistered tools: {stale:?}"
+        );
+        for (id, (category, subcategory)) in &taxonomy {
+            assert!(
+                TAXONOMY_CATEGORIES.contains(category),
+                "{id}: unknown category {category}"
+            );
+            assert!(!subcategory.trim().is_empty(), "{id}: no subcategory");
+        }
+        let slope = manifest_json(&registry, "slope").expect("slope manifest");
+        assert_eq!(
+            slope["taxonomy"],
+            serde_json::json!({"category": "Terrain", "subcategory": "Derivatives"})
+        );
     }
 
     #[test]

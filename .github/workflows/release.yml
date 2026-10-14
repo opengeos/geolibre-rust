@@ -48,7 +48,7 @@ jobs:
       - name: Upgrade npm for Trusted Publishing
         run: npm install -g npm@11.5.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

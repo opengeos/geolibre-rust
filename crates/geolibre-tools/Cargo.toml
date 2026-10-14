@@ -78,4 +78,4 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 # Pure-Rust .xlsx writer, used only to generate fixtures for the
 # excel_to_table unit tests (never part of the wasm/CLI build).
-rust_xlsxwriter = "0.90"
+rust_xlsxwriter = "0.99"

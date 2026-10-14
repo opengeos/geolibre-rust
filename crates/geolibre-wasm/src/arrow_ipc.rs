@@ -384,18 +384,14 @@ pub fn to_ipc(layer: &Layer) -> Result<Vec<u8>, String> {
         [
             (EXT_NAME.to_string(), encoding.extension_name().to_string()),
             (EXT_META.to_string(), extension_metadata(layer)),
-        ]
-        .into_iter()
-        .collect(),
+        ],
     );
     fields.push(geom_field);
     columns.push(geometry);
 
     let schema = Arc::new(
         Schema::new(fields).with_metadata(
-            [("geolibre:layer".to_string(), layer.name.clone())]
-                .into_iter()
-                .collect(),
+            [("geolibre:layer".to_string(), layer.name.clone())],
         ),
     );
     let batch = RecordBatch::try_new(schema.clone(), columns)

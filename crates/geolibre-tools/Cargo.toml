@@ -19,7 +19,7 @@ wbvector = { git = "https://github.com/opengeos/whitebox-wasm", features = ["geo
 wblidar = { git = "https://github.com/opengeos/whitebox-wasm" }
 # Pulled in transitively by wbvector's geoparquet feature; named directly so the
 # GeoParquet tools can choose the compression codec (ZSTD by default).
-parquet = "58.3"
+parquet = "60.0"
 
 # Shared PMTiles v3 core (format, writer, bbox extract); also consumed by
 # geolibre-wasm directly, which is why it is its own lightweight crate.

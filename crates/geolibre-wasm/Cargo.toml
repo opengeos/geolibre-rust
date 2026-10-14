@@ -38,7 +38,7 @@ arrow-array = { version = "58.3", optional = true }
 arrow-buffer = { version = "58.3", optional = true }
 arrow-ipc = { version = "58.3", optional = true }
 arrow-schema = { version = "58.3", optional = true }
-parquet = { version = "58.3", optional = true }
+parquet = { version = "60.0", optional = true }
 bytes = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 

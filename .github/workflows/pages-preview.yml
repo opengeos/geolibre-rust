@@ -56,8 +56,9 @@ jobs:
   preview:
     name: Build and deploy preview
     runs-on: ubuntu-latest
-    # Fork PRs get no secrets on pull_request, so the deploy could only fail.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Fork PRs get no secrets on pull_request, and Dependabot's PRs get only
+    # Dependabot secrets (no PREVIEW_DEPLOY_TOKEN), so the deploy could only fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     steps:
       # SECURITY: persist-credentials: false keeps GITHUB_TOKEN out of
       # .git/config. This job builds the pull request's own code — ./build.sh

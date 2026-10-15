@@ -19,7 +19,7 @@ mod lidar;
 mod analysis;
 mod pmtiles;
 use wasm_bindgen::prelude::*;
-use wbgeotiff::{CogLayout, CogWriter, Compression, GeoTiff, GeoTransform, SampleFormat};
+use wbgeotiff::{CogLayout, CogWriter, Compression, GeoKeyDirectory, GeoTiff, GeoTransform, SampleFormat};
 
 /// Install a panic hook so Rust panics surface as readable `console.error`
 /// messages instead of an opaque `RuntimeError: unreachable`.
@@ -377,6 +377,10 @@ impl GeoTiffReader {
     /// EPSG code, or `undefined` if the file is not georeferenced by EPSG.
     #[wasm_bindgen(getter)]
     pub fn epsg(&self) -> Option<u32> { self.inner.epsg().map(|e| e as u32) }
+    /// PROJ string of a user-defined projected CRS (no EPSG code, e.g. ESRI:102567
+    /// Lo29), built from the projection GeoKeys, or `undefined`.
+    #[wasm_bindgen(getter)]
+    pub fn proj_string(&self) -> Option<String> { self.inner.proj_string() }
     /// No-data sentinel, or `undefined` if none is declared.
     #[wasm_bindgen(getter)]
     pub fn nodata(&self) -> Option<f64> { self.inner.no_data() }
@@ -538,6 +542,7 @@ pub struct CogBuilder {
     height: u32,
     bands: u16,
     epsg: Option<u16>,
+    user_crs: Option<GeoKeyDirectory>,
     nodata: Option<f64>,
     geo_transform: Option<[f64; 6]>,
     compression: Compression,
@@ -553,7 +558,7 @@ impl CogBuilder {
     pub fn new(width: u32, height: u32, bands: u16) -> CogBuilder {
         CogBuilder {
             width, height, bands: bands.max(1),
-            epsg: None, nodata: None, geo_transform: None,
+            epsg: None, user_crs: None, nodata: None, geo_transform: None,
             compression: Compression::Deflate, tile_size: None,
             bigtiff: false, overview_levels: None,
         }
@@ -561,6 +566,16 @@ impl CogBuilder {
 
     /// Set the EPSG code (1..=65535).
     pub fn set_epsg(&mut self, epsg: u32) { if (1..=65535).contains(&epsg) { self.epsg = Some(epsg as u16); } }
+    /// Set a user-defined projected CRS from a PROJ string (as returned by
+    /// `GeoTiffReader.proj_string`), for a CRS with no EPSG code. Ignored when an
+    /// EPSG code is also set. Throws for a projection the GeoKey encoder does not
+    /// cover.
+    pub fn set_proj_string(&mut self, proj: &str) -> Result<(), JsValue> {
+        let gkd = GeoKeyDirectory::from_proj_string(proj)
+            .ok_or_else(|| JsValue::from_str(&format!("unsupported PROJ string: {proj}")))?;
+        self.user_crs = Some(gkd);
+        Ok(())
+    }
     /// Set the no-data sentinel value.
     pub fn set_nodata(&mut self, v: f64) { self.nodata = Some(v); }
     /// Set the full affine geo-transform:
@@ -598,7 +613,11 @@ impl CogBuilder {
     fn build(&self) -> CogWriter {
         let mut w = CogWriter::new(self.width, self.height, self.bands)
             .compression(self.compression);
-        if let Some(e) = self.epsg { w = w.epsg(e); }
+        if let Some(e) = self.epsg {
+            w = w.epsg(e);
+        } else if let Some(ref gkd) = self.user_crs {
+            w = w.geo_key_directory(gkd.clone());
+        }
         if let Some(nd) = self.nodata { w = w.no_data(nd); }
         if let Some(g) = self.geo_transform {
             w = w.geo_transform(GeoTransform::new(g[0], g[1], g[2], g[3], g[4], g[5]));
@@ -819,5 +838,28 @@ impl CogStream {
     /// come back full-size; clip to the image/window on the JS side.
     pub fn decode_tile_f64(&self, level: usize, tile_bytes: &[u8]) -> Result<Vec<f64>, JsValue> {
         self.level(level)?.decode_tile_f64(tile_bytes).map_err(jerr("decode tile"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A user-defined projection (South Africa's Lo29, ESRI:102567) has no EPSG
+    /// code and must round-trip through `CogBuilder` as its PROJ string.
+    #[test]
+    fn user_defined_projection_round_trips() {
+        let lo29 = "+proj=tmerc +lat_0=0 +lon_0=29 +k_0=1 +x_0=0 +y_0=0 +a=6378137 +rf=298.257223563 +units=m +no_defs";
+        let mut builder = CogBuilder::new(16, 16, 1);
+        builder.set_proj_string(lo29).unwrap();
+        builder.set_origin(20_000.0, -2_800_000.0, 10.0);
+        builder.set_overview_levels(Vec::new());
+        let bytes = builder.write_f32(&[1.0; 16 * 16]).unwrap();
+
+        let reader = GeoTiffReader::new(&bytes).unwrap();
+        assert_eq!(reader.epsg(), None);
+        assert_eq!(reader.proj_string().as_deref(), Some(lo29));
+        let lonlat = reader.bounds_lonlat();
+        assert!((lonlat[0] - 29.1986).abs() < 1e-3 && (lonlat[1] + 25.3077).abs() < 1e-3, "{lonlat:?}");
     }
 }

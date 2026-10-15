@@ -565,15 +565,22 @@ impl CogBuilder {
     }
 
     /// Set the EPSG code (1..=65535).
-    pub fn set_epsg(&mut self, epsg: u32) { if (1..=65535).contains(&epsg) { self.epsg = Some(epsg as u16); } }
+    /// Replaces any CRS set by `set_proj_string`.
+    pub fn set_epsg(&mut self, epsg: u32) {
+        if (1..=65535).contains(&epsg) {
+            self.epsg = Some(epsg as u16);
+            self.user_crs = None;
+        }
+    }
     /// Set a user-defined projected CRS from a PROJ string (as returned by
-    /// `GeoTiffReader.proj_string`), for a CRS with no EPSG code. Ignored when an
-    /// EPSG code is also set. Throws for a projection the GeoKey encoder does not
-    /// cover.
+    /// `GeoTiffReader.proj_string`), for a CRS with no EPSG code. Replaces any
+    /// EPSG code set by `set_epsg`. Throws for a projection the GeoKey encoder
+    /// does not cover.
     pub fn set_proj_string(&mut self, proj: &str) -> Result<(), JsValue> {
         let gkd = GeoKeyDirectory::from_proj_string(proj)
             .ok_or_else(|| JsValue::from_str(&format!("unsupported PROJ string: {proj}")))?;
         self.user_crs = Some(gkd);
+        self.epsg = None;
         Ok(())
     }
     /// Set the no-data sentinel value.
@@ -851,6 +858,7 @@ mod tests {
     fn user_defined_projection_round_trips() {
         let lo29 = "+proj=tmerc +lat_0=0 +lon_0=29 +k_0=1 +x_0=0 +y_0=0 +a=6378137 +rf=298.257223563 +units=m +no_defs";
         let mut builder = CogBuilder::new(16, 16, 1);
+        builder.set_epsg(4148); // the last CRS setter wins
         builder.set_proj_string(lo29).unwrap();
         builder.set_origin(20_000.0, -2_800_000.0, 10.0);
         builder.set_overview_levels(Vec::new());
@@ -861,5 +869,18 @@ mod tests {
         assert_eq!(reader.proj_string().as_deref(), Some(lo29));
         let lonlat = reader.bounds_lonlat();
         assert!((lonlat[0] - 29.1986).abs() < 1e-3 && (lonlat[1] + 25.3077).abs() < 1e-3, "{lonlat:?}");
+    }
+
+    /// A file with a projected EPSG code reports that code and no PROJ string.
+    #[test]
+    fn epsg_file_has_no_proj_string() {
+        let mut builder = CogBuilder::new(16, 16, 1);
+        builder.set_proj_string("+proj=tmerc +lon_0=29 +datum=WGS84").unwrap();
+        builder.set_epsg(32735);
+        builder.set_origin(520_000.0, 7_200_000.0, 10.0);
+        builder.set_overview_levels(Vec::new());
+        let reader = GeoTiffReader::new(&builder.write_f32(&[1.0; 16 * 16]).unwrap()).unwrap();
+        assert_eq!(reader.epsg(), Some(32735));
+        assert_eq!(reader.proj_string(), None);
     }
 }

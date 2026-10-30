@@ -1,0 +1,39 @@
+# cargo-deny: the licenses accepted in the dependency graph (`cargo deny check
+# licenses`, run by CI and before every release). The npm package, the WASI
+# runner and the native runners ship under MIT, so every dependency must be
+# usable under those terms. Copyleft licenses such as AGPL-3.0 (evalexpr 12
+# and later) fail.
+
+[graph]
+all-features = true
+exclude-dev = true
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "IJG",
+    "ISC",
+    "MIT",
+    "NCSA",
+    "Unicode-3.0",
+    "Unlicense",
+    "WTFPL",
+    "Zlib",
+]
+exceptions = [
+    # Through osmpbfreader (wbvector's `osmpbf` feature). MPL-2.0 is file-level
+    # copyleft: binaries may use other terms, but notices must say where the
+    # crate's source is available.
+    { crate = "smartstring", allow = ["MPL-2.0"] },
+]
+
+[licenses.private]
+# Check this workspace's crates too, so a missing license field fails.
+ignore = false

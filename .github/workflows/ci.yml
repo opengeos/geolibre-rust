@@ -65,6 +65,18 @@ jobs:
           python -m pip install ./python pytest
           pytest python/tests -q
 
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Dependency licenses
+        run: cargo deny --locked check licenses
+
   # The native runner (released per platform for desktop hosts) must build and
   # run on macOS and Windows too, not only Linux.
   native:

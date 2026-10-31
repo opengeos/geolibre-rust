@@ -45,7 +45,7 @@ flate2 = "1"
 # DGGS tools. Verified to compile for both wasm32-unknown-unknown and
 # wasm32-wasip1. The `geo` feature pulls the pure-Rust `geo` crate and enables
 # the polygon tiler (h3o::geom) used by h3_polyfill.
-h3o = { version = "0.10.0", features = ["geo"] }
+h3o = { version = "0.11.0", features = ["geo"] }
 # Geometry types for building polygons handed to h3o's tiler. Pinned to the same
 # minor `geo` uses internally so the `geo::Polygon` types unify (no duplicate
 # geo crate in the graph). Pure Rust, compiles to the wasm targets.

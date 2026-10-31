@@ -9,7 +9,7 @@ artifacts are built from the Rust crates listed below, under these licenses.
 
 Used by:
 {{#each used_by}}
-  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}{{#if crate.authors}} by {{#each crate.authors}}{{#unless @first}}, {{/unless}}{{{this}}}{{/each}}{{/if}}
 {{/each}}
 
 {{{text}}}

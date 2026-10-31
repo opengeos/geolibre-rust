@@ -71,13 +71,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2
         with:
           tool: cargo-deny,cargo-about
       - name: Dependency licenses
         run: cargo deny --locked check licenses
       - name: Third-party notices
-        run: cargo about generate --locked --fail --all-features -o /dev/null about.hbs
+        run: python3 scripts/third_party_notices.py "$RUNNER_TEMP/THIRD-PARTY-NOTICES.txt"
 
   # The native runner (released per platform for desktop hosts) must build and
   # run on macOS and Windows too, not only Linux.

@@ -1,6 +1,7 @@
 # cargo-about: the attributions shipped in the npm package as
 # THIRD-PARTY-NOTICES.txt. Covers the crates compiled into its two WASM
-# artifacts. Keep `accepted` in step with the allow list in deny.toml.
+# artifacts; scripts/third_party_notices.py adds the rest. Keep `accepted` in
+# step with the allow list in deny.toml.
 targets = ["wasm32-wasip1", "wasm32-unknown-unknown"]
 ignore-dev-dependencies = true
 ignore-build-dependencies = true

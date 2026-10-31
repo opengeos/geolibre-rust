@@ -214,7 +214,7 @@ impl Tool for Near3dTool {
                         [p[0] - r, p[1] - r, p[2] - r],
                         [p[0] + r, p[1] + r, p[2] + r],
                     );
-                    for indexed in segment_index.locate_in_envelope_intersecting(&query) {
+                    for indexed in segment_index.locate_in_envelope_intersecting(query) {
                         consider(&near_segs[indexed.index]);
                     }
                 } else {

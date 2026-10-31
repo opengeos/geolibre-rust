@@ -350,7 +350,7 @@ impl Tool for SummarizeWithinTool {
             let Some(zbox) = zbox else { continue };
             let envelope =
                 AABB::from_corners([zbox.min().x, zbox.min().y], [zbox.max().x, zbox.max().y]);
-            for indexed in source_index.locate_in_envelope_intersecting(&envelope) {
+            for indexed in source_index.locate_in_envelope_intersecting(envelope) {
                 let sf = &src_feats[indexed.index];
                 let (weight, measure) = match overlap(&zpoly, zgeom, sf, kind) {
                     Some(v) => v,

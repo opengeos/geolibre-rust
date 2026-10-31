@@ -1,0 +1,17 @@
+THIRD-PARTY NOTICES
+
+geolibre-wasm is distributed under the MIT License (see LICENSE). Its WebAssembly
+artifacts are built from the Rust crates listed below, under these licenses.
+
+{{#each licenses}}
+================================================================================
+{{{name}}} ({{id}})
+
+Used by:
+{{#each used_by}}
+  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}{{#if crate.authors}} by {{#each crate.authors}}{{#unless @first}}, {{/unless}}{{{this}}}{{/each}}{{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

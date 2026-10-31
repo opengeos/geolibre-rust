@@ -50,7 +50,9 @@ use wbcore::{
     ToolRunResult,
 };
 use wbraster::Raster;
-use wbvector::{Coord, Feature, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer, Ring};
+use wbvector::{
+    Coord, Feature, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer, Ring,
+};
 
 use crate::args_common::{band_index, choice_or, f64_or, opt_f64, req_str, usize_or};
 use crate::common::{load_input_raster, parse_optional_output};
@@ -349,8 +351,12 @@ fn oriented_extent(raster: &Raster, cells: &[usize], cols: usize) -> Oriented {
 
     // Extents along and across the principal axis, padded by the half-cell
     // footprint so a one-cell detection still has the size of a cell.
-    let (mut amin, mut amax, mut bmin, mut bmax) =
-        (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    let (mut amin, mut amax, mut bmin, mut bmax) = (
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+    );
     for p in &pts {
         let (dx, dy) = (p.0 - cx, p.1 - cy);
         let a = dx * ct + dy * st;
@@ -462,11 +468,7 @@ fn build_layer(
                 None => continue,
             }
         } else {
-            let coords: Vec<Coord> = ext
-                .corners
-                .iter()
-                .map(|&(x, y)| Coord::xy(x, y))
-                .collect();
+            let coords: Vec<Coord> = ext.corners.iter().map(|&(x, y)| Coord::xy(x, y)).collect();
             Geometry::Polygon {
                 exterior: Ring::new(coords),
                 interiors: Vec::new(),
@@ -539,12 +541,12 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         &["bounding_box", "perimeter"],
         "bounding_box",
     )? == "perimeter";
-    let mask_side = MaskSide::parse(
-        args.get("mask_type")
+    let mask_side = MaskSide::parse(args.get("mask_type").and_then(Value::as_str).unwrap_or(""))?;
+    let input_units = SarUnits::parse(
+        args.get("input_units")
             .and_then(Value::as_str)
             .unwrap_or(""),
     )?;
-    let input_units = SarUnits::parse(args.get("input_units").and_then(Value::as_str).unwrap_or(""))?;
 
     let bound = |key: &str| -> Result<Option<f64>, ToolError> {
         match opt_f64(args, key)? {
@@ -824,7 +826,8 @@ mod tests {
             "guard_size": 3, "background_size": 9, "geometry_type": "perimeter"
         }));
         assert_eq!(layer.len(), 1);
-        let Some(Geometry::Polygon { exterior, .. }) = layer.iter().next().unwrap().geometry.as_ref()
+        let Some(Geometry::Polygon { exterior, .. }) =
+            layer.iter().next().unwrap().geometry.as_ref()
         else {
             panic!("expected a polygon");
         };

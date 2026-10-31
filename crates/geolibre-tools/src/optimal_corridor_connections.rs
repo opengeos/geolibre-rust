@@ -19,8 +19,8 @@
 //! non-overlapping polygons.
 
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 
 use geo::{Area, BooleanOps, Coord as GeoCoord, LineString, MultiPolygon, Polygon};
 use serde_json::{json, Value};
@@ -429,9 +429,14 @@ fn cost_distance(grid: &Raster, blocked: &[bool], seeds: &[usize]) -> (Vec<f64>,
         let (r, c) = (idx / cols, idx % cols);
         let here = grid.get(0, r as isize, c as isize).max(0.0);
         for (dr, dc) in [
-            (-1_isize, -1_isize), (-1, 0), (-1, 1),
-            (0, -1),                       (0, 1),
-            (1, -1),              (1, 0),  (1, 1),
+            (-1_isize, -1_isize),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
         ] {
             let (nr, nc) = (r as isize + dr, c as isize + dc);
             if nr < 0 || nc < 0 || nr >= rows as isize || nc >= cols as isize {
@@ -540,11 +545,26 @@ fn thicken(pts: &[(f64, f64)], hw: f64) -> MultiPolygon {
         let (nx, ny) = (-dy / len * hw, dx / len * hw);
         parts.push(Polygon::new(
             LineString::new(vec![
-                GeoCoord { x: a.0 + nx, y: a.1 + ny },
-                GeoCoord { x: b.0 + nx, y: b.1 + ny },
-                GeoCoord { x: b.0 - nx, y: b.1 - ny },
-                GeoCoord { x: a.0 - nx, y: a.1 - ny },
-                GeoCoord { x: a.0 + nx, y: a.1 + ny },
+                GeoCoord {
+                    x: a.0 + nx,
+                    y: a.1 + ny,
+                },
+                GeoCoord {
+                    x: b.0 + nx,
+                    y: b.1 + ny,
+                },
+                GeoCoord {
+                    x: b.0 - nx,
+                    y: b.1 - ny,
+                },
+                GeoCoord {
+                    x: a.0 - nx,
+                    y: a.1 - ny,
+                },
+                GeoCoord {
+                    x: a.0 + nx,
+                    y: a.1 + ny,
+                },
             ]),
             vec![],
         ));
@@ -913,7 +933,10 @@ mod tests {
                 min_y = min_y.min(c.y);
             }
         }
-        assert!(min_y < 30.0, "corridor stayed at y >= {min_y}, ignoring cost");
+        assert!(
+            min_y < 30.0,
+            "corridor stayed at y >= {min_y}, ignoring cost"
+        );
     }
 
     #[test]
@@ -993,7 +1016,10 @@ mod tests {
             .with_geom_type(GeometryType::Polygon)
             .with_crs_epsg(3857);
         l.add_field(FieldDef::new("name", FieldType::Text));
-        for (i, (x, y)) in [(10.0, 10.0), (10.0, 90.0), (90.0, 90.0)].iter().enumerate() {
+        for (i, (x, y)) in [(10.0, 10.0), (10.0, 90.0), (90.0, 90.0)]
+            .iter()
+            .enumerate()
+        {
             l.add_feature(
                 Some(square(*x, *y, 3.0)),
                 &[("name", FieldValue::Text(format!("r{i}")))],

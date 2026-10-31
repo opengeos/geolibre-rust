@@ -269,9 +269,9 @@ impl Tool for Idw3dTool {
                 let y = max_y - (row as f64 + 0.5) * dy;
                 for col in 0..cols {
                     let x = min_x + (col as f64 + 0.5) * dx;
-                    if let Some(v) = predict(
-                        &tree, &pv, [x, y, z * inflation], power, k, r2_limit, None,
-                    ) {
+                    if let Some(v) =
+                        predict(&tree, &pv, [x, y, z * inflation], power, k, r2_limit, None)
+                    {
                         band[row * cols + col] = v;
                         filled += 1;
                     }
@@ -313,7 +313,12 @@ impl Tool for Idw3dTool {
             for row in 0..rows {
                 for col in 0..cols {
                     raster
-                        .set(li as isize, row as isize, col as isize, band[row * cols + col])
+                        .set(
+                            li as isize,
+                            row as isize,
+                            col as isize,
+                            band[row * cols + col],
+                        )
                         .map_err(|e| ToolError::Execution(format!("failed writing cell: {e}")))?;
                 }
             }
@@ -539,7 +544,10 @@ mod tests {
             worst
         };
         let (flat, sharp) = (worst_error(1.0), worst_error(20.0));
-        assert!(flat < 5.0, "even un-inflated error should be modest, got {flat}");
+        assert!(
+            flat < 5.0,
+            "even un-inflated error should be modest, got {flat}"
+        );
         assert!(
             sharp < flat / 2.0,
             "inflation did not sharpen the levels: {flat} -> {sharp}"
@@ -582,8 +590,7 @@ mod tests {
         a["output_cv_features"] = json!("");
         let args: ToolArgs = serde_json::from_value(a).unwrap();
         let out = Idw3dTool.run(&args, &ctx()).unwrap();
-        let cv =
-            load_input_layer(out.outputs["output_cv_features"].as_str().unwrap()).unwrap();
+        let cv = load_input_layer(out.outputs["output_cv_features"].as_str().unwrap()).unwrap();
         assert!(!cv.features.is_empty());
         let (o, p, res) = (
             cv.schema.field_index("OBSERVED").unwrap(),
@@ -596,7 +603,10 @@ mod tests {
             .iter()
             .filter(|f| f.attributes[res].as_f64().unwrap().abs() > 1e-9)
             .count();
-        assert!(nonzero > 0, "LOO residuals were all zero — point not excluded");
+        assert!(
+            nonzero > 0,
+            "LOO residuals were all zero — point not excluded"
+        );
         for f in cv.iter() {
             let (a, b, c) = (
                 f.attributes[o].as_f64().unwrap(),

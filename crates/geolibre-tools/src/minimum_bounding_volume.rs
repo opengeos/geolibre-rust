@@ -121,9 +121,12 @@ impl Tool for MinimumBoundingVolumeTool {
             })?)
         };
         let g_idx = match (group, group_field) {
-            (GroupOption::List, Some(f)) => Some(layer.schema.field_index(f).ok_or_else(|| {
-                ToolError::Validation(format!("group_field '{f}' not found"))
-            })?),
+            (GroupOption::List, Some(f)) => Some(
+                layer
+                    .schema
+                    .field_index(f)
+                    .ok_or_else(|| ToolError::Validation(format!("group_field '{f}' not found")))?,
+            ),
             _ => None,
         };
 
@@ -203,10 +206,7 @@ impl Tool for MinimumBoundingVolumeTool {
             }));
 
             for (fi, tri) in solid.faces.iter().enumerate() {
-                let ring: Vec<Coord> = tri
-                    .iter()
-                    .map(|p| Coord::xyz(p[0], p[1], p[2]))
-                    .collect();
+                let ring: Vec<Coord> = tri.iter().map(|p| Coord::xyz(p[0], p[1], p[2])).collect();
                 let mut attrs = vec![
                     ("MBV_ID", FieldValue::Text(label.clone())),
                     ("FACE_ID", FieldValue::Integer(fi as i64)),
@@ -364,10 +364,7 @@ fn sphere(pts: &[P3]) -> Option<Solid> {
 
     // Enclosure is guaranteed by construction: take the radius from the final
     // centre rather than carrying one forward from the refinement.
-    let radius = pts
-        .iter()
-        .map(|p| dist(&center, p))
-        .fold(0.0_f64, f64::max);
+    let radius = pts.iter().map(|p| dist(&center, p)).fold(0.0_f64, f64::max);
     if radius <= 0.0 || !radius.is_finite() {
         return None;
     }
@@ -440,12 +437,7 @@ fn convex_hull(pts: &[P3]) -> Option<Solid> {
         (pts[i0][1] + pts[i1][1] + pts[i2][1] + pts[i3][1]) / 4.0,
         (pts[i0][2] + pts[i1][2] + pts[i2][2] + pts[i3][2]) / 4.0,
     ];
-    let mut faces: Vec<[usize; 3]> = vec![
-        [i0, i1, i2],
-        [i0, i1, i3],
-        [i0, i2, i3],
-        [i1, i2, i3],
-    ];
+    let mut faces: Vec<[usize; 3]> = vec![[i0, i1, i2], [i0, i1, i3], [i0, i2, i3], [i1, i2, i3]];
     for f in &mut faces {
         orient(f, pts, &interior);
     }
@@ -686,9 +678,13 @@ mod tests {
             let a: Vec<(&str, FieldValue)> = if groups.is_empty() {
                 vec![]
             } else {
-                vec![("grp", FieldValue::Text(groups[i % groups.len()].to_string()))]
+                vec![(
+                    "grp",
+                    FieldValue::Text(groups[i % groups.len()].to_string()),
+                )]
             };
-            l.add_feature(Some(Geometry::point_z(*x, *y, *z)), &a).unwrap();
+            l.add_feature(Some(Geometry::point_z(*x, *y, *z)), &a)
+                .unwrap();
         }
         let id = wbvector::memory_store::put_vector(l);
         wbvector::memory_store::make_vector_memory_path(&id)
@@ -733,10 +729,7 @@ mod tests {
     #[test]
     fn envelope_matches_the_axis_aligned_extent() {
         // Points spanning 2 x 3 x 4 -> volume 24, area 2*(6+12+8) = 52.
-        let input = cloud(
-            &[(0.0, 0.0, 0.0), (2.0, 3.0, 4.0), (1.0, 1.0, 1.0)],
-            &[],
-        );
+        let input = cloud(&[(0.0, 0.0, 0.0), (2.0, 3.0, 4.0), (1.0, 1.0, 1.0)], &[]);
         let (out, _l) = run(json!({
             "input": input, "group_option": "all", "geometry_type": "envelope"
         }));
@@ -759,7 +752,10 @@ mod tests {
         let v = out.outputs["total_volume"].as_f64().unwrap();
         let r_min = 3.0_f64.sqrt() * 10.0 / 2.0;
         let v_min = 4.0 / 3.0 * std::f64::consts::PI * r_min.powi(3);
-        assert!(v >= v_min - 1e-6, "sphere volume {v} < circumsphere {v_min}");
+        assert!(
+            v >= v_min - 1e-6,
+            "sphere volume {v} < circumsphere {v_min}"
+        );
         // ...and not wildly larger than it.
         assert!(v < v_min * 1.3, "sphere volume {v} too loose");
     }
@@ -827,7 +823,10 @@ mod tests {
         assert!(!layer.features.is_empty());
         let id = layer.schema.field_index("MBV_ID").unwrap();
         let vol = layer.schema.field_index("MBV_VOLUME").unwrap();
-        let first = layer.features[0].attributes[id].as_str().unwrap().to_string();
+        let first = layer.features[0].attributes[id]
+            .as_str()
+            .unwrap()
+            .to_string();
         assert!(layer
             .iter()
             .all(|f| f.attributes[id].as_str() == Some(first.as_str())));
@@ -847,7 +846,12 @@ mod tests {
     fn coplanar_cloud_is_reported_as_degenerate() {
         // All z = 0: no enclosing volume exists.
         let input = cloud(
-            &[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0)],
+            &[
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+                (1.0, 1.0, 0.0),
+            ],
             &[],
         );
         let args: ToolArgs = serde_json::from_value(json!({

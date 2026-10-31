@@ -430,9 +430,9 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
 mod tests {
     use super::*;
     use crate::vector_common::load_input_layer;
+    use serde_json::Value;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::{CrsInfo, DataType, Raster, RasterConfig};
-    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -618,7 +618,11 @@ mod tests {
                 _ => panic!(),
             })
             .collect();
-        assert_eq!(distinct.len(), 1, "centroid stacks every point at the centre");
+        assert_eq!(
+            distinct.len(),
+            1,
+            "centroid stacks every point at the centre"
+        );
     }
 
     /// Regression: `max_ring` was derived from `sqrt(n / 6)` while the ring

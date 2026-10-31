@@ -105,7 +105,11 @@ impl Tool for H3ToVectorTool {
         ctx.progress.info("building H3 cell polygons");
         let mut skipped = 0u64;
         for feature in layer.iter() {
-            let Some(id) = feature.attributes.get(field_idx).and_then(FieldValue::as_str) else {
+            let Some(id) = feature
+                .attributes
+                .get(field_idx)
+                .and_then(FieldValue::as_str)
+            else {
                 skipped += 1;
                 continue;
             };
@@ -176,10 +180,22 @@ mod tests {
         let paris = h3o::LatLng::new(48.8566, 2.3522)
             .unwrap()
             .to_cell(h3o::Resolution::Eight);
-        l.add_feature(None, &[("h3", FieldValue::Text(sf.to_string())), ("count", FieldValue::Integer(2))])
-            .unwrap();
-        l.add_feature(None, &[("h3", FieldValue::Text(paris.to_string())), ("count", FieldValue::Integer(1))])
-            .unwrap();
+        l.add_feature(
+            None,
+            &[
+                ("h3", FieldValue::Text(sf.to_string())),
+                ("count", FieldValue::Integer(2)),
+            ],
+        )
+        .unwrap();
+        l.add_feature(
+            None,
+            &[
+                ("h3", FieldValue::Text(paris.to_string())),
+                ("count", FieldValue::Integer(1)),
+            ],
+        )
+        .unwrap();
         l
     }
 
@@ -198,7 +214,10 @@ mod tests {
         assert_eq!(out.geom_type, Some(GeometryType::Polygon));
         // The `count` attribute is carried through unchanged.
         let cidx = out.schema.field_index("count").unwrap();
-        let total: i64 = out.iter().map(|f| f.attributes[cidx].as_i64().unwrap()).sum();
+        let total: i64 = out
+            .iter()
+            .map(|f| f.attributes[cidx].as_i64().unwrap())
+            .sum();
         assert_eq!(total, 3);
         // Each cell boundary is a hexagon/pentagon: >= 5 vertices.
         for f in out.iter() {
@@ -214,7 +233,8 @@ mod tests {
         // Missing field -> validation error.
         let mut l = Layer::new("x").with_geom_type(GeometryType::Point);
         l.add_field(FieldDef::new("name", FieldType::Text));
-        l.add_feature(None, &[("name", FieldValue::Text("nope".into()))]).unwrap();
+        l.add_feature(None, &[("name", FieldValue::Text("nope".into()))])
+            .unwrap();
         let id = wbvector::memory_store::put_vector(l);
         let input = wbvector::memory_store::make_vector_memory_path(&id);
         let args: ToolArgs = serde_json::from_value(json!({ "input": input })).unwrap();
@@ -223,12 +243,18 @@ mod tests {
         // Present field but unparsable value -> skipped, not an error.
         let mut l2 = Layer::new("y").with_geom_type(GeometryType::Point);
         l2.add_field(FieldDef::new("h3", FieldType::Text));
-        l2.add_feature(None, &[("h3", FieldValue::Text("not-an-h3-id".into()))]).unwrap();
+        l2.add_feature(None, &[("h3", FieldValue::Text("not-an-h3-id".into()))])
+            .unwrap();
         let id2 = wbvector::memory_store::put_vector(l2);
         let input2 = wbvector::memory_store::make_vector_memory_path(&id2);
         let args2: ToolArgs = serde_json::from_value(json!({ "input": input2 })).unwrap();
         let r = H3ToVectorTool.run(&args2, &ctx()).unwrap();
         assert_eq!(r.outputs["skipped"], json!(1));
-        assert_eq!(load_input_layer(r.outputs["output"].as_str().unwrap()).unwrap().len(), 0);
+        assert_eq!(
+            load_input_layer(r.outputs["output"].as_str().unwrap())
+                .unwrap()
+                .len(),
+            0
+        );
     }
 }

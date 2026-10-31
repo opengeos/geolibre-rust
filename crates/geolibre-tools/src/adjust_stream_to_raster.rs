@@ -30,8 +30,8 @@
 //! is the honest signal this method can give.
 
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 
 use serde_json::{json, Value};
 use wbcore::{
@@ -46,9 +46,14 @@ use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_
 
 /// D8 offsets, indexed by pointer code 0..7.
 const D8: [(isize, isize); 8] = [
-    (-1, -1), (-1, 0), (-1, 1),
-    (0, 1),   (1, 1),  (1, 0),
-    (1, -1),  (0, -1),
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, 1),
+    (1, 1),
+    (1, 0),
+    (1, -1),
+    (0, -1),
 ];
 
 pub struct AdjustStreamToRasterTool;
@@ -227,10 +232,7 @@ impl Tool for AdjustStreamToRasterTool {
                                     Some(Geometry::point(x, y)),
                                     &[
                                         ("ORIG_FID", FieldValue::Integer(fid as i64)),
-                                        (
-                                            "REASON",
-                                            FieldValue::Text("d8_trace_failed".to_string()),
-                                        ),
+                                        ("REASON", FieldValue::Text("d8_trace_failed".to_string())),
                                     ],
                                 )
                                 .map_err(|e| {
@@ -831,10 +833,9 @@ mod tests {
         }))
         .unwrap();
         let out = AdjustStreamToRasterTool.run(&args, &ctx()).unwrap();
-        let sr = crate::common::load_input_raster(
-            out.outputs["output_stream_raster"].as_str().unwrap(),
-        )
-        .unwrap();
+        let sr =
+            crate::common::load_input_raster(out.outputs["output_stream_raster"].as_str().unwrap())
+                .unwrap();
         let marked = (0..sr.rows)
             .flat_map(|r| (0..sr.cols).map(move |c| (r, c)))
             .filter(|&(r, c)| sr.get(0, r as isize, c as isize) > 0.0)

@@ -8,8 +8,8 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
-    ToolParamSpec, ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
+    ToolRunResult,
 };
 
 use crate::common::load_input_raster;
@@ -80,14 +80,12 @@ impl Tool for RenderPngTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args
-            .get("input")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
-        let output = args
-            .get("output")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::Validation("missing required parameter 'output'".to_string()))?;
+        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'input'".to_string())
+        })?;
+        let output = args.get("output").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'output'".to_string())
+        })?;
         let band_1based = args.get("band").and_then(Value::as_u64).unwrap_or(1).max(1);
         let band = (band_1based - 1) as isize;
         let colormap = match args.get("colormap").and_then(Value::as_str) {

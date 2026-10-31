@@ -604,7 +604,7 @@ fn write_kmz(path: &str, kml: &[u8]) -> Result<(), ToolError> {
     let file = std::fs::File::create(path)
         .map_err(|e| ToolError::Execution(format!("failed creating KMZ file: {e}")))?;
     let mut zip = zip::ZipWriter::new(file);
-    let opts: zip::write::FileOptions<'_, ()> =
+    let opts: zip::write::FileOptions<'_, '_, ()> =
         zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     zip.start_file("doc.kml", opts)
         .map_err(|e| ToolError::Execution(format!("failed starting KMZ entry: {e}")))?;

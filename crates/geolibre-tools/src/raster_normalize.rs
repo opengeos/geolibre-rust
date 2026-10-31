@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
-    ToolParamSpec, ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
+    ToolRunResult,
 };
 use wbraster::{memory_store, Raster, RasterFormat};
 
@@ -40,7 +40,8 @@ impl Tool for RasterNormalizeTool {
                 },
                 ToolParamSpec {
                     name: "output",
-                    description: "Optional output raster path. If omitted, the result is stored in memory.",
+                    description:
+                        "Optional output raster path. If omitted, the result is stored in memory.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -62,10 +63,9 @@ impl Tool for RasterNormalizeTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args
-            .get("input")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
+        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'input'".to_string())
+        })?;
         let output = parse_optional_output(args)?;
         let band_1based = args.get("band").and_then(Value::as_u64).unwrap_or(1).max(1);
         let band = (band_1based - 1) as isize;

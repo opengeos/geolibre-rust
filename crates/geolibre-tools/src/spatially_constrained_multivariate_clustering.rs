@@ -179,17 +179,18 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
         let idx: Vec<usize> = field_names
             .iter()
             .map(|f| {
-                layer.schema.field_index(f).ok_or_else(|| {
-                    ToolError::Validation(format!("analysis field '{f}' not found"))
-                })
+                layer
+                    .schema
+                    .field_index(f)
+                    .ok_or_else(|| ToolError::Validation(format!("analysis field '{f}' not found")))
             })
             .collect::<Result<_, _>>()?;
         let c_idx = match (constraint, parse_optional_str(args, "constraint_field")?) {
-            (Constraint::AttributeValue, Some(f)) => Some(
-                layer.schema.field_index(f).ok_or_else(|| {
+            (Constraint::AttributeValue, Some(f)) => {
+                Some(layer.schema.field_index(f).ok_or_else(|| {
                     ToolError::Validation(format!("constraint_field '{f}' not found"))
-                })?,
-            ),
+                })?)
+            }
             _ => None,
         };
 
@@ -260,7 +261,10 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
 
         let labels = skater(&mst, n, &x, p, &weight, k_target, min_c, max_c, constraint);
         let clusters: Vec<i64> = labels.clone();
-        let n_clusters = clusters.iter().collect::<std::collections::BTreeSet<_>>().len();
+        let n_clusters = clusters
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
 
         // Output layer: input attributes + CLUSTER_ID.
         let mut out = Layer::new("skater_clusters");
@@ -359,7 +363,8 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
                     ("FEATURE_COUNT", FieldValue::Integer(count as i64)),
                     ("CONSTRAINT_TOTAL", FieldValue::Float(wsum)),
                 ];
-                let means: Vec<String> = field_names.iter().map(|nm| format!("MEAN_{nm}")).collect();
+                let means: Vec<String> =
+                    field_names.iter().map(|nm| format!("MEAN_{nm}")).collect();
                 for (j, nm) in means.iter().enumerate() {
                     attrs.push((nm.as_str(), FieldValue::Float(sums[j] / count as f64)));
                 }
@@ -368,7 +373,10 @@ impl Tool for SpatiallyConstrainedMultivariateClusteringTool {
                     .map_err(|e| ToolError::Execution(format!("failed adding summary row: {e}")))?;
             }
             let p = parse_optional_str(args, "output_table")?;
-            outputs.insert("output_table".to_string(), json!(write_or_store_layer(table, p)?));
+            outputs.insert(
+                "output_table".to_string(),
+                json!(write_or_store_layer(table, p)?),
+            );
         }
         Ok(ToolRunResult { outputs })
     }
@@ -411,7 +419,11 @@ fn build_graph(
         // queen-neighbours when they share >= 1 vertex, rook-neighbours when
         // they share >= 2 (i.e. an edge rather than only a corner).
         _ => {
-            let need = if nb == Neighborhood::ContiguityEdges { 2 } else { 1 };
+            let need = if nb == Neighborhood::ContiguityEdges {
+                2
+            } else {
+                1
+            };
             let mut by_vertex: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
             for (i, f) in layer.iter().enumerate() {
                 let Some(g) = &f.geometry else { continue };
@@ -421,7 +433,9 @@ fn build_graph(
                     // A HashSet, not a Vec: densified geometry has thousands of
                     // vertices per feature, and `contains` on a Vec makes graph
                     // construction quadratic.
-                    let Some(key) = snap_key(c.x, c.y) else { continue };
+                    let Some(key) = snap_key(c.x, c.y) else {
+                        continue;
+                    };
                     if seen.insert(key) {
                         by_vertex.entry(key).or_default().push(i);
                     }
@@ -721,8 +735,16 @@ fn split_components(
             }
         }
     }
-    let left: Vec<usize> = members.iter().copied().filter(|i| seen.contains(i)).collect();
-    let right: Vec<usize> = members.iter().copied().filter(|i| !seen.contains(i)).collect();
+    let left: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|i| seen.contains(i))
+        .collect();
+    let right: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|i| !seen.contains(i))
+        .collect();
     (left, right)
 }
 
@@ -944,7 +966,9 @@ mod tests {
 
     fn ids(l: &Layer) -> Vec<i64> {
         let i = l.schema.field_index("CLUSTER_ID").unwrap();
-        l.iter().map(|f| f.attributes[i].as_i64().unwrap()).collect()
+        l.iter()
+            .map(|f| f.attributes[i].as_i64().unwrap())
+            .collect()
     }
 
     #[test]
@@ -1005,7 +1029,10 @@ mod tests {
         let r2 = out.outputs["r_squared"].as_array().unwrap()[0]
             .as_f64()
             .unwrap();
-        assert!(r2 > 0.9, "clean two-group split should explain most variance, got {r2}");
+        assert!(
+            r2 > 0.9,
+            "clean two-group split should explain most variance, got {r2}"
+        );
         assert!(r2 <= 1.0 + 1e-9);
     }
 
@@ -1031,7 +1058,10 @@ mod tests {
             "input": strip(&vals), "analysis_fields": "v", "number_of_clusters": 2,
             "constraint": "feature_count", "min_constraint": 2
         }));
-        assert!(sizes(&held).iter().all(|&s| s >= 2), "min constraint ignored");
+        assert!(
+            sizes(&held).iter().all(|&s| s >= 2),
+            "min constraint ignored"
+        );
     }
 
     #[test]

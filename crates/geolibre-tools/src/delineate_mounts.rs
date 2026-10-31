@@ -13,8 +13,8 @@ use wbcore::{
 use wbraster::DataType;
 
 use crate::common::{
-    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
-    write_text_output,
+    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data,
+    write_or_store_output, write_text_output,
 };
 use crate::delineate_depressions::{delineate_core, depression_csv, depression_props_map};
 use crate::extract_sinks::extract_sinks_core;
@@ -30,7 +30,13 @@ pub fn flip_dem(dem: &[f64], nodata: f64, delta: f64) -> Vec<f64> {
         .filter(|&v| v != nodata)
         .fold(f64::NEG_INFINITY, f64::max);
     dem.iter()
-        .map(|&v| if v == nodata { nodata } else { -v + max_elev + delta })
+        .map(|&v| {
+            if v == nodata {
+                nodata
+            } else {
+                -v + max_elev + delta
+            }
+        })
         .collect()
 }
 
@@ -105,10 +111,9 @@ impl Tool for DelineateMountsTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args
-            .get("input")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
+        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'input'".to_string())
+        })?;
         let output = parse_optional_output(args, "output")?;
         let level_output = parse_optional_output(args, "level_output")?;
         let csv_output = parse_optional_output(args, "csv_output")?;
@@ -160,7 +165,10 @@ impl Tool for DelineateMountsTool {
 
         if let Some(path) = level_output {
             let r = raster_like_with_data(&raster, result.level_image, 0.0, DataType::I32)?;
-            outputs.insert("level".to_string(), json!(write_or_store_output(r, Some(path))?));
+            outputs.insert(
+                "level".to_string(),
+                json!(write_or_store_output(r, Some(path))?),
+            );
         }
         if let Some(path) = csv_output {
             write_text_output(&depression_csv(&result.depressions), path)?;

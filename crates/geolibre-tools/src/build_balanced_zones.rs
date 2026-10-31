@@ -421,7 +421,10 @@ fn grow_balanced(
     zones: usize,
 ) -> Vec<usize> {
     let dist = |a: usize, b: usize| {
-        let (dx, dy) = (centroids[a].0 - centroids[b].0, centroids[a].1 - centroids[b].1);
+        let (dx, dy) = (
+            centroids[a].0 - centroids[b].0,
+            centroids[a].1 - centroids[b].1,
+        );
         (dx * dx + dy * dy).sqrt()
     };
     // Farthest-point seeds: start at node 0, then repeatedly the node maximizing
@@ -433,7 +436,10 @@ fn grow_balanced(
             if seeds.contains(&i) {
                 continue;
             }
-            let d = seeds.iter().map(|&s| dist(i, s)).fold(f64::INFINITY, f64::min);
+            let d = seeds
+                .iter()
+                .map(|&s| dist(i, s))
+                .fold(f64::INFINITY, f64::min);
             if d > best.0 {
                 best = (d, i);
             }

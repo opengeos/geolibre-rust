@@ -436,11 +436,11 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         "gamma0_ellipsoid" => Calibration::Gamma0,
         _ => Calibration::Beta0,
     };
-    let output_calibration = match choice_or(args, "calibration_type", &["gamma0", "sigma0"], "gamma0")?
-    {
-        "sigma0" => Calibration::Sigma0,
-        _ => Calibration::Gamma0,
-    };
+    let output_calibration =
+        match choice_or(args, "calibration_type", &["gamma0", "sigma0"], "gamma0")? {
+            "sigma0" => Calibration::Sigma0,
+            _ => Calibration::Gamma0,
+        };
     let input_units = SarUnits::parse(
         args.get("input_units")
             .and_then(serde_json::Value::as_str)
@@ -549,8 +549,7 @@ mod tests {
         assert_eq!(outputs["layover_cells"].as_u64().unwrap(), 0);
         assert_eq!(outputs["shadow_cells"].as_u64().unwrap(), 0);
         // ...and a scattering-area ratio of exactly 1.
-        let area =
-            load_input_raster(outputs["output_scattering_area"].as_str().unwrap()).unwrap();
+        let area = load_input_raster(outputs["output_scattering_area"].as_str().unwrap()).unwrap();
         assert!((area.get(0, 2, 2) - 1.0).abs() < 1e-6);
     }
 
@@ -581,8 +580,7 @@ mod tests {
         let (_, outputs) = run(json!({
             "input": sar, "dem": dem, "incidence_angle": 35.0, "look_azimuth": 270.0
         }));
-        let area =
-            load_input_raster(outputs["output_scattering_area"].as_str().unwrap()).unwrap();
+        let area = load_input_raster(outputs["output_scattering_area"].as_str().unwrap()).unwrap();
 
         // Column 2 is on the west flank, which descends toward the sensor in
         // the west and therefore *faces* it; column 6 is on the east flank,
@@ -642,8 +640,7 @@ mod tests {
             outputs["layover_cells"].as_u64().unwrap() > 0,
             "a 45-degree slope into a 20-degree look must produce layover"
         );
-        let mask =
-            load_input_raster(outputs["output_geometry_mask"].as_str().unwrap()).unwrap();
+        let mask = load_input_raster(outputs["output_geometry_mask"].as_str().unwrap()).unwrap();
         assert_eq!(mask.get(0, 1, 3), 1.0, "interior cell should be flagged 1");
     }
 
@@ -709,7 +706,9 @@ mod tests {
     fn accepts_a_raster_incidence_angle() {
         let (rows, cols) = (3, 3);
         // 30 degrees on the left column, 50 on the right.
-        let inc: Vec<f64> = (0..9).map(|i| if i % 3 == 0 { 30.0 } else { 50.0 }).collect();
+        let inc: Vec<f64> = (0..9)
+            .map(|i| if i % 3 == 0 { 30.0 } else { 50.0 })
+            .collect();
         let sar = raster_of(cols, rows, &[0.25; 9]);
         let dem = raster_of(cols, rows, &[0.0; 9]);
         let (out, _) = run(json!({

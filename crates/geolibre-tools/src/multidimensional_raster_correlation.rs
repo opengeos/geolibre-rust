@@ -220,8 +220,7 @@ impl Tool for MultidimensionalRasterCorrelationTool {
                             // searched from -max_lag upwards, so taking the
                             // first winner would systematically report the most
                             // negative of several equally good lags.
-                            score > bscore
-                                || (score == bscore && lag.abs() < blag.abs())
+                            score > bscore || (score == bscore && lag.abs() < blag.abs())
                         }
                     };
                     if better {
@@ -396,9 +395,9 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     let lag = match args.get("lag") {
         None | Some(Value::Null) => 0isize,
         Some(Value::Number(n)) => {
-            let v = n.as_i64().ok_or_else(|| {
-                ToolError::Validation("'lag' must be a whole number".to_string())
-            })?;
+            let v = n
+                .as_i64()
+                .ok_or_else(|| ToolError::Validation("'lag' must be a whole number".to_string()))?;
             // `as isize` is 32-bit on wasm32 and would wrap silently.
             isize::try_from(v).map_err(|_| {
                 ToolError::Validation(format!("'lag' {v} is out of range on this target"))
@@ -470,7 +469,9 @@ mod tests {
 
     fn run(args: Value) -> (Raster, BTreeMap<String, Value>) {
         let args: ToolArgs = serde_json::from_value(args).unwrap();
-        let out = MultidimensionalRasterCorrelationTool.run(&args, &ctx()).unwrap();
+        let out = MultidimensionalRasterCorrelationTool
+            .run(&args, &ctx())
+            .unwrap();
         let r = load_input_raster(out.outputs["output"].as_str().unwrap()).unwrap();
         (r, out.outputs)
     }
@@ -481,7 +482,14 @@ mod tests {
         let up = series_cube(&[1.0, 2.0, 3.0, 4.0, 5.0]);
         let same = series_cube(&[2.0, 4.0, 6.0, 8.0, 10.0]);
         let down = series_cube(&[5.0, 4.0, 3.0, 2.0, 1.0]);
-        assert!((run(json!({"input1": up.clone(), "input2": same})).0.get(0, 0, 0) - 1.0).abs() < 1e-6);
+        assert!(
+            (run(json!({"input1": up.clone(), "input2": same}))
+                .0
+                .get(0, 0, 0)
+                - 1.0)
+                .abs()
+                < 1e-6
+        );
         assert!((run(json!({"input1": up, "input2": down})).0.get(0, 0, 0) + 1.0).abs() < 1e-6);
     }
 
@@ -500,8 +508,14 @@ mod tests {
         let k = run(json!({"input1": x, "input2": y, "method": "kendall"}))
             .0
             .get(0, 0, 0);
-        assert!((s - 1.0).abs() < 1e-6, "spearman should be exactly 1, got {s}");
-        assert!((k - 1.0).abs() < 1e-6, "kendall should be exactly 1, got {k}");
+        assert!(
+            (s - 1.0).abs() < 1e-6,
+            "spearman should be exactly 1, got {s}"
+        );
+        assert!(
+            (k - 1.0).abs() < 1e-6,
+            "kendall should be exactly 1, got {k}"
+        );
         assert!(
             p < 0.95,
             "pearson should be dragged down by the curvature, got {p}"
@@ -520,7 +534,9 @@ mod tests {
             "input1": x, "input2": y, "cross_correlation": true, "max_lag": 3, "min_valid": 4
         }))
         .unwrap();
-        let out = MultidimensionalRasterCorrelationTool.run(&args, &ctx()).unwrap();
+        let out = MultidimensionalRasterCorrelationTool
+            .run(&args, &ctx())
+            .unwrap();
         let corr = load_input_raster(out.outputs["output"].as_str().unwrap()).unwrap();
         let lag = load_input_raster(out.outputs["output_lag"].as_str().unwrap()).unwrap();
         assert_eq!(
@@ -547,7 +563,9 @@ mod tests {
             "max_lag": 9_007_199_254_740_991u64, "min_valid": 4
         }))
         .unwrap();
-        let out = MultidimensionalRasterCorrelationTool.run(&args, &ctx()).unwrap();
+        let out = MultidimensionalRasterCorrelationTool
+            .run(&args, &ctx())
+            .unwrap();
         let lag = load_input_raster(out.outputs["output_lag"].as_str().unwrap()).unwrap();
         assert_eq!(lag.get(0, 0, 0), 2.0, "the two-slice delay is still found");
     }
@@ -573,7 +591,11 @@ mod tests {
     fn correlation_varies_per_cell() {
         // Cell 0 correlates positively, cell 1 negatively.
         let a = cube_raster(2, 1, &[vec![1.0, 1.0], vec![2.0, 2.0], vec![3.0, 3.0]]);
-        let b = cube_raster(2, 1, &[vec![10.0, 30.0], vec![20.0, 20.0], vec![30.0, 10.0]]);
+        let b = cube_raster(
+            2,
+            1,
+            &[vec![10.0, 30.0], vec![20.0, 20.0], vec![30.0, 10.0]],
+        );
         let (out, _) = run(json!({"input1": a, "input2": b}));
         assert!((out.get(0, 0, 0) - 1.0).abs() < 1e-6);
         assert!((out.get(0, 0, 1) + 1.0).abs() < 1e-6);
@@ -595,9 +617,10 @@ mod tests {
     fn pairs_skip_nodata_and_report_the_count() {
         let x = series_cube(&[1.0, 2.0, 3.0, 4.0, 5.0]);
         let y = series_cube(&[2.0, -9999.0, 6.0, 8.0, 10.0]);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"input1": x, "input2": y})).unwrap();
-        let out = MultidimensionalRasterCorrelationTool.run(&args, &ctx()).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"input1": x, "input2": y})).unwrap();
+        let out = MultidimensionalRasterCorrelationTool
+            .run(&args, &ctx())
+            .unwrap();
         let corr = load_input_raster(out.outputs["output"].as_str().unwrap()).unwrap();
         let count = load_input_raster(out.outputs["output_count"].as_str().unwrap()).unwrap();
         assert_eq!(count.get(0, 0, 0), 4.0, "one pair should be dropped");
@@ -618,8 +641,7 @@ mod tests {
     fn mismatched_slice_counts_are_rejected() {
         let x = series_cube(&[1.0, 2.0, 3.0]);
         let y = series_cube(&[1.0, 2.0]);
-        let args: ToolArgs =
-            serde_json::from_value(json!({"input1": x, "input2": y})).unwrap();
+        let args: ToolArgs = serde_json::from_value(json!({"input1": x, "input2": y})).unwrap();
         let err = MultidimensionalRasterCorrelationTool
             .run(&args, &ctx())
             .unwrap_err();

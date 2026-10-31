@@ -267,7 +267,10 @@ mod tests {
         assert_eq!(result.outputs["feature_count"], json!(1));
         assert_eq!(result.outputs["skipped"], json!(0));
         let n = result.outputs["cell_count"].as_u64().unwrap();
-        assert!(n > 1, "a ~0.2-degree square should need many res-7 cells, got {n}");
+        assert!(
+            n > 1,
+            "a ~0.2-degree square should need many res-7 cells, got {n}"
+        );
 
         let out = load_input_layer(result.outputs["output"].as_str().unwrap()).unwrap();
         assert_eq!(out.len() as u64, n);
@@ -292,7 +295,10 @@ mod tests {
                 .as_u64()
                 .unwrap()
         };
-        assert!(run("8") > run("6"), "finer resolution must yield more cells");
+        assert!(
+            run("8") > run("6"),
+            "finer resolution must yield more cells"
+        );
     }
 
     #[test]
@@ -300,7 +306,8 @@ mod tests {
         let mut l = Layer::new("pts")
             .with_geom_type(GeometryType::Point)
             .with_crs_epsg(4326);
-        l.add_feature(Some(Geometry::point(-122.4, 37.8)), &[]).unwrap();
+        l.add_feature(Some(Geometry::point(-122.4, 37.8)), &[])
+            .unwrap();
         let id = wbvector::memory_store::put_vector(l);
         let input = wbvector::memory_store::make_vector_memory_path(&id);
         let args: ToolArgs = serde_json::from_value(json!({ "input": input })).unwrap();

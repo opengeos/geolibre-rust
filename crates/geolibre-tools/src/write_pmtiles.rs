@@ -8,8 +8,8 @@ use std::f64::consts::PI;
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
-    ToolParamSpec, ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
+    ToolRunResult,
 };
 use wbraster::{Raster, ResampleMethod};
 
@@ -114,7 +114,11 @@ impl Tool for WritePmTilesTool {
         }
 
         let native = native_zoom(merc.cell_size_x.abs());
-        let min_zoom = args.get("min_zoom").and_then(Value::as_u64).map(|z| z as u32).unwrap_or(native);
+        let min_zoom = args
+            .get("min_zoom")
+            .and_then(Value::as_u64)
+            .map(|z| z as u32)
+            .unwrap_or(native);
         let max_zoom = args
             .get("max_zoom")
             .and_then(Value::as_u64)
@@ -146,11 +150,17 @@ impl Tool for WritePmTilesTool {
                     if let Some(png) =
                         render_tile(&merc, band, x0, y_top, span, method, colormap, min, max)?
                     {
-                        tiles.push(Tile { z: z as u8, x: tx as u32, y: ty as u32, data: png });
+                        tiles.push(Tile {
+                            z: z as u8,
+                            x: tx as u32,
+                            y: ty as u32,
+                            data: png,
+                        });
                     }
                 }
             }
-            ctx.progress.progress((z - min_zoom + 1) as f64 / (max_zoom - min_zoom + 1) as f64);
+            ctx.progress
+                .progress((z - min_zoom + 1) as f64 / (max_zoom - min_zoom + 1) as f64);
         }
 
         let tile_count = tiles.len();

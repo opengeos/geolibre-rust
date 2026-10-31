@@ -188,6 +188,7 @@ fn read_kml_text(path: &str) -> Result<String, ToolError> {
                 .by_index(i)
                 .map_err(|e| ToolError::Execution(format!("failed reading KMZ entry: {e}")))?
                 .name()
+                .map_err(|e| ToolError::Execution(format!("failed reading KMZ entry name: {e}")))?
                 .to_string();
             let lower = name.to_ascii_lowercase();
             if lower.ends_with(".kml") {

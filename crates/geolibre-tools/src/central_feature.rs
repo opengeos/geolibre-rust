@@ -434,11 +434,9 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             "linear_directional_mean" | "linear-directional-mean" | "directional_mean" => {
                 Statistic::LinearDirectionalMean
             }
-            other => {
-                return Err(ToolError::Validation(format!(
+            other => return Err(ToolError::Validation(format!(
                 "'statistic' must be 'central_feature' or 'linear_directional_mean', got '{other}'"
-            )))
-            }
+            ))),
         },
     };
     let distance = match parse_optional_str(args, "distance")? {

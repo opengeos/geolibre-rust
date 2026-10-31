@@ -9,16 +9,14 @@
 use parquet::basic::{Compression, ZstdLevel};
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbvector::geoparquet::{write_with_options, GeoParquetWriteOptions};
 use wbvector::Layer;
 
 use crate::hilbert::hilbert_for_point;
-use crate::vector_common::{
-    ensure_parent_dir, load_input_layer, parse_optional_str, write_or_store_layer,
-};
+use crate::vector_common::{ensure_parent_dir, load_input_layer, parse_optional_str, write_or_store_layer};
 
 /// Converts any supported vector dataset to GeoParquet.
 pub struct WriteGeoParquetTool;
@@ -95,10 +93,7 @@ impl Tool for WriteGeoParquetTool {
         let mut outputs = std::collections::BTreeMap::new();
         outputs.insert("output".to_string(), json!(output));
         outputs.insert("feature_count".to_string(), json!(feature_count));
-        outputs.insert(
-            "compression".to_string(),
-            json!(compression_name(compression)),
-        );
+        outputs.insert("compression".to_string(), json!(compression_name(compression)));
         outputs.insert("hilbert_sorted".to_string(), json!(hilbert));
         Ok(ToolRunResult { outputs })
     }
@@ -109,12 +104,8 @@ impl Tool for WriteGeoParquetTool {
 /// geometry keep their relative order at the end.
 fn hilbert_sort(layer: &mut Layer) {
     // Dataset extent over all feature bounding boxes.
-    let (mut min_x, mut min_y, mut max_x, mut max_y) = (
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    );
+    let (mut min_x, mut min_y, mut max_x, mut max_y) =
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     for f in &layer.features {
         if let Some(b) = f.geometry.as_ref().and_then(|g| g.bbox()) {
             min_x = min_x.min(b.min_x);

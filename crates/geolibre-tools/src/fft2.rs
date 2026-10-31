@@ -123,10 +123,7 @@ mod tests {
         fft2(&mut buf, rows, cols, false);
         assert!(close(buf[0].0, 3.0 * 64.0, 1e-9), "DC = {:?}", buf[0]);
         for (i, c) in buf.iter().enumerate().skip(1) {
-            assert!(
-                close(c.0, 0.0, 1e-9) && close(c.1, 0.0, 1e-9),
-                "bin {i} {c:?}"
-            );
+            assert!(close(c.0, 0.0, 1e-9) && close(c.1, 0.0, 1e-9), "bin {i} {c:?}");
         }
     }
 

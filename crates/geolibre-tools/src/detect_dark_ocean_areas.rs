@@ -42,9 +42,7 @@ use wbcore::{
 use wbraster::DataType;
 use wbvector::{Feature, FieldDef, FieldType, FieldValue, GeometryType, Layer};
 
-use crate::args_common::{
-    band_index, choice_or, f64_or, opt_f64, opt_positive_f64, req_str, usize_or,
-};
+use crate::args_common::{band_index, choice_or, f64_or, opt_f64, opt_positive_f64, req_str, usize_or};
 use crate::common::{
     load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
 };
@@ -179,12 +177,8 @@ impl Tool for DetectDarkOceanAreasTool {
         }
         let n = sample.len() as f64;
         let background_mean = sample.iter().sum::<f64>() / n;
-        let background_sd = (sample
-            .iter()
-            .map(|v| (v - background_mean).powi(2))
-            .sum::<f64>()
-            / n)
-            .sqrt();
+        let background_sd =
+            (sample.iter().map(|v| (v - background_mean).powi(2)).sum::<f64>() / n).sqrt();
 
         let threshold = match prm.method {
             Method::Statistical => {
@@ -380,11 +374,7 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             "'histogram_bins' must be at least 2".to_string(),
         ));
     }
-    let input_units = SarUnits::parse(
-        args.get("input_units")
-            .and_then(Value::as_str)
-            .unwrap_or(""),
-    )?;
+    let input_units = SarUnits::parse(args.get("input_units").and_then(Value::as_str).unwrap_or(""))?;
 
     Ok(Params {
         method,
@@ -401,8 +391,8 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbraster::Raster;
     use wbraster::{CrsInfo, RasterConfig};
+    use wbraster::Raster;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -415,9 +405,7 @@ mod tests {
     }
 
     fn jitter(i: usize) -> f64 {
-        let mut x = (i as u64)
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(23);
+        let mut x = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(23);
         x ^= x >> 33;
         x = x.wrapping_mul(0xff51afd7ed558ccd);
         x ^= x >> 33;

@@ -108,13 +108,12 @@ impl Tool for StackProfileTool {
         if layer.features.is_empty() {
             return Err(ToolError::Execution("input has no features".to_string()));
         }
-        let id_idx =
-            match id_field {
-                Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
-                    ToolError::Validation(format!("line_id_field '{f}' not found"))
-                })?),
-                None => None,
-            };
+        let id_idx = match id_field {
+            Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
+                ToolError::Validation(format!("line_id_field '{f}' not found"))
+            })?),
+            None => None,
+        };
 
         ctx.progress
             .info(&format!("loading {} surface(s)", surface_paths.len()));
@@ -128,13 +127,7 @@ impl Tool for StackProfileTool {
         // a mismatch produces NoData rather than silently wrong elevations, but
         // the user should know why their column came back empty.
         let epsgs: Vec<Option<u32>> = surfaces.iter().map(|(_, r)| raster_epsg(r)).collect();
-        if epsgs
-            .iter()
-            .flatten()
-            .collect::<std::collections::BTreeSet<_>>()
-            .len()
-            > 1
-        {
+        if epsgs.iter().flatten().collect::<std::collections::BTreeSet<_>>().len() > 1 {
             ctx.progress
                 .info("surfaces do not share a CRS; stations outside a surface will be null");
         }
@@ -216,10 +209,8 @@ impl Tool for StackProfileTool {
                 "no line geometry produced any profile stations".to_string(),
             ));
         }
-        ctx.progress.info(&format!(
-            "profiled {stations_total} station(s) x {} surface(s)",
-            surfaces.len()
-        ));
+        ctx.progress
+            .info(&format!("profiled {stations_total} station(s) x {} surface(s)", surfaces.len()));
 
         let out_path = write_or_store_layer(out, output)?;
         let mut outputs = BTreeMap::new();
@@ -501,10 +492,7 @@ mod tests {
         }));
         assert_eq!(out.outputs["surface_count"], json!(2));
         let stations = out.outputs["station_count"].as_f64().unwrap() as usize;
-        assert_eq!(
-            out.outputs["row_count"].as_f64().unwrap() as usize,
-            stations * 2
-        );
+        assert_eq!(out.outputs["row_count"].as_f64().unwrap() as usize, stations * 2);
 
         // The two surfaces must report identical FIRST_DIST sequences — the
         // property that makes the output joinable/plottable.
@@ -607,9 +595,7 @@ mod tests {
         };
         assert!(bad(json!({})).is_err());
         assert!(bad(json!({ "input": "l.shp" })).is_err());
-        assert!(
-            bad(json!({ "input": "l.shp", "surfaces": "a.tif", "sample_distance": 0 })).is_err()
-        );
+        assert!(bad(json!({ "input": "l.shp", "surfaces": "a.tif", "sample_distance": 0 })).is_err());
         assert!(bad(json!({ "input": "l.shp", "surfaces": "a.tif", "method": "cubic" })).is_err());
         assert!(bad(json!({ "input": "l.shp", "surfaces": "a.tif,b.tif" })).is_ok());
     }

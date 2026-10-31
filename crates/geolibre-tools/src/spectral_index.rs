@@ -6,14 +6,12 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbraster::DataType;
 
-use crate::common::{
-    load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
-};
+use crate::common::{load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output};
 
 /// Nodata value written for cells where any required band is nodata.
 const INDEX_NODATA: f64 = -9999.0;
@@ -87,13 +85,7 @@ impl Tool for SpectralIndexTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        if args
-            .get("input")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        {
+        if args.get("input").and_then(Value::as_str).map(str::trim).unwrap_or("").is_empty() {
             return Err(ToolError::Validation(
                 "missing required string parameter 'input'".to_string(),
             ));
@@ -107,17 +99,17 @@ impl Tool for SpectralIndexTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
-        let index = Index::parse(args.get("index").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'index'".to_string())
-        })?)?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
+        let index = Index::parse(
+            args.get("index")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ToolError::Validation("missing required parameter 'index'".to_string()))?,
+        )?;
         let output = parse_optional_output(args, "output")?;
-        let soil_factor = args
-            .get("soil_factor")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.5);
+        let soil_factor = args.get("soil_factor").and_then(Value::as_f64).unwrap_or(0.5);
 
         let raster = load_input_raster(input)?;
         // Resolve the 0-based band indices each formula needs.
@@ -146,13 +138,7 @@ impl Tool for SpectralIndexTool {
         let (red, nir, green, blue, swir) = match index {
             Index::Ndvi => (Some(band("red")?), Some(band("nir")?), None, None, None),
             Index::Savi => (Some(band("red")?), Some(band("nir")?), None, None, None),
-            Index::Evi => (
-                Some(band("red")?),
-                Some(band("nir")?),
-                None,
-                Some(band("blue")?),
-                None,
-            ),
+            Index::Evi => (Some(band("red")?), Some(band("nir")?), None, Some(band("blue")?), None),
             Index::Ndwi => (None, Some(band("nir")?), Some(band("green")?), None, None),
             Index::Ndbi => (None, Some(band("nir")?), None, None, Some(band("swir")?)),
             Index::Nbr => (None, Some(band("nir")?), None, None, Some(band("swir")?)),
@@ -188,22 +174,14 @@ impl Tool for SpectralIndexTool {
                     Index::Evi => match (n, r, bl) {
                         (Some(n), Some(r), Some(b)) => {
                             let denom = n + 6.0 * r - 7.5 * b + 1.0;
-                            if denom == 0.0 {
-                                None
-                            } else {
-                                Some(2.5 * (n - r) / denom)
-                            }
+                            if denom == 0.0 { None } else { Some(2.5 * (n - r) / denom) }
                         }
                         _ => None,
                     },
                     Index::Savi => match (n, r) {
                         (Some(n), Some(r)) => {
                             let denom = n + r + soil_factor;
-                            if denom == 0.0 {
-                                None
-                            } else {
-                                Some((1.0 + soil_factor) * (n - r) / denom)
-                            }
+                            if denom == 0.0 { None } else { Some((1.0 + soil_factor) * (n - r) / denom) }
                         }
                         _ => None,
                     },

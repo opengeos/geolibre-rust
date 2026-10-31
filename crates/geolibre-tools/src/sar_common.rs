@@ -186,7 +186,8 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
         for c in 0..cols {
             let x = raster.x_min + (c as f64 + 0.5) * raster.cell_size_x;
             let inside = geoms.iter().zip(&boxes).any(|(g, bb)| {
-                x >= bb.0 && x <= bb.2 && y >= bb.1 && y <= bb.3 && geometry_contains_point(g, x, y)
+                x >= bb.0 && x <= bb.2 && y >= bb.1 && y <= bb.3
+                    && geometry_contains_point(g, x, y)
             });
             keep[r * cols + c] = match side {
                 MaskSide::LandPolygon => !inside,
@@ -205,12 +206,7 @@ pub(crate) fn rasterize_mask(raster: &Raster, layer: &Layer, side: MaskSide) -> 
 /// exactly: a geometry the containment test *can* accept but the envelope skips
 /// would be prefiltered away everywhere, masking the whole raster out.
 pub(crate) fn envelope(geom: &Geometry) -> (f64, f64, f64, f64) {
-    let mut bb = (
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    );
+    let mut bb = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     accumulate_envelope(geom, &mut bb);
     bb
 }

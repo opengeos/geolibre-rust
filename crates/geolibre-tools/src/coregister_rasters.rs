@@ -49,7 +49,7 @@ use wbcore::{
     ToolRunResult,
 };
 use wbraster::{DataType, Raster};
-use wbvector::{Coord, Feature, FieldDef, FieldType, FieldValue, Geometry, GeometryType, Layer};
+use wbvector::{Coord, FieldDef, FieldType, FieldValue, Feature, Geometry, GeometryType, Layer};
 
 use crate::args_common::{choice_or, f64_or, req_str, usize_or};
 use crate::common::{load_input_raster, parse_optional_output};
@@ -254,9 +254,14 @@ impl Tool for CoregisterRastersTool {
             for r in 0..rows {
                 for c in 0..cols {
                     let (sx, sy) = fit.apply(c as f64 + 0.5, r as f64 + 0.5);
-                    if let Some(v) =
-                        sample(&src, secondary.rows, secondary.cols, sx, sy, prm.bilinear)
-                    {
+                    if let Some(v) = sample(
+                        &src,
+                        secondary.rows,
+                        secondary.cols,
+                        sx,
+                        sy,
+                        prm.bilinear,
+                    ) {
                         dst[r * cols + c] = v;
                     }
                 }
@@ -416,18 +421,8 @@ fn measure_tie_points(
             }
             let (lo_r, hi_r) = inset_span(ref_rows, t, prm.max_shift);
             let (lo_c, hi_c) = inset_span(ref_cols, t, prm.max_shift);
-            let r0 = lo_r
-                + if g == 1 {
-                    (hi_r - lo_r) / 2
-                } else {
-                    gi * (hi_r - lo_r) / (g - 1)
-                };
-            let c0 = lo_c
-                + if g == 1 {
-                    (hi_c - lo_c) / 2
-                } else {
-                    gj * (hi_c - lo_c) / (g - 1)
-                };
+            let r0 = lo_r + if g == 1 { (hi_r - lo_r) / 2 } else { gi * (hi_r - lo_r) / (g - 1) };
+            let c0 = lo_c + if g == 1 { (hi_c - lo_c) / 2 } else { gj * (hi_c - lo_c) / (g - 1) };
             // `hi - lo` can be smaller than `g - 1`, in which case several grid
             // positions land on the same origin. Matching that tile repeatedly
             // weights its tie point several times in the fit and can leave the
@@ -481,9 +476,9 @@ fn measure_tie_points(
                     if sr + t > sec_rows || sc + t > sec_cols {
                         continue;
                     }
-                    let Some(score) = ncc(
-                        &tile, tile_mean, tile_norm, sec, sec_rows, sec_cols, sr, sc, t,
-                    ) else {
+                    let Some(score) =
+                        ncc(&tile, tile_mean, tile_norm, sec, sec_rows, sec_cols, sr, sc, t)
+                    else {
                         continue;
                     };
                     surface[((dr + m) * (2 * m + 1) + (dc + m)) as usize] = score;
@@ -546,11 +541,7 @@ fn inset_span(extent: usize, tile: usize, margin: usize) -> (usize, usize) {
 fn mean_and_norm(v: &[f64]) -> (f64, f64) {
     let n = v.len() as f64;
     let mean = v.iter().sum::<f64>() / n;
-    let norm = v
-        .iter()
-        .map(|x| (x - mean) * (x - mean))
-        .sum::<f64>()
-        .sqrt();
+    let norm = v.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>().sqrt();
     (mean, norm)
 }
 
@@ -730,19 +721,10 @@ fn fit_transform(
     );
     let scale = ties
         .iter()
-        .map(|t| {
-            (t.ref_col - origin.0)
-                .abs()
-                .max((t.ref_row - origin.1).abs())
-        })
+        .map(|t| (t.ref_col - origin.0).abs().max((t.ref_row - origin.1).abs()))
         .fold(0.0f64, f64::max)
         .max(1.0);
-    let norm = |t: &TiePoint| {
-        (
-            (t.ref_col - origin.0) / scale,
-            (t.ref_row - origin.1) / scale,
-        )
-    };
+    let norm = |t: &TiePoint| ((t.ref_col - origin.0) / scale, (t.ref_row - origin.1) / scale);
 
     // Three trimming passes: enough to shed gross blunders without eroding a
     // legitimately noisy set.
@@ -803,14 +785,8 @@ fn fit_transform(
 
     let mean_shift = {
         let n = active.len() as f64;
-        let sx: f64 = active
-            .iter()
-            .map(|&i| ties[i].sec_col - ties[i].ref_col)
-            .sum();
-        let sy: f64 = active
-            .iter()
-            .map(|&i| ties[i].sec_row - ties[i].ref_row)
-            .sum();
+        let sx: f64 = active.iter().map(|&i| ties[i].sec_col - ties[i].ref_col).sum();
+        let sy: f64 = active.iter().map(|&i| ties[i].sec_row - ties[i].ref_row).sum();
         (sx / n, sy / n)
     };
 
@@ -1076,12 +1052,7 @@ mod tests {
             + 5.0 * (x / 3.5).cos()
     }
 
-    fn raster_from(
-        cols: usize,
-        rows: usize,
-        bands: usize,
-        f: impl Fn(usize, usize, usize) -> f64,
-    ) -> String {
+    fn raster_from(cols: usize, rows: usize, bands: usize, f: impl Fn(usize, usize, usize) -> f64) -> String {
         let mut r = Raster::new(RasterConfig {
             cols,
             rows,
@@ -1125,9 +1096,8 @@ mod tests {
         let reference = raster_from(cols, rows, 1, |_, r, c| scene(c as f64, r as f64));
         // Secondary is the scene shifted by (+3 cols, -2 rows): the value at
         // secondary (r, c) is the reference value at (r + 2, c - 3).
-        let secondary = raster_from(cols, rows, 1, |_, r, c| {
-            scene(c as f64 - 3.0, r as f64 + 2.0)
-        });
+        let secondary =
+            raster_from(cols, rows, 1, |_, r, c| scene(c as f64 - 3.0, r as f64 + 2.0));
 
         let (out, outputs) = run(json!({
             "reference": reference, "secondary": secondary,
@@ -1165,9 +1135,8 @@ mod tests {
     fn recovers_a_subpixel_shift() {
         let (rows, cols) = (80, 80);
         let reference = raster_from(cols, rows, 1, |_, r, c| scene(c as f64, r as f64));
-        let secondary = raster_from(cols, rows, 1, |_, r, c| {
-            scene(c as f64 - 1.4, r as f64 - 0.6)
-        });
+        let secondary =
+            raster_from(cols, rows, 1, |_, r, c| scene(c as f64 - 1.4, r as f64 - 0.6));
 
         let (_, outputs) = run(json!({
             "reference": reference, "secondary": secondary,
@@ -1247,10 +1216,7 @@ mod tests {
         .unwrap();
         let out = CoregisterRastersTool.run(&args, &ctx()).unwrap();
         let path = out.outputs["tie_points"].as_str().unwrap();
-        assert!(
-            !path.is_empty(),
-            "tie points must be produced without a path"
-        );
+        assert!(!path.is_empty(), "tie points must be produced without a path");
         let layer = crate::vector_common::load_input_layer(path).unwrap();
         assert_eq!(layer.len(), 9, "3x3 grid should yield 9 tie points");
         let used_idx = layer.schema.field_index("used").unwrap();
@@ -1318,10 +1284,7 @@ mod tests {
 
         let err = |v: Value| {
             let args: ToolArgs = serde_json::from_value(v).unwrap();
-            format!(
-                "{:?}",
-                CoregisterRastersTool.run(&args, &ctx()).unwrap_err()
-            )
+            format!("{:?}", CoregisterRastersTool.run(&args, &ctx()).unwrap_err())
         };
 
         // A tile that fits the reference but not the secondary.

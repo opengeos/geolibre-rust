@@ -129,13 +129,7 @@ impl Tool for AggregateMultidimensionalRasterTool {
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
         let prm = parse_params(args)?;
         let output = parse_optional_output(args, "output")?;
-        let cube = load_cube(
-            args,
-            "input",
-            Some("dimension_values"),
-            Some("dimension"),
-            1,
-        )?;
+        let cube = load_cube(args, "input", Some("dimension_values"), Some("dimension"), 1)?;
 
         let bins = build_bins(&cube, &prm)?;
         if bins.is_empty() {
@@ -173,7 +167,8 @@ impl Tool for AggregateMultidimensionalRasterTool {
                     bands[bi][r * cols + c] = reduce(&mut vals, &prm);
                 }
             }
-            ctx.progress.progress((bi as f64 + 1.0) / bins.len() as f64);
+            ctx.progress
+                .progress((bi as f64 + 1.0) / bins.len() as f64);
         }
 
         let out_raster = raster_like_multiband(cube.template(), &bands, nodata, DataType::F32)?;
@@ -425,16 +420,16 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     // Each definition needs its own parameter; falling back to `all` when it is
     // missing would silently collapse the cube to one band.
     match definition {
-        Definition::IntervalValue => {
-            match interval_value {
-                Some(v) if v > 0.0 && v.is_finite() => {}
-                _ => return Err(ToolError::Validation(
+        Definition::IntervalValue => match interval_value {
+            Some(v) if v > 0.0 && v.is_finite() => {}
+            _ => {
+                return Err(ToolError::Validation(
                     "'interval_value' must be a positive number when aggregation_definition is \
                      'interval_value'"
                         .to_string(),
-                )),
+                ))
             }
-        }
+        },
         Definition::IntervalCount => match interval_count {
             Some(k) if k >= 1 => {}
             _ => {
@@ -561,9 +556,7 @@ mod tests {
 
     fn run(args: Value) -> (Raster, BTreeMap<String, Value>) {
         let args: ToolArgs = serde_json::from_value(args).unwrap();
-        let out = AggregateMultidimensionalRasterTool
-            .run(&args, &ctx())
-            .unwrap();
+        let out = AggregateMultidimensionalRasterTool.run(&args, &ctx()).unwrap();
         let r = load_input_raster(out.outputs["output"].as_str().unwrap()).unwrap();
         (r, out.outputs)
     }
@@ -760,15 +753,9 @@ mod tests {
         assert!(bad(json!({})).is_err());
         // Each definition needs its own parameter rather than silently
         // collapsing to 'all'.
-        assert!(
-            bad(json!({"input": "a.tif", "aggregation_definition": "interval_value"})).is_err()
-        );
-        assert!(
-            bad(json!({"input": "a.tif", "aggregation_definition": "interval_count"})).is_err()
-        );
-        assert!(
-            bad(json!({"input": "a.tif", "aggregation_definition": "interval_ranges"})).is_err()
-        );
+        assert!(bad(json!({"input": "a.tif", "aggregation_definition": "interval_value"})).is_err());
+        assert!(bad(json!({"input": "a.tif", "aggregation_definition": "interval_count"})).is_err());
+        assert!(bad(json!({"input": "a.tif", "aggregation_definition": "interval_ranges"})).is_err());
         assert!(bad(
             json!({"input": "a.tif", "aggregation_definition": "interval_value", "interval_value": 0})
         )

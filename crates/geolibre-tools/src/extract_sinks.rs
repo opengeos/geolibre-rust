@@ -16,8 +16,8 @@ use wbcore::{
 use wbraster::DataType;
 
 use crate::common::{
-    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data,
-    write_or_store_output, write_text_output,
+    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
+    write_text_output,
 };
 use crate::fill::fill_depressions_wang_and_liu;
 use crate::polygonize::{polygonize_to_geojson, PolygonizeParams};
@@ -131,10 +131,7 @@ pub fn sink_csv(props: &[RegionProps], resolution: f64) -> String {
 /// Builds a per-region attribute table (keyed by region id) for joining onto
 /// polygonized features. Mirrors the columns of [`sink_csv`].
 #[allow(clippy::approx_constant)]
-pub fn region_props_map(
-    props: &[RegionProps],
-    resolution: f64,
-) -> HashMap<i64, Map<String, Value>> {
+pub fn region_props_map(props: &[RegionProps], resolution: f64) -> HashMap<i64, Map<String, Value>> {
     let res2 = resolution * resolution;
     let mut map = HashMap::new();
     for p in props {
@@ -160,10 +157,7 @@ pub fn region_props_map(
         attrs.insert("minor_axis".to_string(), json!(minor_axis));
         attrs.insert("elongatedness".to_string(), json!(major_axis / minor_axis));
         attrs.insert("eccentricity".to_string(), json!(p.eccentricity));
-        attrs.insert(
-            "orientation".to_string(),
-            json!(p.orientation / 3.1415 * 180.0),
-        );
+        attrs.insert("orientation".to_string(), json!(p.orientation / 3.1415 * 180.0));
         attrs.insert("area_bbox_ratio".to_string(), json!(p.extent));
         map.insert(p.label as i64, attrs);
     }
@@ -241,9 +235,10 @@ impl Tool for ExtractSinksTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_output(args, "output")?;
         let region_output = parse_optional_output(args, "region_output")?;
         let depth_output = parse_optional_output(args, "depth_output")?;
@@ -251,10 +246,7 @@ impl Tool for ExtractSinksTool {
         let csv_output = parse_optional_output(args, "csv_output")?;
         let vector_output = parse_optional_output(args, "vector_output")?;
         let min_size = args.get("min_size").and_then(Value::as_u64).unwrap_or(10);
-        let flat_increment = args
-            .get("flat_increment")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0);
+        let flat_increment = args.get("flat_increment").and_then(Value::as_f64).unwrap_or(0.0);
 
         let raster = load_input_raster(input)?;
         let rows = raster.rows;
@@ -291,24 +283,15 @@ impl Tool for ExtractSinksTool {
         }
         if let Some(path) = region_output {
             let r = raster_like_with_data(&raster, result.region, 0.0, DataType::I32)?;
-            outputs.insert(
-                "region".to_string(),
-                json!(write_or_store_output(r, Some(path))?),
-            );
+            outputs.insert("region".to_string(), json!(write_or_store_output(r, Some(path))?));
         }
         if let Some(path) = depth_output {
             let r = raster_like_with_data(&raster, result.depth, 0.0, raster.data_type)?;
-            outputs.insert(
-                "depth".to_string(),
-                json!(write_or_store_output(r, Some(path))?),
-            );
+            outputs.insert("depth".to_string(), json!(write_or_store_output(r, Some(path))?));
         }
         if let Some(path) = filled_output {
             let r = raster_like_with_data(&raster, result.filled, nodata, raster.data_type)?;
-            outputs.insert(
-                "filled".to_string(),
-                json!(write_or_store_output(r, Some(path))?),
-            );
+            outputs.insert("filled".to_string(), json!(write_or_store_output(r, Some(path))?));
         }
         if let Some(path) = csv_output {
             write_text_output(&sink_csv(&result.props, resolution), path)?;

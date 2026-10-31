@@ -148,8 +148,9 @@ impl Tool for GoldsteinPhaseFilterTool {
         filter_patches(&mut re, &mut im, rows, cols, &prm, ctx);
 
         let residues_after = count_residues(&re, &im, rows, cols);
-        ctx.progress
-            .info(&format!("residues {residues_before} -> {residues_after}"));
+        ctx.progress.info(&format!(
+            "residues {residues_before} -> {residues_after}"
+        ));
 
         // Complex output: band 0 = I, band 1 = Q.
         let nodata = -9999.0_f64;
@@ -387,12 +388,7 @@ fn count_residues(re: &[f64], im: &[f64], rows: usize, cols: usize) -> usize {
     let mut residues = 0usize;
     for r in 0..rows - 1 {
         for c in 0..cols - 1 {
-            let idx = [
-                r * cols + c,
-                r * cols + c + 1,
-                (r + 1) * cols + c + 1,
-                (r + 1) * cols + c,
-            ];
+            let idx = [r * cols + c, r * cols + c + 1, (r + 1) * cols + c + 1, (r + 1) * cols + c];
             if idx
                 .iter()
                 .any(|&i| !re[i].is_finite() || !im[i].is_finite())
@@ -513,9 +509,7 @@ mod tests {
     /// Deterministic value noise in [-1, 1] — no RNG, so WASM behaves like
     /// native and the test is reproducible.
     fn noise(i: usize, salt: u64) -> f64 {
-        let mut x = (i as u64)
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(salt);
+        let mut x = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(salt);
         x ^= x >> 33;
         x = x.wrapping_mul(0xff51afd7ed558ccd);
         x ^= x >> 33;
@@ -594,10 +588,7 @@ mod tests {
         let (_, outputs) = run(json!({ "input": src, "alpha": 0.8 }));
         let before = outputs["residues_before"].as_u64().unwrap();
         let after = outputs["residues_after"].as_u64().unwrap();
-        assert!(
-            before > 50,
-            "fixture is not noisy enough: {before} residues"
-        );
+        assert!(before > 50, "fixture is not noisy enough: {before} residues");
         assert!(
             after * 2 < before,
             "filter must at least halve residues, got {before} -> {after}"

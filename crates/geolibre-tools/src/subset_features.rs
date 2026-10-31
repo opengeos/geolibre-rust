@@ -112,13 +112,15 @@ impl Tool for SubsetFeaturesTool {
         if n == 0 {
             return Err(ToolError::Execution("input has no features".to_string()));
         }
-        let gidx =
-            match group_field {
-                Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
-                    ToolError::Validation(format!("group_field '{f}' not found"))
-                })?),
-                None => None,
-            };
+        let gidx = match group_field {
+            Some(f) => Some(
+                layer
+                    .schema
+                    .field_index(f)
+                    .ok_or_else(|| ToolError::Validation(format!("group_field '{f}' not found")))?,
+            ),
+            None => None,
+        };
 
         // Bucket feature indices: one bucket overall, or one per group value.
         let mut buckets: Vec<Vec<usize>> = Vec::new();
@@ -351,10 +353,7 @@ mod tests {
         }
         for i in 0..n {
             let a: Vec<(&str, FieldValue)> = if grouped {
-                vec![(
-                    "grp",
-                    FieldValue::Text(groups[i % groups.len()].to_string()),
-                )]
+                vec![("grp", FieldValue::Text(groups[i % groups.len()].to_string()))]
             } else {
                 vec![]
             };
@@ -396,9 +395,7 @@ mod tests {
         let input = points(50, &[]);
         let ids = |l: &Layer| -> Vec<i64> {
             let i = l.schema.field_index("ORIG_FID").unwrap();
-            l.iter()
-                .map(|f| f.attributes[i].as_i64().unwrap())
-                .collect()
+            l.iter().map(|f| f.attributes[i].as_i64().unwrap()).collect()
         };
         let (_o, a, _t) = run(json!({ "input": input.clone(), "size": 40, "seed": 7 }));
         let (_o, b, _t) = run(json!({ "input": input.clone(), "size": 40, "seed": 7 }));
@@ -434,10 +431,7 @@ mod tests {
                 .entry(f.attributes[g].as_str().unwrap().to_string())
                 .or_default() += 1;
         }
-        assert_eq!(
-            counts.values().copied().collect::<Vec<_>>(),
-            vec![10, 10, 10]
-        );
+        assert_eq!(counts.values().copied().collect::<Vec<_>>(), vec![10, 10, 10]);
     }
 
     #[test]

@@ -10,8 +10,8 @@ use std::io::{Read, Seek, SeekFrom};
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 
 use geolibre_pmtiles::extract::{ExtractOptions, Extractor};
@@ -66,13 +66,7 @@ impl Tool for PmtilesExtractTool {
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
         for key in ["input", "output"] {
-            if args
-                .get(key)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or("")
-                .is_empty()
-            {
+            if args.get(key).and_then(Value::as_str).map(str::trim).unwrap_or("").is_empty() {
                 return Err(ToolError::Validation(format!(
                     "missing required string parameter '{key}'"
                 )));
@@ -106,8 +100,8 @@ impl Tool for PmtilesExtractTool {
             .map_err(|e| ToolError::Execution(format!("cannot stat {input}: {e}")))?
             .len();
 
-        let mut extractor =
-            Extractor::new(opts).map_err(|e| ToolError::Execution(e.to_string()))?;
+        let mut extractor = Extractor::new(opts)
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
         ctx.progress.info("reading header and directories");
         let mut reported_data = false;
         while !extractor.is_done() {
@@ -256,21 +250,12 @@ mod tests {
             let n = 1u32 << z;
             for y in 0..n {
                 for x in 0..n {
-                    tiles.push(Tile {
-                        z,
-                        x,
-                        y,
-                        data: format!("t{z}/{x}/{y}").into_bytes(),
-                    });
+                    tiles.push(Tile { z, x, y, data: format!("t{z}/{x}/{y}").into_bytes() });
                 }
             }
         }
-        let world = LonLatBounds {
-            min_lon: -180.0,
-            min_lat: -85.0,
-            max_lon: 180.0,
-            max_lat: 85.0,
-        };
+        let world =
+            LonLatBounds { min_lon: -180.0, min_lat: -85.0, max_lon: 180.0, max_lat: 85.0 };
         std::fs::write(&input, build_png(tiles, &world, 0, 3).unwrap()).unwrap();
 
         let tool = PmtilesExtractTool;

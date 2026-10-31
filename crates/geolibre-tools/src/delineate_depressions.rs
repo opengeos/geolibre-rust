@@ -19,8 +19,8 @@ use wbcore::{
 use wbraster::DataType;
 
 use crate::common::{
-    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data,
-    write_or_store_output, write_text_output,
+    band_to_vec, load_input_raster, parse_optional_output, raster_like_with_data, write_or_store_output,
+    write_text_output,
 };
 use crate::polygonize::{polygonize_to_geojson, PolygonizeParams};
 use crate::regions::{region_group, region_props, RegionProps};
@@ -118,12 +118,12 @@ pub fn level_set(
     let mut level_img = vec![0.0_f64; n];
 
     // Background (0) becomes a large sentinel; elevations are positive.
-    let max_elev = img.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let big = sentinel_nodata(max_elev);
-    let mut work: Vec<f64> = img
+    let max_elev = img
         .iter()
-        .map(|&v| if v == 0.0 { big } else { v })
-        .collect();
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let big = sentinel_nodata(max_elev);
+    let mut work: Vec<f64> = img.iter().map(|&v| if v == 0.0 { big } else { v }).collect();
     let min_elev = work.iter().cloned().fold(f64::INFINITY, f64::min);
 
     let mut dep_list: Vec<Depression> = Vec::new();
@@ -286,10 +286,7 @@ pub fn delineate_core(
     let neg_interval = -interval.abs();
 
     // Elevation image with 0 background (matches lidar's mutated working array).
-    let elev_img: Vec<f64> = sink
-        .iter()
-        .map(|&v| if v > 0.0 { v } else { 0.0 })
-        .collect();
+    let elev_img: Vec<f64> = sink.iter().map(|&v| if v > 0.0 { v } else { 0.0 }).collect();
     let (labels, count) = region_group(&elev_img, rows, cols, min_size, 0.0);
     let regions = region_props(&labels, count, &elev_img, rows, cols);
 
@@ -487,9 +484,10 @@ impl Tool for DelineateDepressionsTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_output(args, "output")?;
         let level_output = parse_optional_output(args, "level_output")?;
         let csv_output = parse_optional_output(args, "csv_output")?;
@@ -532,10 +530,7 @@ impl Tool for DelineateDepressionsTool {
 
         if let Some(path) = level_output {
             let r = raster_like_with_data(&raster, result.level_image, 0.0, DataType::I32)?;
-            outputs.insert(
-                "level".to_string(),
-                json!(write_or_store_output(r, Some(path))?),
-            );
+            outputs.insert("level".to_string(), json!(write_or_store_output(r, Some(path))?));
         }
         if let Some(path) = csv_output {
             write_text_output(&depression_csv(&result.depressions), path)?;
@@ -590,15 +585,7 @@ mod tests {
             sink[r * cols + 6] = 6.0; // well B
         }
         let result = delineate_core(&sink, rows, cols, 1.0, 1, 1.0);
-        let max_level = result
-            .depressions
-            .iter()
-            .map(|d| d.level)
-            .max()
-            .unwrap_or(0);
-        assert!(
-            max_level >= 2,
-            "expected a nested hierarchy, got level {max_level}"
-        );
+        let max_level = result.depressions.iter().map(|d| d.level).max().unwrap_or(0);
+        assert!(max_level >= 2, "expected a nested hierarchy, got level {max_level}");
     }
 }

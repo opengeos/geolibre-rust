@@ -7,8 +7,8 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 
 use crate::vector_common::{load_input_layer, parse_optional_str, write_or_store_layer};
@@ -40,13 +40,7 @@ impl Tool for VectorConvertTool {
     }
 
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
-        if args
-            .get("input")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
-        {
+        if args.get("input").and_then(Value::as_str).map(str::trim).unwrap_or("").is_empty() {
             return Err(ToolError::Validation(
                 "missing required string parameter 'input'".to_string(),
             ));
@@ -55,9 +49,10 @@ impl Tool for VectorConvertTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_str(args, "output")?;
 
         ctx.progress.info("reading input vector");

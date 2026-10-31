@@ -166,13 +166,12 @@ impl Tool for LocalPolynomialInterpolationTool {
             .schema
             .field_index(z_field)
             .ok_or_else(|| ToolError::Validation(format!("z_field '{z_field}' not found")))?;
-        let w_idx =
-            match weight_field {
-                Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
-                    ToolError::Validation(format!("weight_field '{f}' not found"))
-                })?),
-                None => None,
-            };
+        let w_idx = match weight_field {
+            Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
+                ToolError::Validation(format!("weight_field '{f}' not found"))
+            })?),
+            None => None,
+        };
 
         // Collect samples.
         let (mut xs, mut ys, mut zs, mut ws) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -491,10 +490,9 @@ fn condition_number(ata: &[f64], p: usize) -> f64 {
 }
 
 fn bounds(v: &[f64]) -> (f64, f64) {
-    v.iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
-            (lo.min(x), hi.max(x))
-        })
+    v.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
+        (lo.min(x), hi.max(x))
+    })
 }
 
 // ── Params ──────────────────────────────────────────────────────────────────

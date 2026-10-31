@@ -11,8 +11,8 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbraster::CrsInfo;
 
@@ -29,7 +29,9 @@ fn assign_params(kind: &'static str) -> Vec<ToolParamSpec> {
         _ => "Input LiDAR file path (LAS/LAZ/COPC, or in-memory handle).",
     };
     let output_desc: &'static str = match kind {
-        "raster" => "Optional output raster path. If omitted, the result is stored in memory.",
+        "raster" => {
+            "Optional output raster path. If omitted, the result is stored in memory."
+        }
         "vector" => {
             "Optional output vector path (driver from its extension). If omitted, stored in memory."
         }
@@ -280,8 +282,7 @@ mod tests {
         assert_eq!(out.outputs["epsg"], json!(3857));
 
         let result =
-            crate::vector_common::load_input_layer(out.outputs["output"].as_str().unwrap())
-                .unwrap();
+            crate::vector_common::load_input_layer(out.outputs["output"].as_str().unwrap()).unwrap();
         assert_eq!(result.crs_epsg(), Some(3857));
     }
 

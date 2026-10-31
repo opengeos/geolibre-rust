@@ -173,7 +173,11 @@ impl Tool for DissolveRouteEventsTool {
             };
             let g = *pos.entry(gkey).or_insert_with(|| {
                 groups.push(Group {
-                    route: feat.attributes.get(r_i).cloned().unwrap_or(FieldValue::Null),
+                    route: feat
+                        .attributes
+                        .get(r_i)
+                        .cloned()
+                        .unwrap_or(FieldValue::Null),
                     spans: Vec::new(),
                 });
                 groups.len() - 1
@@ -192,8 +196,10 @@ impl Tool for DissolveRouteEventsTool {
                 "no input rows had usable from/to measures".to_string(),
             ));
         }
-        ctx.progress
-            .info(&format!("dissolving {n_in} event(s) on {} group(s)", groups.len()));
+        ctx.progress.info(&format!(
+            "dissolving {n_in} event(s) on {} group(s)",
+            groups.len()
+        ));
 
         // Sweep-merge each group.
         let mut out = Layer::new("dissolved_events");
@@ -493,7 +499,11 @@ mod tests {
     #[test]
     fn point_events_collapse_when_coincident() {
         // from == to; two at the same measure merge, a distant one does not.
-        let input = events(&[("A", 5.0, 5.0, "x"), ("A", 5.0, 5.0, "x"), ("A", 9.0, 9.0, "x")]);
+        let input = events(&[
+            ("A", 5.0, 5.0, "x"),
+            ("A", 5.0, 5.0, "x"),
+            ("A", 9.0, 9.0, "x"),
+        ]);
         let (out, _l) = run(base(&input));
         assert_eq!(out.outputs["output_event_count"], json!(2));
     }

@@ -300,7 +300,16 @@ impl Tool for BuildSeamlinesTool {
         if matches!(method, Method::Radiometry | Method::EdgeDetection) {
             ctx.progress.info("solving least-cost radiometric seams");
             radiometric_seams(
-                &mut owner, &pair_of, &rasters, &centroids, band, rows, cols, min_x, max_y, cell,
+                &mut owner,
+                &pair_of,
+                &rasters,
+                &centroids,
+                band,
+                rows,
+                cols,
+                min_x,
+                max_y,
+                cell,
                 method == Method::EdgeDetection,
             );
         }
@@ -603,8 +612,13 @@ fn radiometric_seams(
             let vb = sample(&rasters[b], band, x, y).unwrap_or(0.0);
             let mut c = (va - vb).abs();
             if edge_aware {
-                let g = gradient(&rasters[a], band, x, y, cell)
-                    .max(gradient(&rasters[b], band, x, y, cell));
+                let g = gradient(&rasters[a], band, x, y, cell).max(gradient(
+                    &rasters[b],
+                    band,
+                    x,
+                    y,
+                    cell,
+                ));
                 c /= 1.0 + g;
             }
             c + 1e-9
@@ -663,9 +677,14 @@ fn radiometric_seams(
             }
             let (r, c) = (u / cols, u % cols);
             for (dr, dc) in [
-                (-1_isize, -1_isize), (-1, 0), (-1, 1),
-                (0, -1),                       (0, 1),
-                (1, -1),             (1, 0),   (1, 1),
+                (-1_isize, -1_isize),
+                (-1, 0),
+                (-1, 1),
+                (0, -1),
+                (0, 1),
+                (1, -1),
+                (1, 0),
+                (1, 1),
             ] {
                 let (nr, nc) = (r as isize + dr, c as isize + dc);
                 if nr < 0 || nc < 0 || nr >= rows as isize || nc >= cols as isize {
@@ -1010,7 +1029,12 @@ mod tests {
         }
     }
     fn ring_ls(r: &Ring) -> LineString {
-        LineString::new(r.coords().iter().map(|c| GeoCoord { x: c.x, y: c.y }).collect())
+        LineString::new(
+            r.coords()
+                .iter()
+                .map(|c| GeoCoord { x: c.x, y: c.y })
+                .collect(),
+        )
     }
 
     #[test]

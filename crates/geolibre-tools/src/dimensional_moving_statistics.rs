@@ -407,9 +407,9 @@ mod tests {
     use super::*;
     use crate::common::load_input_raster;
     use crate::cube::test_support::cube_raster;
+    use serde_json::Value;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::Raster;
-    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -594,9 +594,7 @@ mod tests {
         };
         assert!(bad(json!({})).is_err());
         // A zero-width window would be a no-op rather than a smoother.
-        assert!(
-            bad(json!({"input": "a.tif", "backward_window": 0, "forward_window": 0})).is_err()
-        );
+        assert!(bad(json!({"input": "a.tif", "backward_window": 0, "forward_window": 0})).is_err());
         assert!(bad(json!({"input": "a.tif", "statistic": "mode"})).is_err());
         assert!(bad(json!({"input": "a.tif", "percentile_value": -1})).is_err());
         assert!(bad(json!({"input": "a.tif", "period": 0})).is_err());

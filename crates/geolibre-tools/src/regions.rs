@@ -58,11 +58,14 @@ pub fn label_4(mask: &[bool], rows: usize, cols: usize) -> (Vec<u32>, usize) {
 ///
 /// `values` is the working buffer; cells equal to `nodata` are treated as
 /// background (0). Returns `(labels, count)` of the relabeled image.
-pub fn region_group(values: &[f64], rows: usize, cols: usize, min_size: u64, nodata: f64) -> (Vec<u32>, usize) {
-    let mask: Vec<bool> = values
-        .iter()
-        .map(|&v| v != 0.0 && v != nodata)
-        .collect();
+pub fn region_group(
+    values: &[f64],
+    rows: usize,
+    cols: usize,
+    min_size: u64,
+    nodata: f64,
+) -> (Vec<u32>, usize) {
+    let mask: Vec<bool> = values.iter().map(|&v| v != 0.0 && v != nodata).collect();
     let (labels, count) = label_4(&mask, rows, cols);
 
     // Count pixels per component.
@@ -72,7 +75,11 @@ pub fn region_group(values: &[f64], rows: usize, cols: usize, min_size: u64, nod
     }
 
     // Keep components strictly larger than min_size; background (0) is dropped.
-    let keep: Vec<bool> = sizes.iter().enumerate().map(|(i, &s)| i != 0 && s > min_size).collect();
+    let keep: Vec<bool> = sizes
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| i != 0 && s > min_size)
+        .collect();
     let cleaned: Vec<bool> = labels.iter().map(|&l| keep[l as usize]).collect();
     label_4(&cleaned, rows, cols)
 }
@@ -339,7 +346,16 @@ mod tests {
         let rows = 4;
         let cols = 4;
         let mut mask = vec![false; rows * cols];
-        for (r, c) in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 2), (2, 3), (3, 2), (3, 3)] {
+        for (r, c) in [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (1, 1),
+            (2, 2),
+            (2, 3),
+            (3, 2),
+            (3, 3),
+        ] {
             mask[r * cols + c] = true;
         }
         let (labels, count) = label_4(&mask, rows, cols);

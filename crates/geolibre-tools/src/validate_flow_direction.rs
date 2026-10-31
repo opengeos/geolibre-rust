@@ -398,9 +398,9 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
 mod tests {
     use super::*;
     use crate::vector_common::load_input_layer;
+    use serde_json::Value;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::{CrsInfo, DataType, Raster, RasterConfig};
-    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -490,8 +490,14 @@ mod tests {
         let (layer, outputs) = run(json!({ "input": raster_of(cols, rows, &v) }));
         assert!(!outputs["valid"].as_bool().unwrap());
         let found = problems(&layer);
-        assert!(found.contains(&(1, 1, "invalid_code".to_string())), "{found:?}");
-        assert!(found.contains(&(2, 1, "invalid_code".to_string())), "{found:?}");
+        assert!(
+            found.contains(&(1, 1, "invalid_code".to_string())),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&(2, 1, "invalid_code".to_string())),
+            "{found:?}"
+        );
     }
 
     /// A circular flow path is the failure that hangs downstream routing, so it
@@ -513,10 +519,16 @@ mod tests {
             .iter()
             .filter(|(_, _, p)| p == "circular_flow")
             .collect();
-        assert_eq!(cycle.len(), 4, "all four loop cells should be flagged: {found:?}");
+        assert_eq!(
+            cycle.len(),
+            4,
+            "all four loop cells should be flagged: {found:?}"
+        );
         assert!(!outputs["valid"].as_bool().unwrap());
         assert_eq!(
-            outputs["counts_by_problem"]["circular_flow"].as_u64().unwrap(),
+            outputs["counts_by_problem"]["circular_flow"]
+                .as_u64()
+                .unwrap(),
             4
         );
     }
@@ -568,9 +580,7 @@ mod tests {
         border[0] = 0.0; // corner
         let (clean, _) = run(json!({ "input": raster_of(cols, rows, &border) }));
         assert!(
-            !problems(&clean)
-                .iter()
-                .any(|(_, _, p)| p == "undefined"),
+            !problems(&clean).iter().any(|(_, _, p)| p == "undefined"),
             "a border outlet is not a defect"
         );
     }
@@ -588,7 +598,9 @@ mod tests {
         }));
         assert_eq!(loud.len(), 2, "the two right-hand cells flow off the edge");
         assert_eq!(
-            outputs["counts_by_problem"]["flows_off_edge"].as_u64().unwrap(),
+            outputs["counts_by_problem"]["flows_off_edge"]
+                .as_u64()
+                .unwrap(),
             2
         );
     }
@@ -641,7 +653,9 @@ mod tests {
         v[cols] = 128.0; // (1,0) flows north-east into row 0
         let (layer, outputs) = run(json!({ "input": raster_of(cols, rows, &v) }));
         assert!(
-            !problems(&layer).iter().any(|(_, _, p)| p == "circular_flow"),
+            !problems(&layer)
+                .iter()
+                .any(|(_, _, p)| p == "circular_flow"),
             "converging flow is not circular: {:?}",
             problems(&layer)
         );

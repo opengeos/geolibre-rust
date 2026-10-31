@@ -143,9 +143,14 @@ impl Tool for ConstructSightLinesTool {
         let mut obs_pts: Vec<(usize, [f64; 3], String)> = Vec::new();
         for (i, f) in observers.iter().enumerate() {
             let Some(g) = &f.geometry else { continue };
-            let Some(mut p) = first_point(g) else { continue };
+            let Some(mut p) = first_point(g) else {
+                continue;
+            };
             p[2] += obs_h_idx.map_or(0.0, |k| {
-                f.attributes.get(k).and_then(FieldValue::as_f64).unwrap_or(0.0)
+                f.attributes
+                    .get(k)
+                    .and_then(FieldValue::as_f64)
+                    .unwrap_or(0.0)
             });
             let key = obs_j_idx.map_or_else(String::new, |k| key_of(f.attributes.get(k)));
             obs_pts.push((i, p, key));
@@ -157,7 +162,10 @@ impl Tool for ConstructSightLinesTool {
         for (i, f) in targets.iter().enumerate() {
             let Some(g) = &f.geometry else { continue };
             let dz = tgt_h_idx.map_or(0.0, |k| {
-                f.attributes.get(k).and_then(FieldValue::as_f64).unwrap_or(0.0)
+                f.attributes
+                    .get(k)
+                    .and_then(FieldValue::as_f64)
+                    .unwrap_or(0.0)
             });
             let key = tgt_j_idx.map_or_else(String::new, |k| key_of(f.attributes.get(k)));
             for mut p in target_points(g, sample_distance) {
@@ -401,9 +409,11 @@ fn optional_field(
 ) -> Result<Option<usize>, ToolError> {
     match name {
         None => Ok(None),
-        Some(n) => layer.schema.field_index(n).map(Some).ok_or_else(|| {
-            ToolError::Validation(format!("{param} '{n}' not found in the layer"))
-        }),
+        Some(n) => {
+            layer.schema.field_index(n).map(Some).ok_or_else(|| {
+                ToolError::Validation(format!("{param} '{n}' not found in the layer"))
+            })
+        }
     }
 }
 
@@ -534,7 +544,11 @@ mod tests {
     #[test]
     fn cross_product_pairs_every_observer_with_every_target() {
         let obs = point_layer(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], &[], false);
-        let tgt = point_layer(&[(0.0, 10.0, 0.0), (5.0, 10.0, 0.0), (9.0, 9.0, 0.0)], &[], false);
+        let tgt = point_layer(
+            &[(0.0, 10.0, 0.0), (5.0, 10.0, 0.0), (9.0, 9.0, 0.0)],
+            &[],
+            false,
+        );
         let (out, layer) = run(json!({ "observers": obs, "targets": tgt }));
         assert_eq!(out.outputs["sight_line_count"], json!(6));
         assert_eq!(layer.features.len(), 6);
@@ -651,8 +665,13 @@ mod tests {
         };
         assert!(bad(json!({})).is_err());
         assert!(bad(json!({ "observers": "o.shp" })).is_err());
-        assert!(bad(json!({ "observers": "o.shp", "targets": "t.shp", "sample_distance": 0 })).is_err());
-        assert!(bad(json!({ "observers": "o.shp", "targets": "t.shp", "distance_method": "4d" })).is_err());
+        assert!(
+            bad(json!({ "observers": "o.shp", "targets": "t.shp", "sample_distance": 0 })).is_err()
+        );
+        assert!(
+            bad(json!({ "observers": "o.shp", "targets": "t.shp", "distance_method": "4d" }))
+                .is_err()
+        );
         assert!(bad(json!({ "observers": "o.shp", "targets": "t.shp" })).is_ok());
     }
 }

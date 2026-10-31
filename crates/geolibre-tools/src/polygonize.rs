@@ -41,11 +41,7 @@ pub fn polygonize_to_geojson(p: &PolygonizeParams) -> String {
         }
         let geometry = rings_to_geometry(rings, p);
 
-        let mut props = p
-            .props_by_id
-            .get(&group.id)
-            .cloned()
-            .unwrap_or_default();
+        let mut props = p.props_by_id.get(&group.id).cloned().unwrap_or_default();
         props.entry("id".to_string()).or_insert(json!(group.id));
 
         features.push(json!({

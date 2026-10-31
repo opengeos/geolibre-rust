@@ -6,8 +6,8 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
-    ToolParamSpec, ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
+    ToolRunResult,
 };
 use wbraster::ResampleMethod;
 
@@ -68,10 +68,9 @@ impl Tool for ReprojectRasterTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args
-            .get("input")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
+        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::Validation("missing required parameter 'input'".to_string())
+        })?;
         let dst_epsg = parse_epsg(args)?;
         let method = match args.get("method").and_then(Value::as_str) {
             Some(m) => parse_resample(m)?,

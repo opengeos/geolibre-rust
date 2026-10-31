@@ -617,7 +617,11 @@ mod tests {
         });
         for row in 0..rows {
             for col in 0..cols {
-                let v = if (4..=6).contains(&col) { -9999.0 } else { height };
+                let v = if (4..=6).contains(&col) {
+                    -9999.0
+                } else {
+                    height
+                };
                 r.set(0, row as isize, col as isize, v).unwrap();
             }
         }

@@ -7,8 +7,8 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
-    ToolParamSpec, ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
+    ToolRunResult,
 };
 use wbvector::{Coord, Geometry, Ring};
 
@@ -64,8 +64,16 @@ impl Tool for RenderVectorPngTool {
         let fill = color_or(args, "fill", [51, 136, 255, 150])?;
         let stroke = color_or(args, "stroke", [20, 60, 120, 255])?;
         let background = color_or(args, "background", [0, 0, 0, 0])?;
-        let stroke_width = args.get("stroke_width").and_then(Value::as_u64).unwrap_or(1).max(1) as i64;
-        let width = args.get("width").and_then(Value::as_u64).unwrap_or(800).clamp(16, 8192) as i64;
+        let stroke_width = args
+            .get("stroke_width")
+            .and_then(Value::as_u64)
+            .unwrap_or(1)
+            .max(1) as i64;
+        let width = args
+            .get("width")
+            .and_then(Value::as_u64)
+            .unwrap_or(800)
+            .clamp(16, 8192) as i64;
         let pad: f64 = 8.0;
 
         let layer = load_input_layer(input)?;
@@ -89,8 +97,16 @@ impl Tool for RenderVectorPngTool {
         let inner_h = height as f64 - 2.0 * pad;
         // World -> pixel. Y is flipped (north up). Degenerate spans center the data.
         let to_px = |c: &Coord| -> (f64, f64) {
-            let fx = if max_x > min_x { (c.x - min_x) / span_x } else { 0.5 };
-            let fy = if max_y > min_y { (max_y - c.y) / span_y } else { 0.5 };
+            let fx = if max_x > min_x {
+                (c.x - min_x) / span_x
+            } else {
+                0.5
+            };
+            let fy = if max_y > min_y {
+                (max_y - c.y) / span_y
+            } else {
+                0.5
+            };
             (pad + fx * inner_w, pad + fy * inner_h)
         };
 
@@ -191,9 +207,10 @@ fn draw_geometry<F: Fn(&Coord) -> (f64, f64)>(
                 draw_line_string(canvas, cs, to_px, stroke, sw);
             }
         }
-        Geometry::Polygon { exterior, interiors } => {
-            draw_polygon(canvas, exterior, interiors, to_px, fill, stroke, sw)
-        }
+        Geometry::Polygon {
+            exterior,
+            interiors,
+        } => draw_polygon(canvas, exterior, interiors, to_px, fill, stroke, sw),
         Geometry::MultiPolygon(polys) => {
             for (exterior, interiors) in polys {
                 draw_polygon(canvas, exterior, interiors, to_px, fill, stroke, sw);
@@ -335,8 +352,12 @@ fn draw_segment(canvas: &mut Canvas, a: (f64, f64), b: (f64, f64), c: Rgba, sw: 
 
 /// Bounding box over every feature geometry: `(min_x, min_y, max_x, max_y)`.
 fn layer_extent(layer: &wbvector::Layer) -> Option<(f64, f64, f64, f64)> {
-    let (mut min_x, mut min_y, mut max_x, mut max_y) =
-        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    );
     let mut any = false;
     for f in &layer.features {
         if let Some(b) = f.geometry.as_ref().and_then(|g| g.bbox()) {

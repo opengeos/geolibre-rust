@@ -20,8 +20,8 @@
 //! polyline.
 
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 
 use serde_json::{json, Value};
 use wbcore::{
@@ -114,18 +114,24 @@ impl Tool for GenerateBreachLinesTool {
         // Optional termination targets.
         // A HashSet, not a Vec: the outlet test runs inside the Dijkstra pop
         // loop, so a linear scan would be O(cells x points).
-        let connections: std::collections::HashSet<(isize, isize)> = match parse_optional_str(args, "connection_points")? {
-            Some(p) => {
-                let layer = load_input_layer(p)?;
-                layer
-                    .iter()
-                    .filter_map(|f| f.geometry.as_ref())
-                    .flat_map(|g| g.all_coords().into_iter().map(|c| (c.x, c.y)).collect::<Vec<_>>())
-                    .filter_map(|(x, y)| dem.world_to_pixel(x, y).map(|(c, r)| (r, c)))
-                    .collect()
-            }
-            None => std::collections::HashSet::new(),
-        };
+        let connections: std::collections::HashSet<(isize, isize)> =
+            match parse_optional_str(args, "connection_points")? {
+                Some(p) => {
+                    let layer = load_input_layer(p)?;
+                    layer
+                        .iter()
+                        .filter_map(|f| f.geometry.as_ref())
+                        .flat_map(|g| {
+                            g.all_coords()
+                                .into_iter()
+                                .map(|c| (c.x, c.y))
+                                .collect::<Vec<_>>()
+                        })
+                        .filter_map(|(x, y)| dem.world_to_pixel(x, y).map(|(c, r)| (r, c)))
+                        .collect()
+                }
+                None => std::collections::HashSet::new(),
+            };
 
         let mut out = Layer::new("breach_lines").with_geom_type(GeometryType::LineString);
         if let Some(epsg) = polys.crs_epsg() {
@@ -197,7 +203,14 @@ impl Tool for GenerateBreachLinesTool {
             };
 
             let found = search(
-                &dem, &inside, &mut scratch, (pr, pc), pit_z, method, max_length, &connections,
+                &dem,
+                &inside,
+                &mut scratch,
+                (pr, pc),
+                pit_z,
+                method,
+                max_length,
+                &connections,
             );
             for &i in &touched_inside {
                 inside[i] = false;
@@ -372,9 +385,14 @@ fn search(
         }
 
         for (dr, dc) in [
-            (-1, -1), (-1, 0), (-1, 1),
-            (0, -1),           (0, 1),
-            (1, -1),  (1, 0),  (1, 1),
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
         ] {
             let (nr, nc) = (r + dr, c + dc);
             if nr < 0 || nc < 0 || nr >= rows || nc >= cols {
@@ -637,9 +655,11 @@ mod tests {
         assert!(f.attributes[l].as_f64().unwrap() > 0.0);
         assert!(f.attributes[v].as_f64().unwrap() > 0.0);
         assert!(f.attributes[m].as_f64().unwrap() > 0.0);
-        assert!((out.outputs["total_cut_volume"].as_f64().unwrap()
-            - f.attributes[v].as_f64().unwrap())
-        .abs() < 1e-9);
+        assert!(
+            (out.outputs["total_cut_volume"].as_f64().unwrap() - f.attributes[v].as_f64().unwrap())
+                .abs()
+                < 1e-9
+        );
     }
 
     #[test]
@@ -647,7 +667,8 @@ mod tests {
         let d = depression(15.0, 10.0, 2.5);
         let g = ramp_with_pit();
         let len = |method: &str| -> f64 {
-            let (_o, layer) = run(json!({ "input": d.clone(), "dem": g.clone(), "method": method }));
+            let (_o, layer) =
+                run(json!({ "input": d.clone(), "dem": g.clone(), "method": method }));
             let i = layer.schema.field_index("BREACH_LEN").unwrap();
             layer.features[0].attributes[i].as_f64().unwrap()
         };

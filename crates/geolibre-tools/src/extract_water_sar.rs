@@ -422,7 +422,11 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             "'histogram_bins' must be at least 2".to_string(),
         ));
     }
-    let input_units = SarUnits::parse(args.get("input_units").and_then(Value::as_str).unwrap_or(""))?;
+    let input_units = SarUnits::parse(
+        args.get("input_units")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+    )?;
 
     Ok(Params {
         fixed_threshold,
@@ -439,8 +443,8 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
 mod tests {
     use super::*;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbraster::{CrsInfo, RasterConfig};
     use wbraster::Raster;
+    use wbraster::{CrsInfo, RasterConfig};
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -453,7 +457,9 @@ mod tests {
     }
 
     fn jitter(i: usize) -> f64 {
-        let mut x = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(11);
+        let mut x = (i as u64)
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(11);
         x ^= x >> 33;
         x = x.wrapping_mul(0xff51afd7ed558ccd);
         x ^= x >> 33;
@@ -544,7 +550,11 @@ mod tests {
             .flat_map(|r| (0..cols).map(move |c| (r, c)))
             .filter(|&(r, c)| mask.get(0, r as isize, c as isize) == 1.0)
             .count();
-        assert_eq!(flagged, 7 * 8, "mask should flag exactly the 56 water cells");
+        assert_eq!(
+            flagged,
+            7 * 8,
+            "mask should flag exactly the 56 water cells"
+        );
         let area = out.outputs["water_area"].as_f64().unwrap();
         assert!((area - flagged as f64 * 100.0).abs() < 1e-6);
     }
@@ -577,7 +587,11 @@ mod tests {
         let dem = raster_of(cols, rows, &z);
 
         let (no_dem, _) = run(json!({ "input": src.clone() }));
-        assert_eq!(no_dem.len(), 2, "without a DEM both dark patches map as water");
+        assert_eq!(
+            no_dem.len(),
+            2,
+            "without a DEM both dark patches map as water"
+        );
 
         let (with_dem, outputs) = run(json!({
             "input": src, "dem": dem, "max_slope": 5.0

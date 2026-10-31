@@ -242,11 +242,8 @@ impl Tool for RasterDomainTool {
                     if let Some(first) = cs.first().cloned() {
                         cs.push(first);
                     }
-                    let mut feat = Feature::with_geometry(
-                        *fid,
-                        Geometry::LineString(cs),
-                        layer.schema.len(),
-                    );
+                    let mut feat =
+                        Feature::with_geometry(*fid, Geometry::LineString(cs), layer.schema.len());
                     feat.set_by_index(0, FieldValue::Integer(*fid as i64));
                     feat.set_by_index(1, FieldValue::Float(net));
                     // Match the polygon branch: with `fill_holes` the holes
@@ -491,9 +488,8 @@ mod tests {
         assert_eq!(layer.len(), 1);
         assert!((outputs["domain_area"].as_f64().unwrap() - 2500.0).abs() < 1e-6);
         assert!(
-            (outputs["domain_area"].as_f64().unwrap()
-                - outputs["extent_area"].as_f64().unwrap())
-            .abs()
+            (outputs["domain_area"].as_f64().unwrap() - outputs["extent_area"].as_f64().unwrap())
+                .abs()
                 < 1e-6,
             "a fully valid raster's domain is its extent"
         );
@@ -602,8 +598,16 @@ mod tests {
                 panic!("expected a line")
             };
             assert_eq!(
-                (cs.first().map(|c| (c.x, c.y)), cs.last().map(|c| (c.x, c.y))).0,
-                (cs.first().map(|c| (c.x, c.y)), cs.last().map(|c| (c.x, c.y))).1,
+                (
+                    cs.first().map(|c| (c.x, c.y)),
+                    cs.last().map(|c| (c.x, c.y))
+                )
+                    .0,
+                (
+                    cs.first().map(|c| (c.x, c.y)),
+                    cs.last().map(|c| (c.x, c.y))
+                )
+                    .1,
                 "boundary polylines must close"
             );
         }
@@ -613,8 +617,7 @@ mod tests {
     #[test]
     fn empty_raster_is_an_error() {
         let args: ToolArgs =
-            serde_json::from_value(json!({ "input": raster_of(3, 3, 1, &[-9999.0; 9]) }))
-                .unwrap();
+            serde_json::from_value(json!({ "input": raster_of(3, 3, 1, &[-9999.0; 9]) })).unwrap();
         let err = RasterDomainTool.run(&args, &ctx()).unwrap_err();
         assert!(
             format!("{err:?}").contains("no valid cells"),

@@ -107,8 +107,7 @@ impl Tool for ZonalFillTool {
                 for (dr, dc) in [(-1isize, 0isize), (1, 0), (0, -1), (0, 1)] {
                     let nr = r as isize + dr;
                     let nc = c as isize + dc;
-                    let off_grid =
-                        nr < 0 || nc < 0 || nr >= rows as isize || nc >= cols as isize;
+                    let off_grid = nr < 0 || nc < 0 || nr >= rows as isize || nc >= cols as isize;
                     if off_grid || zone_at(nr as usize, nc as usize) != Some(z) {
                         boundary = true;
                     }

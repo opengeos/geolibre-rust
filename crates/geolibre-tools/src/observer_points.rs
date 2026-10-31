@@ -219,8 +219,7 @@ impl Tool for ObserverPointsTool {
                 // single-observer sweep stays observable.
                 if r % 64 == 0 {
                     ctx.progress.progress(
-                        (k as f64 + (r - r0) as f64 / scanned_rows as f64)
-                            / observers.len() as f64,
+                        (k as f64 + (r - r0) as f64 / scanned_rows as f64) / observers.len() as f64,
                     );
                 }
                 for c in c0..c1 {
@@ -267,10 +266,8 @@ impl Tool for ObserverPointsTool {
             Analysis::Observers => (mask, DataType::F64),
             Analysis::Frequency => (freq, DataType::F32),
         };
-        let out_path = write_or_store_output(
-            raster_like_with_data(&dem, values, nodata, dtype)?,
-            output,
-        )?;
+        let out_path =
+            write_or_store_output(raster_like_with_data(&dem, values, nodata, dtype)?, output)?;
         let agl_path = write_or_store_output(
             raster_like_with_data(&dem, agl, nodata, DataType::F32)?,
             out_agl,
@@ -287,10 +284,7 @@ impl Tool for ObserverPointsTool {
         outputs.insert("observer_count".to_string(), json!(observers.len()));
         outputs.insert("visible_cells".to_string(), json!(visible_cells));
         outputs.insert("analysis_type".to_string(), json!(prm.analysis.label()));
-        outputs.insert(
-            "cells_per_observer".to_string(),
-            json!(per_observer),
-        );
+        outputs.insert("cells_per_observer".to_string(), json!(per_observer));
         Ok(ToolRunResult { outputs })
     }
 }
@@ -777,7 +771,11 @@ mod tests {
         // Cells 0..3 are within 35 m of the observer at x = 5 m.
         assert_eq!(out.get(0, 0, 0), 1.0);
         assert_eq!(out.get(0, 0, 3), 1.0);
-        assert_eq!(out.get(0, 0, 9), 0.0, "cell beyond the range is not visible");
+        assert_eq!(
+            out.get(0, 0, 9),
+            0.0,
+            "cell beyond the range is not visible"
+        );
         assert!(outputs["visible_cells"].as_u64().unwrap() < 11);
     }
 
@@ -792,11 +790,8 @@ mod tests {
         layer = layer.with_crs_epsg(32610);
         layer.add_field(FieldDef::new("id", FieldType::Integer));
         layer.add_field(FieldDef::new("mast", FieldType::Float));
-        let mut f = Feature::with_geometry(
-            0,
-            Geometry::Point(Coord::xy(5.0, 5.0)),
-            layer.schema.len(),
-        );
+        let mut f =
+            Feature::with_geometry(0, Geometry::Point(Coord::xy(5.0, 5.0)), layer.schema.len());
         f.set_by_index(0, FieldValue::Integer(0));
         f.set_by_index(1, FieldValue::Float(1000.0));
         layer.push(f);
@@ -855,10 +850,7 @@ mod tests {
                 "observer_offset": 0.0, "curvature": curv
             }))
             .unwrap();
-            ObserverPointsTool
-                .run(&args, &ctx())
-                .unwrap()
-                .outputs["visible_cells"]
+            ObserverPointsTool.run(&args, &ctx()).unwrap().outputs["visible_cells"]
                 .as_u64()
                 .unwrap()
         };

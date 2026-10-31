@@ -328,8 +328,16 @@ struct Params {
 }
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
-    let input_units = SarUnits::parse(args.get("input_units").and_then(Value::as_str).unwrap_or(""))?;
-    let noise_units = SarUnits::parse(args.get("noise_units").and_then(Value::as_str).unwrap_or(""))?;
+    let input_units = SarUnits::parse(
+        args.get("input_units")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+    )?;
+    let noise_units = SarUnits::parse(
+        args.get("noise_units")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+    )?;
     let db_output = choice_or(args, "output_units", &["linear", "db"], "linear")? == "db";
 
     let floor_fraction = f64_or(args, "floor_fraction", 0.01)?;
@@ -555,8 +563,7 @@ mod tests {
         let args: ToolArgs =
             serde_json::from_value(json!({"input": src, "noise_constant": 0.1})).unwrap();
         let out = RemoveThermalNoiseTool.run(&args, &ctx()).unwrap();
-        let snr =
-            load_input_raster(out.outputs["output_snr"].as_str().unwrap()).unwrap();
+        let snr = load_input_raster(out.outputs["output_snr"].as_str().unwrap()).unwrap();
         // signal 1.0 over noise 0.1 = 10 dB.
         assert!((snr.get(0, 0, 0) - 10.0).abs() < 1e-4);
     }
@@ -572,8 +579,12 @@ mod tests {
         assert!(bad(json!({"input": "a.tif"})).is_err());
         assert!(bad(json!({"input": "a.tif", "noise_profile": "0.1"})).is_err());
         assert!(bad(json!({"input": "a.tif", "noise_profile": "0.1,x"})).is_err());
-        assert!(bad(json!({"input": "a.tif", "noise_constant": 0.1, "floor_fraction": 1.0})).is_err());
-        assert!(bad(json!({"input": "a.tif", "noise_constant": 0.1, "noise_units": "watts"})).is_err());
+        assert!(
+            bad(json!({"input": "a.tif", "noise_constant": 0.1, "floor_fraction": 1.0})).is_err()
+        );
+        assert!(
+            bad(json!({"input": "a.tif", "noise_constant": 0.1, "noise_units": "watts"})).is_err()
+        );
         // Regression: a blank path satisfied the old string-presence test and
         // then reached `expect(None)` at runtime.
         assert!(bad(json!({"input": "a.tif", "noise_raster": "   "})).is_err());

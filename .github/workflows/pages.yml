@@ -66,6 +66,10 @@ jobs:
           echo "AR_wasm32_wasip1=$sdk/bin/llvm-ar" >> "$GITHUB_ENV"
           echo "CFLAGS_wasm32_wasip1=--sysroot=$sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
 
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2
+        with:
+          tool: cargo-about
+
       - name: Build both WASM artifacts and assemble the site
         run: |
           ./build.sh
@@ -77,6 +81,8 @@ jobs:
           cp npm/geolibre_wasm.js      site/geolibre_wasm.js
           cp npm/geolibre_wasm_bg.wasm site/geolibre_wasm_bg.wasm
           cp examples/sample.tif       site/sample.tif
+          cp LICENSE                   site/LICENSE.txt
+          python3 scripts/third_party_notices.py site/THIRD-PARTY-NOTICES.txt
           # cache-bust the glue + wasm together so returning visitors never mix
           # an old cached loader with a freshly built module
           sed -i "s/__BUILD__/${GITHUB_SHA}/g" site/index.html site/benchmark.html

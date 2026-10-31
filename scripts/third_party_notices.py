@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Generate THIRD-PARTY-NOTICES.txt for the npm package.
+"""Generate THIRD-PARTY-NOTICES.txt for the npm package and native runners.
 
 cargo-about renders the crates' license texts. It does not cover Apache NOTICE
-files, which Apache-2.0 section 4(d) requires us to pass on, or wasi-libc, which
-is not a crate, so both are appended here.
+files, which Apache-2.0 section 4(d) requires us to pass on, or the C libraries
+built in from bundled sources (wasi-libc, and zstd vendored in zstd-sys), so
+these are appended here.
 """
 
 import json
@@ -52,9 +53,9 @@ def main():
     with output.open("a", encoding="utf-8") as out:
         for text, crates in sorted(crate_notices(about).items()):
             out.write(f"{rule}\nNOTICE from: {', '.join(crates)}\n\n{text}\n\n")
-        out.write(f"{rule}\n")
-        wasi_libc = ROOT / "licenses" / "wasi-libc-NOTICES.txt"
-        out.write(wasi_libc.read_text(encoding="utf-8"))
+        for name in ("wasi-libc-NOTICES.txt", "zstd-NOTICES.txt"):
+            out.write(f"{rule}\n")
+            out.write((ROOT / "licenses" / name).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

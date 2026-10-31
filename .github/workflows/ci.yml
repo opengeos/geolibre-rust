@@ -73,9 +73,11 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny
+          tool: cargo-deny,cargo-about
       - name: Dependency licenses
         run: cargo deny --locked check licenses
+      - name: Third-party notices
+        run: cargo about generate --locked --fail --all-features -o /dev/null about.hbs
 
   # The native runner (released per platform for desktop hosts) must build and
   # run on macOS and Windows too, not only Linux.

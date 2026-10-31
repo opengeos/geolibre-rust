@@ -21,7 +21,9 @@
     "geolibre-cli.wasm",
     "tools.mjs",
     "tools.d.ts",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.txt"
   ],
   "exports": {
     ".": {

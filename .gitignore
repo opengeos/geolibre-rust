@@ -9,6 +9,8 @@ npm/geolibre_wasm_bg.wasm
 npm/geolibre_wasm.d.ts
 npm/geolibre_wasm_bg.wasm.d.ts
 npm/snippets/
+npm/LICENSE
+npm/THIRD-PARTY-NOTICES.txt
 *.wasm-opt.wasm
 # Python wrapper build artifacts
 __pycache__/

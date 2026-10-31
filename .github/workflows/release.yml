@@ -72,6 +72,13 @@ jobs:
       - name: Build both WASM artifacts (library + WASI runner)
         run: ./build.sh
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+
+      - name: Generate third-party notices
+        run: cargo about generate --locked --fail --all-features -o npm/THIRD-PARTY-NOTICES.txt about.hbs
+
       - name: Sync package version to tag
         if: startsWith(github.ref, 'refs/tags/v')
         working-directory: npm

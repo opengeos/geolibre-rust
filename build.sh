@@ -38,5 +38,7 @@ else
   cp "$CLI_WASM" npm/geolibre-cli.wasm
 fi
 
+cp LICENSE npm/
+
 echo "==> staged npm/ artifacts:"
 ls -lh npm/geolibre_wasm_bg.wasm npm/geolibre-cli.wasm | awk '{print $5"\t"$9}'

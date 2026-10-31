@@ -22,9 +22,18 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2
         with:
-          tool: cargo-deny
+          tool: cargo-deny,cargo-about
       - name: Dependency licenses
         run: cargo deny --locked check licenses
+      # The native archives ship this file; the release job generates its own
+      # copy for npm from the same config.
+      - name: Third-party notices
+        run: python3 scripts/third_party_notices.py THIRD-PARTY-NOTICES.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.txt
+          if-no-files-found: error
 
   release:
     needs: licenses
@@ -127,6 +136,8 @@ jobs:
           cp npm/geolibre-cli.wasm     dist/geolibre-cli-${GITHUB_REF_NAME}.wasm
           cp npm/tools.mjs             dist/tools-${GITHUB_REF_NAME}.mjs
           cp npm/tools.d.ts            dist/tools-${GITHUB_REF_NAME}.d.ts
+          # licence and notices for the raw assets above
+          cp LICENSE npm/THIRD-PARTY-NOTICES.txt dist/
           # Python wheel + sdist
           cp python-dist/*.whl python-dist/*.tar.gz dist/
           (cd dist && sha256sum * > SHA256SUMS.txt)
@@ -172,6 +183,10 @@ jobs:
         with:
           key: native-${{ matrix.target }}
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: third-party-notices
+
       - name: Build the runner
         run: cargo build --profile dist -p geolibre-cli --target ${{ matrix.target }}
 
@@ -190,7 +205,7 @@ jobs:
         run: |
           name="geolibre-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/dist/geolibre" LICENSE "dist/$name/"
+          cp "target/${{ matrix.target }}/dist/geolibre" LICENSE THIRD-PARTY-NOTICES.txt "dist/$name/"
           tar -czf "dist/$name.tar.gz" -C dist "$name"
           (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
 
@@ -200,7 +215,7 @@ jobs:
         run: |
           $name = "geolibre-$env:GITHUB_REF_NAME-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
-          Copy-Item "target/${{ matrix.target }}/dist/geolibre.exe", LICENSE "dist/$name/"
+          Copy-Item "target/${{ matrix.target }}/dist/geolibre.exe", LICENSE, THIRD-PARTY-NOTICES.txt "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
           $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File -Encoding ascii "dist/$name.zip.sha256"

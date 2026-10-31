@@ -32,6 +32,11 @@ ENV WASI_SDK=/opt/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux \
     AR_wasm32_wasip1=/opt/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux/bin/llvm-ar \
     CFLAGS_wasm32_wasip1=--sysroot=/opt/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux/share/wasi-sysroot
 
+# cargo-about renders the site's THIRD-PARTY-NOTICES.txt.
+ENV CARGO_ABOUT_VERSION=0.9.3
+RUN curl -sL "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/cargo-about-${CARGO_ABOUT_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+      | tar xz -C /usr/local/bin --strip-components=1 "cargo-about-${CARGO_ABOUT_VERSION}-x86_64-unknown-linux-musl/cargo-about"
+
 WORKDIR /src
 COPY . .
 
@@ -47,6 +52,8 @@ RUN ./build.sh \
  && cp npm/geolibre_wasm.js      site/geolibre_wasm.js \
  && cp npm/geolibre_wasm_bg.wasm site/geolibre_wasm_bg.wasm \
  && cp examples/sample.tif       site/sample.tif \
+ && cp LICENSE                   site/LICENSE.txt \
+ && python3 scripts/third_party_notices.py site/THIRD-PARTY-NOTICES.txt \
  && sed -i "s/__BUILD__/${BUILD_REF}/g" site/index.html
 
 # ---- Stage 2: serve the static site -----------------------------------------

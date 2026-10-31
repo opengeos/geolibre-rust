@@ -108,9 +108,7 @@ impl Colormap {
 }
 
 fn lerp(a: u8, b: u8, frac: f64) -> u8 {
-    (a as f64 + (b as f64 - a as f64) * frac)
-        .round()
-        .clamp(0.0, 255.0) as u8
+    (a as f64 + (b as f64 - a as f64) * frac).round().clamp(0.0, 255.0) as u8
 }
 
 /// Linear stretch from a value range to [0, 1]. A zero-width range maps every

@@ -444,8 +444,7 @@ mod tests {
             Some(s) => vec![("sp", FieldValue::Float(s))],
             None => vec![],
         };
-        l.add_feature(Some(Geometry::line_string(coords)), &a)
-            .unwrap();
+        l.add_feature(Some(Geometry::line_string(coords)), &a).unwrap();
         let id = wbvector::memory_store::put_vector(l);
         wbvector::memory_store::make_vector_memory_path(&id)
     }

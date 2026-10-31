@@ -187,7 +187,8 @@ impl Tool for ContourListTool {
                         let Some(geom) = f.get("geometry").and_then(geometry_from_json) else {
                             continue;
                         };
-                        let mut feat = Feature::with_geometry(fid, geom, layer.schema.len());
+                        let mut feat =
+                            Feature::with_geometry(fid, geom, layer.schema.len());
                         feat.set_by_index(0, FieldValue::Integer(fid as i64));
                         feat.set_by_index(1, FieldValue::Float(level));
                         feat.set_by_index(2, FieldValue::Float(0.0));
@@ -722,11 +723,7 @@ mod tests {
         let Some(Geometry::LineString(cs)) = layer.iter().next().unwrap().geometry.as_ref() else {
             panic!()
         };
-        assert!(
-            cs.len() >= 9,
-            "expected a chain of vertices, got {}",
-            cs.len()
-        );
+        assert!(cs.len() >= 9, "expected a chain of vertices, got {}", cs.len());
     }
 
     /// The polygon form returns filled regions at or above each level, nested
@@ -845,11 +842,11 @@ mod tests {
         assert!(bad(json!({"input": "a.tif"})).is_err());
         assert!(bad(json!({"input": "a.tif", "contour_values": ""})).is_err());
         assert!(bad(json!({"input": "a.tif", "contour_values": "10,x"})).is_err());
-        assert!(
-            bad(json!({"input": "a.tif", "contour_values": "10", "geometry_type": "point"}))
-                .is_err()
-        );
+        assert!(bad(json!({"input": "a.tif", "contour_values": "10", "geometry_type": "point"}))
+            .is_err());
         assert!(bad(json!({"input": "a.tif", "contour_values": "10", "min_length": -1})).is_err());
         assert!(bad(json!({"input": "a.tif", "contour_values": "2,5,10,20"})).is_ok());
     }
 }
+
+

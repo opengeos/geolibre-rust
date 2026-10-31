@@ -120,9 +120,10 @@ impl Tool for MergeDividedRoadsTool {
         if n == 0 {
             return Err(ToolError::Execution("input has no features".to_string()));
         }
-        let m_idx = layer.schema.field_index(merge_field).ok_or_else(|| {
-            ToolError::Validation(format!("merge_field '{merge_field}' not found"))
-        })?;
+        let m_idx = layer
+            .schema
+            .field_index(merge_field)
+            .ok_or_else(|| ToolError::Validation(format!("merge_field '{merge_field}' not found")))?;
         let c_idx = match parse_optional_str(args, "character_field")? {
             Some(f) => Some(layer.schema.field_index(f).ok_or_else(|| {
                 ToolError::Validation(format!("character_field '{f}' not found"))
@@ -152,7 +153,8 @@ impl Tool for MergeDividedRoadsTool {
         for (_, p) in &paths {
             // A HashSet, not a Vec: densified road geometry has thousands of
             // vertices per feature, and `contains` on a Vec makes this quadratic.
-            let mut seen: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+            let mut seen: std::collections::HashSet<(i64, i64)> =
+                std::collections::HashSet::new();
             for c in p {
                 let k = node_key(c);
                 if seen.insert(k) {
@@ -262,14 +264,9 @@ impl Tool for MergeDividedRoadsTool {
                     done[i] = true;
                     let fid = paths[i].0;
                     emit(
-                        &mut out,
-                        &names,
-                        &layer,
-                        fid,
+                        &mut out, &names, &layer, fid,
                         Geometry::line_string(paths[i].1.clone()),
-                        "unpaired",
-                        fid as i64,
-                        -1,
+                        "unpaired", fid as i64, -1,
                     )?;
                     add_lineage(&mut lineage, emitted, fid, "unpaired")?;
                     emitted += 1;
@@ -281,14 +278,9 @@ impl Tool for MergeDividedRoadsTool {
                     let mid = midline(&paths[i].1, &paths[j].1);
                     let (fa, fb) = (paths[i].0, paths[j].0);
                     emit(
-                        &mut out,
-                        &names,
-                        &layer,
-                        fa,
+                        &mut out, &names, &layer, fa,
                         Geometry::line_string(mid.clone()),
-                        "merged",
-                        fa as i64,
-                        fb as i64,
+                        "merged", fa as i64, fb as i64,
                     )?;
                     add_lineage(&mut lineage, emitted, fa, "merged")?;
                     add_lineage(&mut lineage, emitted, fb, "merged")?;
@@ -309,14 +301,9 @@ impl Tool for MergeDividedRoadsTool {
                                 continue;
                             }
                             emit(
-                                &mut out,
-                                &names,
-                                &layer,
-                                paths[k].0,
+                                &mut out, &names, &layer, paths[k].0,
                                 Geometry::line_string(vec![c.clone(), near]),
-                                "connector",
-                                paths[k].0 as i64,
-                                -1,
+                                "connector", paths[k].0 as i64, -1,
                             )?;
                             add_lineage(&mut lineage, emitted, paths[k].0, "connector")?;
                             emitted += 1;
@@ -372,10 +359,7 @@ impl Tool for MergeDividedRoadsTool {
         }
         if matches!(args.get("output_table"), Some(v) if !v.is_null()) {
             let p = parse_optional_str(args, "output_table")?;
-            outputs.insert(
-                "output_table".to_string(),
-                json!(write_or_store_layer(lineage, p)?),
-            );
+            outputs.insert("output_table".to_string(), json!(write_or_store_layer(lineage, p)?));
         }
         Ok(ToolRunResult { outputs })
     }
@@ -525,12 +509,7 @@ fn line_paths(g: &Geometry) -> Vec<Vec<Coord>> {
 
 /// Axis-aligned bbox of a path as `[min_x, min_y, max_x, max_y]`.
 fn path_bbox(p: &[Coord]) -> [f64; 4] {
-    let mut bb = [
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    ];
+    let mut bb = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
     for c in p {
         bb[0] = bb[0].min(c.x);
         bb[1] = bb[1].min(c.y);
@@ -867,17 +846,9 @@ mod tests {
         assert_eq!(out.outputs["merged_pair_count"], json!(0));
         assert_eq!(out.outputs["output_feature_count"], json!(1));
         let role = layer.schema.field_index("MERGE_ROLE").unwrap();
+        assert_eq!(layer.features[0].attributes[role].as_str(), Some("unpaired"));
         assert_eq!(
-            layer.features[0].attributes[role].as_str(),
-            Some("unpaired")
-        );
-        assert_eq!(
-            layer.features[0]
-                .geometry
-                .as_ref()
-                .unwrap()
-                .all_coords()
-                .len(),
+            layer.features[0].geometry.as_ref().unwrap().all_coords().len(),
             2
         );
     }
@@ -890,12 +861,9 @@ mod tests {
         args["output_table"] = json!("");
         let a: ToolArgs = serde_json::from_value(args).unwrap();
         let out = MergeDividedRoadsTool.run(&a, &ctx()).unwrap();
-        let disp = load_input_layer(
-            out.outputs["output_displacement_features"]
-                .as_str()
-                .unwrap(),
-        )
-        .unwrap();
+        let disp =
+            load_input_layer(out.outputs["output_displacement_features"].as_str().unwrap())
+                .unwrap();
         assert_eq!(disp.features.len(), 2, "one displacement per carriageway");
         assert!(out.outputs["displaced_area"].as_f64().unwrap() > 0.0);
         let lin = load_input_layer(out.outputs["output_table"].as_str().unwrap()).unwrap();

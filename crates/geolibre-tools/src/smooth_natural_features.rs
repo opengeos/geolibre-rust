@@ -35,8 +35,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbvector::{Coord, Geometry, Layer, Ring};
 
@@ -117,9 +117,7 @@ impl Tool for SmoothNaturalFeaturesTool {
             .get("input")
             .and_then(Value::as_str)
             .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| {
-                ToolError::Validation("missing required parameter 'input'".to_string())
-            })?;
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_str(args, "output")?;
         let prm = parse_params(args)?;
 
@@ -198,11 +196,7 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
         }
     };
     let preserve_area = parse_optional_bool(args, "preserve_area")?.unwrap_or(true);
-    Ok(Params {
-        segment_length,
-        iterations,
-        preserve_area,
-    })
+    Ok(Params { segment_length, iterations, preserve_area })
 }
 
 /// Parses an optional numeric parameter, accepting a JSON number or a numeric
@@ -212,11 +206,9 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => Ok(n.as_f64()),
         Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
-        Some(Value::String(s)) => s
-            .trim()
-            .parse::<f64>()
-            .map(Some)
-            .map_err(|_| ToolError::Validation(format!("parameter '{key}' must be a number"))),
+        Some(Value::String(s)) => s.trim().parse::<f64>().map(Some).map_err(|_| {
+            ToolError::Validation(format!("parameter '{key}' must be a number"))
+        }),
         Some(_) => Err(ToolError::Validation(format!(
             "parameter '{key}' must be a number"
         ))),
@@ -249,15 +241,9 @@ fn parse_optional_bool(args: &ToolArgs, key: &str) -> Result<Option<bool>, ToolE
 /// unsupported) geometries, which pass through unchanged.
 fn smooth_geometry(geom: &Geometry, prm: &Params, seg: f64) -> Option<Geometry> {
     match geom {
-        Geometry::Polygon {
-            exterior,
-            interiors,
-        } => {
+        Geometry::Polygon { exterior, interiors } => {
             let (exterior, interiors) = smooth_part(exterior, interiors, prm, seg);
-            Some(Geometry::Polygon {
-                exterior,
-                interiors,
-            })
+            Some(Geometry::Polygon { exterior, interiors })
         }
         Geometry::MultiPolygon(parts) => Some(Geometry::MultiPolygon(
             parts
@@ -265,7 +251,9 @@ fn smooth_geometry(geom: &Geometry, prm: &Params, seg: f64) -> Option<Geometry> 
                 .map(|(ext, holes)| smooth_part(ext, holes, prm, seg))
                 .collect(),
         )),
-        Geometry::LineString(coords) => Some(Geometry::LineString(smooth_line(coords, prm, seg))),
+        Geometry::LineString(coords) => {
+            Some(Geometry::LineString(smooth_line(coords, prm, seg)))
+        }
         Geometry::MultiLineString(lines) => Some(Geometry::MultiLineString(
             lines.iter().map(|l| smooth_line(l, prm, seg)).collect(),
         )),
@@ -283,9 +271,7 @@ fn smooth_part(exterior: &Ring, interiors: &[Ring], prm: &Params, seg: f64) -> (
         return (exterior.clone(), interiors.to_vec());
     }
     let target = part_area(&ext_pts, &hole_pts);
-    let seg = seg
-        .min(perimeter(&ext_pts, true) / FEATURE_SIZE_DIVISOR)
-        .max(f64::MIN_POSITIVE);
+    let seg = seg.min(perimeter(&ext_pts, true) / FEATURE_SIZE_DIVISOR).max(f64::MIN_POSITIVE);
 
     let mut smooth_ext = smooth_closed_ring(&ext_pts, seg, prm.iterations);
     let mut smooth_holes: Vec<Vec<P>> = hole_pts
@@ -306,9 +292,7 @@ fn smooth_line(coords: &[Coord], prm: &Params, seg: f64) -> Vec<Coord> {
     if pts.len() < 3 {
         return coords.to_vec();
     }
-    let seg = seg
-        .min(perimeter(&pts, false) / FEATURE_SIZE_DIVISOR)
-        .max(f64::MIN_POSITIVE);
+    let seg = seg.min(perimeter(&pts, false) / FEATURE_SIZE_DIVISOR).max(f64::MIN_POSITIVE);
     let mut cur = rdp(&pts, seg);
     cur = densify(&cur, SEGMENT_FACTOR * seg, false);
     cur = chaikin(&cur, 1, false);
@@ -437,8 +421,8 @@ fn preserve_part_area(
         if err.abs() <= tol {
             break;
         }
-        let slope =
-            perimeter(&cand_ext, true) + cand_holes.iter().map(|h| perimeter(h, true)).sum::<f64>();
+        let slope = perimeter(&cand_ext, true)
+            + cand_holes.iter().map(|h| perimeter(h, true)).sum::<f64>();
         if slope.is_nan() || slope <= 1e-12 {
             break;
         }
@@ -476,14 +460,8 @@ fn offset_ring(pts: &[P], d: f64) -> Vec<P> {
         }
         // Moving both edges by d displaces their intersection by d / cos(α/2);
         // the cap at cos = 0.5 limits the miter to 2d at sharp corners.
-        let cos_half = ((1.0 + (n1.0 * n2.0 + n1.1 * n2.1)) * 0.5)
-            .max(0.0)
-            .sqrt()
-            .max(0.5);
-        out.push(P {
-            x: cur.x + bx * d / cos_half,
-            y: cur.y + by * d / cos_half,
-        });
+        let cos_half = ((1.0 + (n1.0 * n2.0 + n1.1 * n2.1)) * 0.5).max(0.0).sqrt().max(0.5);
+        out.push(P { x: cur.x + bx * d / cos_half, y: cur.y + by * d / cos_half });
     }
     out
 }
@@ -518,10 +496,7 @@ struct P {
 }
 
 fn lerp(a: P, b: P, t: f64) -> P {
-    P {
-        x: a.x + (b.x - a.x) * t,
-        y: a.y + (b.y - a.y) * t,
-    }
+    P { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
 }
 
 fn dist(a: P, b: P) -> f64 {
@@ -585,13 +560,7 @@ fn point_seg_dist(p: P, a: P, b: P) -> f64 {
         return dist(p, a);
     }
     let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0);
-    dist(
-        p,
-        P {
-            x: a.x + t * dx,
-            y: a.y + t * dy,
-        },
-    )
+    dist(p, P { x: a.x + t * dx, y: a.y + t * dy })
 }
 
 /// Douglas–Peucker on an open polyline; endpoints are always kept.
@@ -679,10 +648,7 @@ fn collect_edge_lengths(geom: &Geometry, lens: &mut Vec<f64>) {
         lens.extend((0..pts.len()).map(|i| dist(pts[i], pts[(i + 1) % pts.len()])));
     };
     match geom {
-        Geometry::Polygon {
-            exterior,
-            interiors,
-        } => {
+        Geometry::Polygon { exterior, interiors } => {
             ring_edges(exterior);
             interiors.iter().for_each(&mut ring_edges);
         }
@@ -719,10 +685,7 @@ mod tests {
     impl ProgressSink for NullProgress {}
 
     fn ctx() -> ToolContext<'static> {
-        ToolContext {
-            progress: &NullProgress,
-            capabilities: &AllowAllCapabilities,
-        }
+        ToolContext { progress: &NullProgress, capabilities: &AllowAllCapabilities }
     }
 
     /// Densifies the ring `corners` every ~`step` units, jittering each vertex
@@ -742,10 +705,7 @@ mod tests {
                 let t = k as f64 / count as f64;
                 let j = if idx.is_multiple_of(2) { amp } else { -amp };
                 idx += 1;
-                out.push(Coord::xy(
-                    ax + t * (bx - ax) + j * nx,
-                    ay + t * (by - ay) + j * ny,
-                ));
+                out.push(Coord::xy(ax + t * (bx - ax) + j * nx, ay + t * (by - ay) + j * ny));
             }
         }
         out
@@ -784,10 +744,7 @@ mod tests {
             .map(|i| {
                 let (ax, ay) = edges[i];
                 let (bx, by) = edges[(i + 1) % m];
-                (ax * by - ay * bx)
-                    .atan2(ax * bx + ay * by)
-                    .abs()
-                    .to_degrees()
+                (ax * by - ay * bx).atan2(ax * bx + ay * by).abs().to_degrees()
             })
             .fold(0.0, f64::max)
     }
@@ -819,26 +776,16 @@ mod tests {
         let (out, layer) = run_tool(json!({ "input": input }));
         assert_eq!(out.outputs["smoothed_count"], json!(1));
         let seg = out.outputs["segment_length"].as_f64().unwrap();
-        assert!(
-            (0.5..2.0).contains(&seg),
-            "unexpected auto segment length {seg}"
-        );
+        assert!((0.5..2.0).contains(&seg), "unexpected auto segment length {seg}");
 
         let pts = match geometry_of(&layer, 0) {
             Geometry::Polygon { exterior, .. } => ring_points(exterior),
             other => panic!("expected polygon, got {other:?}"),
         };
-        assert!(
-            pts.len() > 8,
-            "expected a smoothed curve, got {} vertices",
-            pts.len()
-        );
+        assert!(pts.len() > 8, "expected a smoothed curve, got {} vertices", pts.len());
         // The zigzag (±0.5) must be gone: the boundary hugs the clean rectangle.
         let dev = max_dist_to_rect(&pts, 20.0, 10.0);
-        assert!(
-            dev <= 1.0,
-            "smoothed boundary strays {dev} from the rectangle"
-        );
+        assert!(dev <= 1.0, "smoothed boundary strays {dev} from the rectangle");
         // No sharp corners survive: the zigzag turns ~90°, the curve stays gentle.
         let turn = max_turn_degrees(&pts, true);
         assert!(turn <= 45.0, "sharpest turn is still {turn} degrees");
@@ -877,10 +824,7 @@ mod tests {
         let (_, shrunk) = run_tool(args(false));
         let (_, restored) = run_tool(args(true));
         let (shrunk_area, restored_area) = (area_of(&shrunk), area_of(&restored));
-        assert!(
-            shrunk_area < 399.0,
-            "corner cutting should shrink the square, got {shrunk_area}"
-        );
+        assert!(shrunk_area < 399.0, "corner cutting should shrink the square, got {shrunk_area}");
         assert!(
             (restored_area - 400.0).abs() <= 0.4,
             "restored area {restored_area} should be within 0.1% of 400"
@@ -897,10 +841,7 @@ mod tests {
 
         let (_, layer) = run_tool(json!({ "input": input, "segment_length": 1.0 }));
         let (ext_pts, holes) = match geometry_of(&layer, 0) {
-            Geometry::Polygon {
-                exterior,
-                interiors,
-            } => (
+            Geometry::Polygon { exterior, interiors } => (
                 ring_points(exterior),
                 interiors.iter().map(ring_points).collect::<Vec<_>>(),
             ),
@@ -929,14 +870,8 @@ mod tests {
             other => panic!("expected linestring, got {other:?}"),
         };
         let (first, last) = (pts[0], *pts.last().unwrap());
-        assert!(
-            dist(first, P { x: 0.0, y: 0.0 }) <= 1e-9,
-            "start endpoint moved to {first:?}"
-        );
-        assert!(
-            dist(last, P { x: 20.0, y: 0.0 }) <= 1e-9,
-            "end endpoint moved to {last:?}"
-        );
+        assert!(dist(first, P { x: 0.0, y: 0.0 }) <= 1e-9, "start endpoint moved to {first:?}");
+        assert!(dist(last, P { x: 20.0, y: 0.0 }) <= 1e-9, "end endpoint moved to {last:?}");
         let worst_y = pts.iter().map(|p| p.y.abs()).fold(0.0, f64::max);
         assert!(worst_y <= 0.5, "zigzag not damped: |y| up to {worst_y}");
         let turn = max_turn_degrees(&pts, false);
@@ -946,19 +881,10 @@ mod tests {
     #[test]
     fn passes_points_through_unchanged() {
         let mut layer = Layer::new("mixed");
-        layer
-            .add_feature(Some(Geometry::point(3.0, 4.0)), &[])
-            .unwrap();
+        layer.add_feature(Some(Geometry::point(3.0, 4.0)), &[]).unwrap();
         layer
             .add_feature(
-                Some(Geometry::polygon(
-                    zigzag_ring(
-                        &[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
-                        1.0,
-                        0.4,
-                    ),
-                    vec![],
-                )),
+                Some(Geometry::polygon(zigzag_ring(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], 1.0, 0.4), vec![])),
                 &[],
             )
             .unwrap();

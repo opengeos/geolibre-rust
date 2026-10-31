@@ -129,13 +129,7 @@ impl Tool for MultidimensionalPrincipalComponentsTool {
         let out_loadings = parse_optional_output(args, "output_loadings")?;
         let out_eigen = parse_optional_output(args, "output_eigenvalues")?;
 
-        let cube = load_cube(
-            args,
-            "input",
-            Some("dimension_values"),
-            Some("dimension"),
-            2,
-        )?;
+        let cube = load_cube(args, "input", Some("dimension_values"), Some("dimension"), 2)?;
         let (rows, cols, n) = (cube.rows, cube.cols, cube.len());
 
         // Complete cases only: a covariance whose entries came from different
@@ -445,10 +439,10 @@ mod tests {
     use crate::common::load_input_raster;
     use crate::cube::test_support::cube_raster;
     use crate::vector_common::load_input_layer;
-    use serde_json::Value;
+    use wbvector::Feature;
     use wbcore::{AllowAllCapabilities, ProgressSink};
     use wbraster::Raster;
-    use wbvector::Feature;
+    use serde_json::Value;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}
@@ -502,8 +496,12 @@ mod tests {
     fn two_modes_are_separated() {
         let (rows, cols) = (8, 8);
         // Pattern A varies along rows, pattern B along columns — orthogonal.
-        let a: Vec<f64> = (0..rows * cols).map(|i| (i / cols) as f64 - 3.5).collect();
-        let b: Vec<f64> = (0..rows * cols).map(|i| (i % cols) as f64 - 3.5).collect();
+        let a: Vec<f64> = (0..rows * cols)
+            .map(|i| (i / cols) as f64 - 3.5)
+            .collect();
+        let b: Vec<f64> = (0..rows * cols)
+            .map(|i| (i % cols) as f64 - 3.5)
+            .collect();
         // Slices 0,1 are pattern A; slices 2,3 are pattern B.
         let slices: Vec<Vec<f64>> = vec![
             a.clone(),
@@ -707,11 +705,10 @@ mod tests {
                 _ => panic!(),
             })
             .collect();
-        let dominant =
-            loads
-                .iter()
-                .cloned()
-                .fold(0.0f64, |acc, v| if v.abs() > acc.abs() { v } else { acc });
+        let dominant = loads
+            .iter()
+            .cloned()
+            .fold(0.0f64, |acc, v| if v.abs() > acc.abs() { v } else { acc });
         assert!(
             dominant > 0.0,
             "the largest loading should be positive by convention, got {loads:?}"

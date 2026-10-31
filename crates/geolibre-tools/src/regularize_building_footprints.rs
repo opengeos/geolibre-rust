@@ -52,8 +52,8 @@ use std::f64::consts::{FRAC_PI_4, PI};
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbvector::{Coord, FieldDef, FieldType, FieldValue, Geometry, Ring};
 
@@ -130,9 +130,7 @@ impl Tool for RegularizeBuildingFootprintsTool {
             .get("input")
             .and_then(Value::as_str)
             .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| {
-                ToolError::Validation("missing required parameter 'input'".to_string())
-            })?;
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_str(args, "output")?;
         let prm = parse_params(args)?;
 
@@ -269,13 +267,7 @@ fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
             ));
         }
     }
-    Ok(Params {
-        method,
-        tolerance,
-        diagonal_penalty,
-        min_radius,
-        max_radius,
-    })
+    Ok(Params { method, tolerance, diagonal_penalty, min_radius, max_radius })
 }
 
 /// Parses an optional numeric parameter, accepting a JSON number or a numeric
@@ -285,11 +277,9 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => Ok(n.as_f64()),
         Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
-        Some(Value::String(s)) => s
-            .trim()
-            .parse::<f64>()
-            .map(Some)
-            .map_err(|_| ToolError::Validation(format!("parameter '{key}' must be a number"))),
+        Some(Value::String(s)) => s.trim().parse::<f64>().map(Some).map_err(|_| {
+            ToolError::Validation(format!("parameter '{key}' must be a number"))
+        }),
         Some(_) => Err(ToolError::Validation(format!(
             "parameter '{key}' must be a number"
         ))),
@@ -303,18 +293,9 @@ fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolErr
 /// original rings and clear the flag.
 fn regularize_geometry(geom: &Geometry, prm: &Params) -> Option<(Geometry, bool)> {
     match geom {
-        Geometry::Polygon {
-            exterior,
-            interiors,
-        } => {
+        Geometry::Polygon { exterior, interiors } => {
             let ((exterior, interiors), ok) = regularize_part(exterior, interiors, prm);
-            Some((
-                Geometry::Polygon {
-                    exterior,
-                    interiors,
-                },
-                ok,
-            ))
+            Some((Geometry::Polygon { exterior, interiors }, ok))
         }
         Geometry::MultiPolygon(parts) => {
             let mut all_ok = true;
@@ -390,7 +371,9 @@ fn regularize_part(exterior: &Ring, interiors: &[Ring], prm: &Params) -> ((Ring,
                                 return hole.clone();
                             }
                             regularize_ring_rectilinear(&hsimp, theta, prm)
-                                .filter(|pts| acceptance_score(&hraw, pts, prm.tolerance).is_some())
+                                .filter(|pts| {
+                                    acceptance_score(&hraw, pts, prm.tolerance).is_some()
+                                })
                                 .map(|pts| pts_to_ring(&pts))
                                 .unwrap_or_else(|| hole.clone())
                         })
@@ -443,13 +426,7 @@ fn point_seg_dist(p: P, a: P, b: P) -> f64 {
         return dist(p, a);
     }
     let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0);
-    dist(
-        p,
-        P {
-            x: a.x + t * dx,
-            y: a.y + t * dy,
-        },
-    )
+    dist(p, P { x: a.x + t * dx, y: a.y + t * dy })
 }
 
 /// Minimum distance from `p` to the boundary of the ring `pts` (unclosed).
@@ -596,10 +573,7 @@ fn fit_rectilinear_exterior(raw: &[P], prm: &Params) -> Option<(Vec<P>, f64)> {
         let mut pts: Vec<P> = rect
             .corners
             .iter()
-            .map(|p| P {
-                x: cx + (p.x - cx) * scale,
-                y: cy + (p.y - cy) * scale,
-            })
+            .map(|p| P { x: cx + (p.x - cx) * scale, y: cy + (p.y - cy) * scale })
             .collect();
         if signed_area(raw) < 0.0 {
             pts.reverse();
@@ -722,12 +696,8 @@ fn min_area_rect(pts: &[P]) -> Option<MinRect> {
             continue;
         }
         let (ux, uy) = (dx / len, dy / len); // edge direction
-        let (mut u0, mut u1, mut v0, mut v1) = (
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-        );
+        let (mut u0, mut u1, mut v0, mut v1) =
+            (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
         for p in &hull {
             let u = p.x * ux + p.y * uy;
             let v = -p.x * uy + p.y * ux;
@@ -738,17 +708,9 @@ fn min_area_rect(pts: &[P]) -> Option<MinRect> {
         }
         let area = (u1 - u0) * (v1 - v0);
         if best.as_ref().is_none_or(|r| area < r.area) {
-            let corner = |u: f64, v: f64| P {
-                x: u * ux - v * uy,
-                y: u * uy + v * ux,
-            };
+            let corner = |u: f64, v: f64| P { x: u * ux - v * uy, y: u * uy + v * ux };
             best = Some(MinRect {
-                corners: [
-                    corner(u0, v0),
-                    corner(u1, v0),
-                    corner(u1, v1),
-                    corner(u0, v1),
-                ],
+                corners: [corner(u0, v0), corner(u1, v0), corner(u1, v1), corner(u0, v1)],
                 theta: uy.atan2(ux),
                 area,
             });
@@ -777,17 +739,9 @@ fn regularize_ring_rectilinear(pts: &[P], theta: f64, prm: &Params) -> Option<Ve
         let (a, b) = (pts[i], pts[(i + 1) % n]);
         let (dx, dy) = (b.x - a.x, b.y - a.y);
         let alpha = dy.atan2(dx);
-        classes.push(classify_edge(
-            alpha,
-            theta,
-            allow_diag,
-            prm.diagonal_penalty,
-        ));
+        classes.push(classify_edge(alpha, theta, allow_diag, prm.diagonal_penalty));
         weights.push(dx.hypot(dy));
-        midpoints.push(P {
-            x: (a.x + b.x) * 0.5,
-            y: (a.y + b.y) * 0.5,
-        });
+        midpoints.push(P { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 });
     }
 
     // Start scanning at a class boundary so runs never wrap.
@@ -855,11 +809,7 @@ fn regularize_ring_rectilinear(pts: &[P], theta: f64, prm: &Params) -> Option<Ve
         .iter()
         .map(|run| {
             let phi = theta + run.class as f64 * FRAC_PI_4;
-            (
-                -phi.sin(),
-                phi.cos(),
-                run.offset_sum / run.weight_sum.max(1e-300),
-            )
+            (-phi.sin(), phi.cos(), run.offset_sum / run.weight_sum.max(1e-300))
         })
         .collect();
 
@@ -874,10 +824,7 @@ fn regularize_ring_rectilinear(pts: &[P], theta: f64, prm: &Params) -> Option<Ve
         if det.abs() < 1e-12 {
             return None;
         }
-        let p = P {
-            x: (c1 * b2 - c2 * b1) / det,
-            y: (a1 * c2 - a2 * c1) / det,
-        };
+        let p = P { x: (c1 * b2 - c2 * b1) / det, y: (a1 * c2 - a2 * c1) / det };
         if out.last().is_none_or(|last| dist(*last, p) > 1e-9) {
             out.push(p);
         }
@@ -991,13 +938,7 @@ fn fit_circle(pts: &[P]) -> Option<(P, f64)> {
     if !(r2.is_finite() && r2 > 0.0) {
         return None;
     }
-    Some((
-        P {
-            x: mx + uc,
-            y: my + vc,
-        },
-        r2.sqrt(),
-    ))
+    Some((P { x: mx + uc, y: my + vc }, r2.sqrt()))
 }
 
 /// Replaces a footprint ring with its best-fit circle when the fit stays
@@ -1012,10 +953,7 @@ fn regularize_circle(raw: &[P], prm: &Params) -> Option<Vec<P>> {
             return None;
         }
     }
-    if raw
-        .iter()
-        .any(|p| (dist(*p, center) - radius).abs() > 2.0 * prm.tolerance)
-    {
+    if raw.iter().any(|p| (dist(*p, center) - radius).abs() > 2.0 * prm.tolerance) {
         return None;
     }
 
@@ -1029,10 +967,7 @@ fn regularize_circle(raw: &[P], prm: &Params) -> Option<Vec<P>> {
         (0..segments)
             .map(|i| {
                 let ang = sign * 2.0 * PI * i as f64 / segments as f64;
-                P {
-                    x: center.x + radius * ang.cos(),
-                    y: center.y + radius * ang.sin(),
-                }
+                P { x: center.x + radius * ang.cos(), y: center.y + radius * ang.sin() }
             })
             .collect(),
     )
@@ -1048,10 +983,7 @@ mod tests {
     impl ProgressSink for NullProgress {}
 
     fn ctx() -> ToolContext<'static> {
-        ToolContext {
-            progress: &NullProgress,
-            capabilities: &AllowAllCapabilities,
-        }
+        ToolContext { progress: &NullProgress, capabilities: &AllowAllCapabilities }
     }
 
     /// Deterministic pseudo-noise in (-1, 1).
@@ -1080,10 +1012,7 @@ mod tests {
                 let t = k as f64 / count as f64;
                 let j = amp * noise(idx);
                 idx += 1;
-                out.push(Coord::xy(
-                    ax + t * (bx - ax) + j * nx,
-                    ay + t * (by - ay) + j * ny,
-                ));
+                out.push(Coord::xy(ax + t * (bx - ax) + j * nx, ay + t * (by - ay) + j * ny));
             }
         }
         out
@@ -1093,10 +1022,7 @@ mod tests {
         let mut layer = Layer::new("buildings");
         layer.add_field(FieldDef::new("name", FieldType::Text));
         layer
-            .add_feature(
-                Some(Geometry::polygon(exterior, vec![])),
-                &[("name", FieldValue::Text("bldg".into()))],
-            )
+            .add_feature(Some(Geometry::polygon(exterior, vec![])), &[("name", FieldValue::Text("bldg".into()))])
             .unwrap();
         let id = memory_store::put_vector(layer);
         memory_store::make_vector_memory_path(&id)
@@ -1117,41 +1043,29 @@ mod tests {
     }
 
     fn status_of(layer: &Layer, idx: usize) -> FieldValue {
-        layer.features[idx]
-            .get(&layer.schema, "status")
-            .unwrap()
-            .clone()
+        layer.features[idx].get(&layer.schema, "status").unwrap().clone()
     }
 
     fn assert_has_corner_near(pts: &[P], x: f64, y: f64, tol: f64) {
         let target = P { x, y };
-        let best = pts
-            .iter()
-            .map(|p| dist(*p, target))
-            .fold(f64::INFINITY, f64::min);
-        assert!(
-            best <= tol,
-            "no vertex within {tol} of ({x}, {y}); closest was {best}"
-        );
+        let best = pts.iter().map(|p| dist(*p, target)).fold(f64::INFINITY, f64::min);
+        assert!(best <= tol, "no vertex within {tol} of ({x}, {y}); closest was {best}");
     }
 
     #[test]
     fn squares_a_noisy_rotated_rectangle() {
-        let corners: Vec<(f64, f64)> = [(0.0, 0.0), (20.0, 0.0), (20.0, 10.0), (0.0, 10.0)]
-            .iter()
-            .map(|&(x, y)| rotate(x, y, 25.0))
-            .collect();
+        let corners: Vec<(f64, f64)> =
+            [(0.0, 0.0), (20.0, 0.0), (20.0, 10.0), (0.0, 10.0)]
+                .iter()
+                .map(|&(x, y)| rotate(x, y, 25.0))
+                .collect();
         let input = layer_with_polygon(noisy_ring(&corners, 1.0, 0.15));
 
         let (out, layer) = run_tool(json!({ "input": input, "tolerance": 0.5 }));
         assert_eq!(out.outputs["regularized_count"], json!(1));
 
         let pts = exterior_pts(&layer, 0);
-        assert_eq!(
-            pts.len(),
-            4,
-            "expected a clean 4-corner rectangle, got {pts:?}"
-        );
+        assert_eq!(pts.len(), 4, "expected a clean 4-corner rectangle, got {pts:?}");
         for &(x, y) in &corners {
             assert_has_corner_near(&pts, x, y, 0.5);
         }
@@ -1170,26 +1084,16 @@ mod tests {
 
     #[test]
     fn squares_a_noisy_rotated_l_shape() {
-        let corners: Vec<(f64, f64)> = [
-            (0.0, 0.0),
-            (20.0, 0.0),
-            (20.0, 10.0),
-            (12.0, 10.0),
-            (12.0, 16.0),
-            (0.0, 16.0),
-        ]
-        .iter()
-        .map(|&(x, y)| rotate(x, y, 15.0))
-        .collect();
+        let corners: Vec<(f64, f64)> =
+            [(0.0, 0.0), (20.0, 0.0), (20.0, 10.0), (12.0, 10.0), (12.0, 16.0), (0.0, 16.0)]
+                .iter()
+                .map(|&(x, y)| rotate(x, y, 15.0))
+                .collect();
         let input = layer_with_polygon(noisy_ring(&corners, 1.0, 0.1));
 
         let (_, layer) = run_tool(json!({ "input": input, "tolerance": 0.4 }));
         let pts = exterior_pts(&layer, 0);
-        assert_eq!(
-            pts.len(),
-            6,
-            "expected 6 corners for an L-shape, got {pts:?}"
-        );
+        assert_eq!(pts.len(), 6, "expected 6 corners for an L-shape, got {pts:?}");
         for &(x, y) in &corners {
             assert_has_corner_near(&pts, x, y, 0.4);
         }
@@ -1200,16 +1104,11 @@ mod tests {
     fn diagonals_keep_chamfered_corners_and_right_angles_reject_them() {
         // A 20x10 rectangle with all four corners chamfered by 3 units (45°).
         let corners = [
-            (3.0, 0.0),
-            (17.0, 0.0),
-            (20.0, 3.0),
-            (20.0, 7.0),
-            (17.0, 10.0),
-            (3.0, 10.0),
-            (0.0, 7.0),
-            (0.0, 3.0),
+            (3.0, 0.0), (17.0, 0.0), (20.0, 3.0), (20.0, 7.0),
+            (17.0, 10.0), (3.0, 10.0), (0.0, 7.0), (0.0, 3.0),
         ];
-        let rotated: Vec<(f64, f64)> = corners.iter().map(|&(x, y)| rotate(x, y, 10.0)).collect();
+        let rotated: Vec<(f64, f64)> =
+            corners.iter().map(|&(x, y)| rotate(x, y, 10.0)).collect();
 
         let input = layer_with_polygon(noisy_ring(&rotated, 0.5, 0.08));
         let (out, layer) = run_tool(json!({
@@ -1219,11 +1118,7 @@ mod tests {
         }));
         assert_eq!(out.outputs["regularized_count"], json!(1));
         let pts = exterior_pts(&layer, 0);
-        assert_eq!(
-            pts.len(),
-            8,
-            "expected 8 corners with chamfers kept, got {pts:?}"
-        );
+        assert_eq!(pts.len(), 8, "expected 8 corners with chamfers kept, got {pts:?}");
         for &(x, y) in &rotated {
             assert_has_corner_near(&pts, x, y, 0.5);
         }
@@ -1252,11 +1147,7 @@ mod tests {
             "tolerance": 0.5,
         }));
         let pts = exterior_pts(&layer, 0);
-        assert!(
-            pts.len() <= 5,
-            "expected heavy simplification, got {} vertices",
-            pts.len()
-        );
+        assert!(pts.len() <= 5, "expected heavy simplification, got {} vertices", pts.len());
         for &(x, y) in &corners {
             assert_has_corner_near(&pts, x, y, 0.5);
         }
@@ -1275,8 +1166,7 @@ mod tests {
             .collect();
 
         let input = layer_with_polygon(ring.clone());
-        let (out, layer) =
-            run_tool(json!({ "input": input, "method": "circle", "tolerance": 0.5 }));
+        let (out, layer) = run_tool(json!({ "input": input, "method": "circle", "tolerance": 0.5 }));
         assert_eq!(out.outputs["regularized_count"], json!(1));
         let pts = exterior_pts(&layer, 0);
         assert!(pts.len() >= 16);
@@ -1299,15 +1189,17 @@ mod tests {
 
     #[test]
     fn regularizes_holes_against_the_exterior_direction() {
-        let outer: Vec<(f64, f64)> = [(0.0, 0.0), (30.0, 0.0), (30.0, 20.0), (0.0, 20.0)]
-            .iter()
-            .map(|&(x, y)| rotate(x, y, 20.0))
-            .collect();
+        let outer: Vec<(f64, f64)> =
+            [(0.0, 0.0), (30.0, 0.0), (30.0, 20.0), (0.0, 20.0)]
+                .iter()
+                .map(|&(x, y)| rotate(x, y, 20.0))
+                .collect();
         // Courtyard, wound opposite to the exterior.
-        let inner: Vec<(f64, f64)> = [(10.0, 5.0), (10.0, 12.0), (20.0, 12.0), (20.0, 5.0)]
-            .iter()
-            .map(|&(x, y)| rotate(x, y, 20.0))
-            .collect();
+        let inner: Vec<(f64, f64)> =
+            [(10.0, 5.0), (10.0, 12.0), (20.0, 12.0), (20.0, 5.0)]
+                .iter()
+                .map(|&(x, y)| rotate(x, y, 20.0))
+                .collect();
         let mut layer = Layer::new("buildings");
         let ext = noisy_ring(&outer, 1.0, 0.1);
         let hole = noisy_ring(&inner, 1.0, 0.1);
@@ -1319,10 +1211,7 @@ mod tests {
 
         let (_, out_layer) = run_tool(json!({ "input": input, "tolerance": 0.4 }));
         match out_layer.features[0].geometry.as_ref().unwrap() {
-            Geometry::Polygon {
-                exterior,
-                interiors,
-            } => {
+            Geometry::Polygon { exterior, interiors } => {
                 assert_eq!(ring_points(exterior).len(), 4);
                 assert_eq!(interiors.len(), 1);
                 let hole_pts = ring_points(&interiors[0]);
@@ -1344,58 +1233,15 @@ mod tests {
         // of a chord down its middle), so the fit must retry at a finer
         // simplification instead of giving up.
         let coords: &[(f64, f64)] = &[
-            (7.8, 21.0),
-            (7.8, 20.4),
-            (2.4, 20.4),
-            (2.4, 19.8),
-            (1.2, 19.8),
-            (1.2, 19.2),
-            (0.6, 19.2),
-            (0.6, 17.4),
-            (0.0, 17.4),
-            (0.0, 12.0),
-            (0.6, 12.0),
-            (0.6, 10.2),
-            (0.0, 10.2),
-            (0.0, 5.4),
-            (0.6, 5.4),
-            (0.6, 2.4),
-            (1.2, 2.4),
-            (1.2, 0.6),
-            (1.8, 0.6),
-            (1.8, 0.0),
-            (16.8, 0.0),
-            (16.8, 0.6),
-            (17.4, 0.6),
-            (17.4, 7.2),
-            (16.8, 7.2),
-            (16.8, 8.4),
-            (16.2, 8.4),
-            (16.2, 9.0),
-            (15.0, 9.0),
-            (15.0, 9.6),
-            (13.8, 9.6),
-            (13.8, 10.2),
-            (6.6, 10.2),
-            (6.6, 10.8),
-            (6.0, 10.8),
-            (6.0, 11.4),
-            (7.8, 11.4),
-            (7.8, 12.0),
-            (15.0, 12.0),
-            (15.0, 12.6),
-            (16.2, 12.6),
-            (16.2, 13.2),
-            (16.8, 13.2),
-            (16.8, 19.8),
-            (16.2, 19.8),
-            (16.2, 20.4),
-            (15.0, 20.4),
-            (15.0, 21.0),
-            (9.0, 21.0),
-            (9.0, 20.4),
-            (8.4, 20.4),
-            (8.4, 21.0),
+            (7.8, 21.0), (7.8, 20.4), (2.4, 20.4), (2.4, 19.8), (1.2, 19.8), (1.2, 19.2),
+            (0.6, 19.2), (0.6, 17.4), (0.0, 17.4), (0.0, 12.0), (0.6, 12.0), (0.6, 10.2),
+            (0.0, 10.2), (0.0, 5.4), (0.6, 5.4), (0.6, 2.4), (1.2, 2.4), (1.2, 0.6),
+            (1.8, 0.6), (1.8, 0.0), (16.8, 0.0), (16.8, 0.6), (17.4, 0.6), (17.4, 7.2),
+            (16.8, 7.2), (16.8, 8.4), (16.2, 8.4), (16.2, 9.0), (15.0, 9.0), (15.0, 9.6),
+            (13.8, 9.6), (13.8, 10.2), (6.6, 10.2), (6.6, 10.8), (6.0, 10.8), (6.0, 11.4),
+            (7.8, 11.4), (7.8, 12.0), (15.0, 12.0), (15.0, 12.6), (16.2, 12.6), (16.2, 13.2),
+            (16.8, 13.2), (16.8, 19.8), (16.2, 19.8), (16.2, 20.4), (15.0, 20.4), (15.0, 21.0),
+            (9.0, 21.0), (9.0, 20.4), (8.4, 20.4), (8.4, 21.0),
         ];
         let ring: Vec<Coord> = coords.iter().map(|&(x, y)| Coord::xy(x, y)).collect();
         let orig_area = {
@@ -1417,8 +1263,7 @@ mod tests {
         );
         // The notch must survive: some vertex well inside the bbox interior.
         assert!(
-            pts.iter()
-                .any(|p| p.x < 9.0 && p.x > 3.0 && p.y > 8.0 && p.y < 13.0),
+            pts.iter().any(|p| p.x < 9.0 && p.x > 3.0 && p.y > 8.0 && p.y < 13.0),
             "notch collapsed: {pts:?}"
         );
     }
@@ -1450,10 +1295,8 @@ mod tests {
         let ring: Vec<Coord> = (0..24)
             .map(|i| {
                 let ang = 2.0 * PI * i as f64 / 24.0;
-                let (x, y) = (
-                    5.0 * ang.cos() * (1.0 + 0.05 * noise(i)),
-                    3.5 * ang.sin() * (1.0 + 0.05 * noise(i + 100)),
-                );
+                let (x, y) = (5.0 * ang.cos() * (1.0 + 0.05 * noise(i)),
+                              3.5 * ang.sin() * (1.0 + 0.05 * noise(i + 100)));
                 let (rx, ry) = rotate(x, y, 33.0);
                 Coord::xy(rx, ry)
             })
@@ -1477,9 +1320,7 @@ mod tests {
     #[test]
     fn passes_non_polygons_through_unchanged() {
         let mut layer = Layer::new("mixed");
-        layer
-            .add_feature(Some(Geometry::point(1.0, 2.0)), &[])
-            .unwrap();
+        layer.add_feature(Some(Geometry::point(1.0, 2.0)), &[]).unwrap();
         let id = memory_store::put_vector(layer);
         let input = memory_store::make_vector_memory_path(&id);
 

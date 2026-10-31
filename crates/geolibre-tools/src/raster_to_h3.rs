@@ -214,8 +214,8 @@ impl Tool for RasterToH3Tool {
         let mut skipped = 0u64;
         for row in 0..rows {
             // Pixel-centre latitude (rows run top-down from the north edge).
-            let lat =
-                raster.y_min + (rows - row) as f64 * raster.cell_size_y - 0.5 * raster.cell_size_y;
+            let lat = raster.y_min + (rows - row) as f64 * raster.cell_size_y
+                - 0.5 * raster.cell_size_y;
             for col in 0..cols {
                 let Some(v) = raster.get_opt(band, row as isize, col as isize) else {
                     skipped += 1; // nodata
@@ -361,29 +361,14 @@ mod tests {
     fn aggregates_are_correct_when_pixels_share_a_cell() {
         use crate::vector_common::load_input_layer;
         // Coarse res: the 3 valid pixels (1, 2, 3) fall in one H3 cell.
-        for (agg, expected) in [
-            ("mean", 2.0),
-            ("sum", 6.0),
-            ("min", 1.0),
-            ("max", 3.0),
-            ("count", 3.0),
-            ("median", 2.0),
-        ] {
+        for (agg, expected) in [("mean", 2.0), ("sum", 6.0), ("min", 1.0), ("max", 3.0), ("count", 3.0), ("median", 2.0)] {
             let r = run_agg(agg, "8");
-            assert_eq!(
-                r.outputs["cell_count"],
-                json!(1),
-                "{agg}: expected a single shared cell"
-            );
+            assert_eq!(r.outputs["cell_count"], json!(1), "{agg}: expected a single shared cell");
             let out = load_input_layer(r.outputs["output"].as_str().unwrap()).unwrap();
             let vidx = out.schema.field_index("value").unwrap();
             let cidx = out.schema.field_index("count").unwrap();
             let f = out.iter().next().unwrap();
-            assert_eq!(
-                f.attributes[vidx].as_f64().unwrap(),
-                expected,
-                "aggregate {agg}"
-            );
+            assert_eq!(f.attributes[vidx].as_f64().unwrap(), expected, "aggregate {agg}");
             assert_eq!(f.attributes[cidx].as_i64().unwrap(), 3);
         }
     }
@@ -399,11 +384,9 @@ mod tests {
         assert!(RasterToH3Tool.run(&args, &ctx()).is_err());
 
         // Bad resolution / aggregate rejected at validate().
-        let a: ToolArgs =
-            serde_json::from_value(json!({ "input": "x", "resolution": "42" })).unwrap();
+        let a: ToolArgs = serde_json::from_value(json!({ "input": "x", "resolution": "42" })).unwrap();
         assert!(RasterToH3Tool.validate(&a).is_err());
-        let b: ToolArgs =
-            serde_json::from_value(json!({ "input": "x", "aggregate": "nope" })).unwrap();
+        let b: ToolArgs = serde_json::from_value(json!({ "input": "x", "aggregate": "nope" })).unwrap();
         assert!(RasterToH3Tool.validate(&b).is_err());
     }
 }

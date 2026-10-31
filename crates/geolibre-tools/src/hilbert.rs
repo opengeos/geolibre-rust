@@ -49,9 +49,7 @@ pub fn hilbert_for_point(px: f64, py: f64, min_x: f64, min_y: f64, max_x: f64, m
         if hi <= lo {
             (max_cell / 2.0) as u32
         } else {
-            (((v - lo) / (hi - lo)) * max_cell)
-                .round()
-                .clamp(0.0, max_cell) as u32
+            (((v - lo) / (hi - lo)) * max_cell).round().clamp(0.0, max_cell) as u32
         }
     };
     xy_to_hilbert(scale(px, min_x, max_x), scale(py, min_y, max_y))

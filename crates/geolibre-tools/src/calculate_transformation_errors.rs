@@ -186,11 +186,7 @@ impl Tool for CalculateTransformationErrorsTool {
             attrs.push(("RESIDUAL_Y", dy));
             attrs.push(("RESIDUAL", r));
             attrs.push(("ERR_SHARE", share));
-            let geom = if keep_geom {
-                feat.geometry.clone()
-            } else {
-                None
-            };
+            let geom = if keep_geom { feat.geometry.clone() } else { None };
             out.add_feature(geom, &attrs)
                 .map_err(|e| ToolError::Execution(format!("failed adding feature: {e}")))?;
         }
@@ -370,8 +366,14 @@ fn solve(a: &mut [f64], b: &mut [f64], n: usize) -> Result<Vec<f64>, ToolError> 
 fn apply(method: Method, c: &[f64], p: [f64; 2]) -> [f64; 2] {
     let (x, y) = (p[0], p[1]);
     match method {
-        Method::Similarity => [c[0] * x - c[1] * y + c[2], c[1] * x + c[0] * y + c[3]],
-        Method::Affine => [c[0] * x + c[1] * y + c[2], c[3] * x + c[4] * y + c[5]],
+        Method::Similarity => [
+            c[0] * x - c[1] * y + c[2],
+            c[1] * x + c[0] * y + c[3],
+        ],
+        Method::Affine => [
+            c[0] * x + c[1] * y + c[2],
+            c[3] * x + c[4] * y + c[5],
+        ],
         Method::Projective => {
             let w = c[6] * x + c[7] * y + 1.0;
             // A degenerate denominator means the point maps to infinity; return
@@ -487,9 +489,7 @@ mod tests {
 
     fn run(args: serde_json::Value) -> (ToolRunResult, Layer) {
         let args: ToolArgs = serde_json::from_value(args).unwrap();
-        let out = CalculateTransformationErrorsTool
-            .run(&args, &ctx())
-            .unwrap();
+        let out = CalculateTransformationErrorsTool.run(&args, &ctx()).unwrap();
         let layer = load_input_layer(out.outputs["output"].as_str().unwrap()).unwrap();
         (out, layer)
     }
@@ -568,9 +568,7 @@ mod tests {
         let args: ToolArgs =
             serde_json::from_value(json!({ "input": links(&pairs), "method": "projective" }))
                 .unwrap();
-        assert!(CalculateTransformationErrorsTool
-            .run(&args, &ctx())
-            .is_err());
+        assert!(CalculateTransformationErrorsTool.run(&args, &ctx()).is_err());
     }
 
     #[test]
@@ -583,9 +581,7 @@ mod tests {
         ];
         let args: ToolArgs =
             serde_json::from_value(json!({ "input": links(&pairs), "method": "affine" })).unwrap();
-        assert!(CalculateTransformationErrorsTool
-            .run(&args, &ctx())
-            .is_err());
+        assert!(CalculateTransformationErrorsTool.run(&args, &ctx()).is_err());
     }
 
     #[test]

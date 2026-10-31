@@ -162,11 +162,7 @@ impl Tool for EvaluateVariableInfluenceTool {
         ctx.progress.info(&format!(
             "{n} observation(s), {p} variable(s), {} {} tree(s)",
             prm.trees,
-            if prm.classification {
-                "classification"
-            } else {
-                "regression"
-            }
+            if prm.classification { "classification" } else { "regression" }
         ));
 
         let forest = Forest::fit(&x, &y, p, &prm);
@@ -343,17 +339,13 @@ fn read_table(
     fields: &[String],
 ) -> Result<(Vec<f64>, Vec<f64>), ToolError> {
     let dep_idx = layer.schema.field_index(dependent).ok_or_else(|| {
-        ToolError::Validation(format!(
-            "'dependent_field' '{dependent}' is not in the input"
-        ))
+        ToolError::Validation(format!("'dependent_field' '{dependent}' is not in the input"))
     })?;
     let idx: Vec<usize> = fields
         .iter()
         .map(|f| {
             layer.schema.field_index(f).ok_or_else(|| {
-                ToolError::Validation(format!(
-                    "'explanatory_fields' entry '{f}' is not in the input"
-                ))
+                ToolError::Validation(format!("'explanatory_fields' entry '{f}' is not in the input"))
             })
         })
         .collect::<Result<_, _>>()?;
@@ -711,7 +703,9 @@ fn split_gain(
         };
         let total = rows.len() as f64;
         return Some(
-            parent - (nl as f64 / total) * gini(&left, nl) - (nr as f64 / total) * gini(&right, nr),
+            parent
+                - (nl as f64 / total) * gini(&left, nl)
+                - (nr as f64 / total) * gini(&right, nr),
         );
     }
 
@@ -738,7 +732,11 @@ fn split_gain(
         (sum_sq / n - (sum / n) * (sum / n)).max(0.0)
     };
     let total = rows.len() as f64;
-    Some(parent - (nl as f64 / total) * var(nl, sl, sql) - (nr as f64 / total) * var(nr, sr, sqr))
+    Some(
+        parent
+            - (nl as f64 / total) * var(nl, sl, sql)
+            - (nr as f64 / total) * var(nr, sr, sqr),
+    )
 }
 
 /// Mean for regression, most common class for classification.
@@ -822,12 +820,9 @@ fn parse_fields(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
 }
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
-    let classification = choice_or(
-        args,
-        "model_type",
-        &["regression", "classification"],
-        "regression",
-    )? == "classification";
+    let classification =
+        choice_or(args, "model_type", &["regression", "classification"], "regression")?
+            == "classification";
     let trees = usize_or(args, "number_of_trees", 50)?;
     if trees < 2 {
         return Err(ToolError::Validation(
@@ -888,9 +883,7 @@ mod tests {
 
     /// Deterministic pseudo-noise in [-1, 1].
     fn noise(i: usize, salt: u64) -> f64 {
-        let mut x = (i as u64)
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(salt);
+        let mut x = (i as u64).wrapping_mul(6364136223846793005).wrapping_add(salt);
         x ^= x >> 33;
         x = x.wrapping_mul(0xff51afd7ed558ccd);
         x ^= x >> 33;
@@ -938,11 +931,13 @@ mod tests {
         let signal: Vec<f64> = (0..n).map(|i| noise(i, 1)).collect();
         let junk: Vec<f64> = (0..n).map(|i| noise(i, 2)).collect();
         // y depends on `signal` alone, plus a little noise.
-        let y: Vec<f64> = (0..n)
-            .map(|i| 3.0 * signal[i] + 0.1 * noise(i, 3))
-            .collect();
+        let y: Vec<f64> = (0..n).map(|i| 3.0 * signal[i] + 0.1 * noise(i, 3)).collect();
 
-        let src = table(&[("y", y), ("signal", signal), ("junk", junk)]);
+        let src = table(&[
+            ("y", y),
+            ("signal", signal),
+            ("junk", junk),
+        ]);
         let (layer, outputs) = run(json!({
             "input": src, "dependent_field": "y",
             "explanatory_fields": "signal,junk", "number_of_trees": 20
@@ -1013,11 +1008,7 @@ mod tests {
     fn partial_dependence_follows_the_relationship() {
         let n = 200;
         let x: Vec<f64> = (0..n).map(|i| i as f64 / n as f64).collect();
-        let y: Vec<f64> = x
-            .iter()
-            .enumerate()
-            .map(|(i, v)| 5.0 * v + 0.05 * noise(i, 7))
-            .collect();
+        let y: Vec<f64> = x.iter().enumerate().map(|(i, v)| 5.0 * v + 0.05 * noise(i, 7)).collect();
         let args: ToolArgs = serde_json::from_value(json!({
             "input": table(&[("y", y), ("x", x)]),
             "dependent_field": "y", "explanatory_fields": "x",
@@ -1025,8 +1016,8 @@ mod tests {
         }))
         .unwrap();
         let out = EvaluateVariableInfluenceTool.run(&args, &ctx()).unwrap();
-        let pd =
-            load_input_layer(out.outputs["output_partial_dependence"].as_str().unwrap()).unwrap();
+        let pd = load_input_layer(out.outputs["output_partial_dependence"].as_str().unwrap())
+            .unwrap();
         assert_eq!(pd.len(), 10, "one row per grid point");
 
         let pi = pd.schema.field_index("prediction").unwrap();
@@ -1163,9 +1154,7 @@ mod tests {
             "input": src, "dependent_field": "y", "explanatory_fields": "a,nope"
         }))
         .unwrap();
-        let err = EvaluateVariableInfluenceTool
-            .run(&args, &ctx())
-            .unwrap_err();
+        let err = EvaluateVariableInfluenceTool.run(&args, &ctx()).unwrap_err();
         assert!(
             format!("{err:?}").contains("nope"),
             "the error should name the missing field, got {err:?}"

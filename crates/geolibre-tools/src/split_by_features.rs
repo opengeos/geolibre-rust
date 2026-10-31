@@ -102,9 +102,7 @@ impl Tool for SplitByFeaturesTool {
         let mut zones: HashMap<String, MultiPolygon> = HashMap::new();
         for f in splits.iter() {
             let Some(g) = &f.geometry else { continue };
-            let Some(mp) = to_multipolygon(g) else {
-                continue;
-            };
+            let Some(mp) = to_multipolygon(g) else { continue };
             let key = key_of(f.attributes.get(sidx));
             match zones.get_mut(&key) {
                 Some(acc) => *acc = acc.union(&mp),

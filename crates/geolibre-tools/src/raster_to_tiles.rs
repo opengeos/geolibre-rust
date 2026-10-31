@@ -7,8 +7,8 @@
 
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbraster::{NodataPolicy, Raster, ResampleMethod};
 
@@ -105,9 +105,10 @@ impl Tool for RasterToTilesTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output_dir = args
             .get("output_dir")
             .and_then(Value::as_str)
@@ -139,7 +140,10 @@ impl Tool for RasterToTilesTool {
         let merc: Raster = if raster.crs.epsg == Some(WEB_MERCATOR_EPSG) {
             raster
         } else {
-            if raster.crs.epsg.is_none() && raster.crs.wkt.is_none() && raster.crs.proj4.is_none() {
+            if raster.crs.epsg.is_none()
+                && raster.crs.wkt.is_none()
+                && raster.crs.proj4.is_none()
+            {
                 return Err(ToolError::Validation(
                     "input raster has no source CRS (EPSG/WKT/PROJ); cannot tile".to_string(),
                 ));
@@ -175,7 +179,9 @@ impl Tool for RasterToTilesTool {
             .unwrap_or(min_zoom)
             .max(min_zoom);
         if max_zoom > 24 {
-            return Err(ToolError::Validation("max_zoom must be <= 24".to_string()));
+            return Err(ToolError::Validation(
+                "max_zoom must be <= 24".to_string(),
+            ));
         }
 
         let ex = merc.extent();
@@ -264,11 +270,7 @@ pub(crate) fn render_tile(
     if !any {
         return Ok(None);
     }
-    Ok(Some(encode_png_rgba(
-        &rgba,
-        TILE_SIZE as u32,
-        TILE_SIZE as u32,
-    )?))
+    Ok(Some(encode_png_rgba(&rgba, TILE_SIZE as u32, TILE_SIZE as u32)?))
 }
 
 /// Inclusive tile-index range covering `[lo, hi]` along an axis whose tile 0

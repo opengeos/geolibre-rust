@@ -248,11 +248,7 @@ fn count_in(geom: &Geometry, pts: &[(f64, f64)], radius: f64) -> i64 {
     let (min_x, min_y) = (bb.min_x - radius, bb.min_y - radius);
     let (max_x, max_y) = (bb.max_x + radius, bb.max_y + radius);
     let rings = radius > 0.0;
-    let segs = if rings {
-        boundary_segments(geom)
-    } else {
-        Vec::new()
-    };
+    let segs = if rings { boundary_segments(geom) } else { Vec::new() };
 
     let mut n = 0i64;
     for &(x, y) in pts {

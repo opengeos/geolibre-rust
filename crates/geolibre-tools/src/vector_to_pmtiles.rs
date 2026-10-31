@@ -13,13 +13,11 @@ use freestiler_core::pmtiles_writer::TileFormat;
 use freestiler_core::tiler::{
     Feature as MvtFeature, Geometry as MvtGeometry, LayerData, PropertyValue,
 };
-use geo::{
-    Coord as GeoCoord, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon,
-};
+use geo::{Coord as GeoCoord, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon};
 use serde_json::{json, Value};
 use wbcore::{
-    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata, ToolParamSpec,
-    ToolRunResult,
+    LicenseTier, Tool, ToolArgs, ToolCategory, ToolContext, ToolError, ToolMetadata,
+    ToolParamSpec, ToolRunResult,
 };
 use wbvector::{Coord, FieldType, FieldValue, Geometry, Layer, Ring};
 
@@ -91,10 +89,7 @@ impl Tool for VectorToPmTilesTool {
         let input = require_str(args, "input")?;
         let output = require_str(args, "output")?;
         let (min_zoom, max_zoom) = zoom_range(args)?;
-        let simplify = args
-            .get("simplify")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
+        let simplify = args.get("simplify").and_then(Value::as_bool).unwrap_or(true);
         let drop_rate = args.get("drop_rate").and_then(Value::as_f64);
 
         let layer = load_input_layer(input)?;
@@ -137,7 +132,10 @@ impl Tool for VectorToPmTilesTool {
             name: name.clone(),
             features,
             prop_names: field_names.clone(),
-            prop_types: field_types.iter().map(|t| t.to_lowercase()).collect(),
+            prop_types: field_types
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect(),
             min_zoom: min_zoom as u8,
             max_zoom: max_zoom as u8,
         };
@@ -174,24 +172,12 @@ impl Tool for VectorToPmTilesTool {
 
         let tiles: Vec<Tile> = generated
             .into_iter()
-            .map(|(c, data)| Tile {
-                z: c.z,
-                x: c.x,
-                y: c.y,
-                data,
-            })
+            .map(|(c, data)| Tile { z: c.z, x: c.x, y: c.y, data })
             .collect();
         let bounds = clamp_bounds(west, south, east, north);
 
         ctx.progress.info("packing PMTiles archive");
-        let metadata = tilejson(
-            &name,
-            &field_names,
-            &field_types,
-            &bounds,
-            min_zoom,
-            max_zoom,
-        );
+        let metadata = tilejson(&name, &field_names, &field_types, &bounds, min_zoom, max_zoom);
         let archive = pmtiles::build_vector(
             tiles,
             &bounds,
@@ -277,7 +263,8 @@ fn convert_features(layer: &Layer) -> Vec<MvtFeature> {
         };
         let mut geoms = Vec::new();
         flatten_geometry(geometry, &mut geoms);
-        let properties: Vec<PropertyValue> = feature.attributes.iter().map(convert_value).collect();
+        let properties: Vec<PropertyValue> =
+            feature.attributes.iter().map(convert_value).collect();
         for geom in geoms {
             out.push(MvtFeature {
                 id: Some(feature.fid),
@@ -335,7 +322,12 @@ fn flatten_geometry(geom: &Geometry, out: &mut Vec<MvtGeometry>) {
 }
 
 fn to_line_string(coords: &[Coord]) -> LineString<f64> {
-    LineString(coords.iter().map(|c| GeoCoord { x: c.x, y: c.y }).collect())
+    LineString(
+        coords
+            .iter()
+            .map(|c| GeoCoord { x: c.x, y: c.y })
+            .collect(),
+    )
 }
 
 /// A ring needs 4 positions to bound any area (3 distinct plus the repeated
@@ -416,12 +408,7 @@ mod tests {
         Ring(
             coords
                 .iter()
-                .map(|(x, y)| Coord {
-                    x: *x,
-                    y: *y,
-                    z: None,
-                    m: None,
-                })
+                .map(|(x, y)| Coord { x: *x, y: *y, z: None, m: None })
                 .collect(),
         )
     }
@@ -429,12 +416,7 @@ mod tests {
     #[test]
     fn flattens_geometry_collections_into_members() {
         let gc = Geometry::GeometryCollection(vec![
-            Geometry::Point(Coord {
-                x: 1.0,
-                y: 2.0,
-                z: None,
-                m: None,
-            }),
+            Geometry::Point(Coord { x: 1.0, y: 2.0, z: None, m: None }),
             Geometry::GeometryCollection(vec![Geometry::Point(Coord {
                 x: 3.0,
                 y: 4.0,
@@ -444,11 +426,7 @@ mod tests {
         ]);
         let mut out = Vec::new();
         flatten_geometry(&gc, &mut out);
-        assert_eq!(
-            out.len(),
-            2,
-            "nested collections should flatten recursively"
-        );
+        assert_eq!(out.len(), 2, "nested collections should flatten recursively");
     }
 
     #[test]
@@ -456,12 +434,7 @@ mod tests {
         let mut out = Vec::new();
         // A single-vertex line and a 3-position ring cannot be rendered.
         flatten_geometry(
-            &Geometry::LineString(vec![Coord {
-                x: 0.0,
-                y: 0.0,
-                z: None,
-                m: None,
-            }]),
+            &Geometry::LineString(vec![Coord { x: 0.0, y: 0.0, z: None, m: None }]),
             &mut out,
         );
         flatten_geometry(
@@ -496,12 +469,7 @@ mod tests {
             "roads",
             &["name".to_string(), "lanes".to_string()],
             &["String".to_string(), "Number".to_string()],
-            &LonLatBounds {
-                min_lon: -1.0,
-                min_lat: -2.0,
-                max_lon: 3.0,
-                max_lat: 4.0,
-            },
+            &LonLatBounds { min_lon: -1.0, min_lat: -2.0, max_lon: 3.0, max_lat: 4.0 },
             0,
             14,
         );
@@ -527,10 +495,7 @@ mod tests {
     #[test]
     fn in_range_bounds_pass_through_untouched() {
         let b = clamp_bounds(-1.5, -2.5, 3.5, 4.5);
-        assert_eq!(
-            (b.min_lon, b.min_lat, b.max_lon, b.max_lat),
-            (-1.5, -2.5, 3.5, 4.5)
-        );
+        assert_eq!((b.min_lon, b.min_lat, b.max_lon, b.max_lat), (-1.5, -2.5, 3.5, 4.5));
     }
 
     #[test]

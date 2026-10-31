@@ -303,14 +303,8 @@ impl Tool for SurfaceDifferenceTool {
         outputs.insert("above_cells".to_string(), json!(n_above));
         outputs.insert("below_cells".to_string(), json!(n_below));
         outputs.insert("coincident_cells".to_string(), json!(n_same));
-        outputs.insert(
-            "above_volume".to_string(),
-            json!(class_volume(&diff, nodata, cell_area, true)),
-        );
-        outputs.insert(
-            "below_volume".to_string(),
-            json!(class_volume(&diff, nodata, cell_area, false)),
-        );
+        outputs.insert("above_volume".to_string(), json!(class_volume(&diff, nodata, cell_area, true)));
+        outputs.insert("below_volume".to_string(), json!(class_volume(&diff, nodata, cell_area, false)));
         outputs.insert("total_polygon_volume".to_string(), json!(total_volume));
         outputs.insert("reference".to_string(), json!(ref_label));
         Ok(ToolRunResult { outputs })
@@ -516,8 +510,8 @@ mod tests {
     use super::*;
     use crate::vector_common::load_input_layer;
     use wbcore::{AllowAllCapabilities, ProgressSink};
-    use wbraster::Raster;
     use wbraster::{CrsInfo, RasterConfig};
+    use wbraster::Raster;
 
     struct NullProgress;
     impl ProgressSink for NullProgress {}

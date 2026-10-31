@@ -36,8 +36,7 @@ impl Tool for DemFilterTool {
                 },
                 ToolParamSpec {
                     name: "output",
-                    description:
-                        "Optional output raster path. If omitted, the result is stored in memory.",
+                    description: "Optional output raster path. If omitted, the result is stored in memory.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -84,9 +83,10 @@ impl Tool for DemFilterTool {
     }
 
     fn run(&self, args: &ToolArgs, ctx: &ToolContext) -> Result<ToolRunResult, ToolError> {
-        let input = args.get("input").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::Validation("missing required parameter 'input'".to_string())
-        })?;
+        let input = args
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
         let output = parse_optional_output(args, "output")?;
         let filter = args
             .get("filter")

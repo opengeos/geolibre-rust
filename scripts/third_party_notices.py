@@ -31,7 +31,7 @@ def crate_notices(about):
             crate = use["crate"]
             for path in Path(crate["manifest_path"]).parent.iterdir():
                 if path.is_file() and re.match(r"(?i)notice", path.name):
-                    crates = notices.setdefault(path.read_text().strip(), set())
+                    crates = notices.setdefault(path.read_text(encoding="utf-8").strip(), set())
                     crates.add(f"{crate['name']} {crate['version']}")
     return {text: sorted(crates) for text, crates in notices.items()}
 
@@ -49,11 +49,12 @@ def main():
         ).stdout
     )
     rule = "=" * 80
-    with output.open("a") as out:
+    with output.open("a", encoding="utf-8") as out:
         for text, crates in sorted(crate_notices(about).items()):
             out.write(f"{rule}\nNOTICE from: {', '.join(crates)}\n\n{text}\n\n")
         out.write(f"{rule}\n")
-        out.write((ROOT / "licenses" / "wasi-libc-NOTICES.txt").read_text())
+        wasi_libc = ROOT / "licenses" / "wasi-libc-NOTICES.txt"
+        out.write(wasi_libc.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

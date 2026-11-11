@@ -339,26 +339,72 @@ fn backfilled_tool_ids(registry: &ToolRegistry) -> HashSet<String> {
 /// whitebox tool whose params were backfilled uses its own schema table
 /// ([`wbtools_oss::tools::tool_param_schemas`]), since that table is where those
 /// params came from and it types them exactly; everything else keeps wbcore's
-/// name/description-based inference.
-///
-/// The table is deliberately *not* applied to a tool that shipped its own
-/// params. It types 291 of them differently from the inference, and while most
-/// of those differences are corrections (`bilateral_filter`'s `sigma_int` is a
-/// number, not the raster input the inference guessed), a few are losses:
-/// `global_morans_i`'s `output_html`/`output_csv`/`output_json` are real output
-/// paths that the table calls plain strings, and a host would stop naming and
-/// collecting those files. Re-typing tools that already work is a separate
-/// change from making 138 broken ones work, and it needs its own verification.
+/// name/description-based inference, corrected by [`dataset_input_corrections`].
 fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<String>) -> Value {
-    match geolibre_tools::geolibre_param_schemas(&manifest.id).or_else(|| {
-        backfilled
-            .contains(&manifest.id)
-            .then(|| wbtools_oss::tools::tool_param_schemas(&manifest.id))
-            .flatten()
-    }) {
-        Some(schemas) => wbcore::manifest_with_param_schema_json(manifest, &schemas),
-        None => wbcore::manifest_with_io_schema_json(manifest),
+    if let Some(schemas) = geolibre_tools::geolibre_param_schemas(&manifest.id) {
+        return wbcore::manifest_with_param_schema_json(manifest, &schemas);
     }
+    let Some(table) = wbtools_oss::tools::tool_param_schemas(&manifest.id) else {
+        return wbcore::manifest_with_io_schema_json(manifest);
+    };
+    if backfilled.contains(&manifest.id) {
+        return wbcore::manifest_with_param_schema_json(manifest, &table);
+    }
+    let inferred = wbcore::manifest_with_io_schema_json(manifest);
+    let corrections = dataset_input_corrections(&inferred, &table);
+    if corrections.is_empty() {
+        inferred
+    } else {
+        wbcore::manifest_with_param_schema_json(manifest, &corrections)
+    }
+}
+
+/// The schema-table entries that override wbcore's inference for a tool that
+/// shipped its own params: where the inference guessed a raster, vector or
+/// LiDAR input and the table types the param otherwise, or where the table
+/// calls an inferred input an output.
+///
+/// The inference finds a raster, vector or LiDAR input mostly in loose words of
+/// the name or description: `dem` or `grid` anywhere makes a raster, `feature`
+/// or `layer` a vector, `las` LiDAR. So `topo_render`'s `palette` ("Palette name (soft, atlas,
+/// ..., dem, grey, white)") became a raster a host offered a layer picker for,
+/// its `background_hgt_offset` (a number) and `clipping_polygon` (a polygon
+/// vector) did too, and so did `cell_size`, `min_feature_size` and other
+/// numbers in other tools (opengeos/geolibre-rust#618). The table is the one
+/// the runner's arg parsing follows, and for these params it is right: numbers,
+/// flags, choices and names, a vector where the inference said raster, a raster
+/// stack where it said a single raster, an output where it said an input.
+///
+/// The rest of the inference stays. A CSV, JSON or text input is read from a
+/// file-format word (`csv`, `json`, `txt`, ...), and the table is wrong about
+/// several of those: the OBIA tools' training and prediction CSVs are LiDAR
+/// there, their feature CSVs vectors. Outputs, scalars, enums and strings the
+/// inference found are kept too, since some of the table's differences there
+/// are losses: `global_morans_i`'s `output_html`/`output_csv`/`output_json`
+/// are real output paths the table calls plain strings, and a host would stop
+/// naming and collecting those files.
+fn dataset_input_corrections(
+    inferred: &Value,
+    table: &BTreeMap<String, ToolParamSchema>,
+) -> BTreeMap<String, ToolParamSchema> {
+    inferred["params"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|param| param["schema"]["kind"] == "input")
+        .filter_map(|param| {
+            let name = param["name"].as_str()?;
+            let schema = table.get(name)?;
+            let guessed_from_loose_words = matches!(
+                param["data_kind"].as_str(),
+                Some("raster" | "vector" | "lidar")
+            );
+            let table_says_output = matches!(schema, ToolParamSchema::Output(_));
+            ((guessed_from_loose_words || table_says_output)
+                && serde_json::to_value(schema).ok()? != param["schema"])
+                .then(|| (name.to_string(), schema.clone()))
+        })
+        .collect()
 }
 
 /// Every tool's manifest as JSON, the shape `geolibre manifests` prints (one pass
@@ -839,5 +885,83 @@ mod tests {
                 "{enum_param} should carry its option list"
             );
         }
+    }
+
+    #[test]
+    fn values_the_inference_read_as_datasets_follow_the_schema_table() {
+        // opengeos/geolibre-rust#618: these tools ship their own params, so they
+        // went through wbcore's inference, which took the word `dem` in a
+        // description for a raster input. A host then offered a layer picker for
+        // a palette name and ran `palette=soft` as a file.
+        let registry = build_registry();
+        let topo_render = manifest_json(&registry, "topo_render").expect("topo_render");
+        let tinted = manifest_json(&registry, "hypsometrically_tinted_hillshade")
+            .expect("hypsometrically_tinted_hillshade");
+        for manifest in [&topo_render, &tinted] {
+            let palette = param(manifest, "palette");
+            assert_eq!(palette["schema"]["kind"], "string", "{palette}");
+            assert!(palette.get("io_role").is_none(), "{palette}");
+            assert_eq!(param(manifest, "dem")["data_kind"], "raster");
+            assert_eq!(param(manifest, "dem")["io_role"], "input");
+            assert_eq!(param(manifest, "output")["io_role"], "output");
+        }
+        let offset = param(&topo_render, "background_hgt_offset");
+        assert_eq!(offset["schema"]["kind"], "scalar", "{offset}");
+        assert_eq!(offset["data_kind"], "number", "{offset}");
+        let clipping = param(&topo_render, "clipping_polygon");
+        assert_eq!(clipping["io_role"], "input", "{clipping}");
+        assert_eq!(clipping["data_kind"], "vector", "{clipping}");
+        assert_eq!(
+            clipping["schema"]["dataset"]["geometry"], "polygon",
+            "{clipping}"
+        );
+
+        // What the correction leaves alone: an input the inference read from a
+        // file-format word (the table calls this training CSV LiDAR), and outputs
+        // the table calls plain strings.
+        let forest = manifest_json(&registry, "classify_objects_random_forest")
+            .expect("classify_objects_random_forest");
+        assert_eq!(param(&forest, "training")["data_kind"], "table");
+        let morans = manifest_json(&registry, "global_morans_i").expect("global_morans_i");
+        for output in ["output_html", "output_csv", "output_json"] {
+            assert_eq!(param(&morans, output)["io_role"], "output", "{output}");
+        }
+    }
+
+    #[test]
+    fn no_number_flag_or_choice_is_a_dataset_input() {
+        // The general form of #618: wherever whitebox's schema table types a
+        // param as a number, a flag or a fixed set of choices, a host must not be
+        // told to pick a dataset for it.
+        let registry = build_registry();
+        let geolibre_ids = geolibre_tool_ids();
+        let mut wrong: Vec<String> = Vec::new();
+        for manifest in manifests_json(&registry) {
+            let id = manifest["id"].as_str().unwrap_or_default();
+            if geolibre_ids.contains(id) {
+                continue;
+            }
+            let Some(table) = wbtools_oss::tools::tool_param_schemas(id) else {
+                continue;
+            };
+            for param in manifest["params"].as_array().into_iter().flatten() {
+                let name = param["name"].as_str().unwrap_or_default();
+                let not_data = matches!(
+                    table.get(name),
+                    Some(
+                        ToolParamSchema::Scalar { .. }
+                            | ToolParamSchema::Bool
+                            | ToolParamSchema::Enum(_)
+                    )
+                );
+                if not_data && param["io_role"] == "input" {
+                    wrong.push(format!("{id}.{name}: {}", param["schema"]));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "values typed as dataset inputs: {wrong:#?}"
+        );
     }
 }

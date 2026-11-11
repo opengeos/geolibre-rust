@@ -194,6 +194,56 @@ const PREFER_METADATA_PARAMS: &[&str] = &[
     "unnest_basins",
 ];
 
+/// Params the runner needs that neither of the backfill's sources marks
+/// required, by tool.
+///
+/// [`schema_table_params`] takes `required` from whitebox's generated param
+/// docs, then from the tool's `metadata()`. The docs have no entry for these
+/// params, and the metadata names them differently from the schema table (or,
+/// for the `create_stream_tool_impl!` tools, lists placeholder params), so
+/// without this list the flag falls to `false`. A host then builds a form that runs with
+/// the input left empty, and the runner answers `validation error: missing
+/// required parameter '...'` (opengeos/geolibre-rust#622). The runner reads
+/// these under an alias (`streams_raster`, `input_dem`, ...) as well as the
+/// manifest name, which is why its error names a param the manifest doesn't.
+///
+/// `stream_link_length` and `stream_link_slope` read `linkid` *or* `streams`.
+/// `streams` alone is enough (the tool then numbers the links itself), so it is
+/// the one marked required; `linkid` stays an optional alternative.
+///
+/// Consulted only where both sources are silent: a docs or metadata entry for
+/// the param still wins. `backfilled_tools_run_with_their_required_params_alone`
+/// runs every tool whose flags this backfill had to guess with its required
+/// params alone, and `each_param_listed_as_required_is_needed` checks every
+/// entry here is still silent upstream and still needed.
+const REQUIRED_WITHOUT_DOCS: &[(&str, &[&str])] = &[
+    ("distance_to_outlet", &["streams"]),
+    ("extract_valleys", &["dem"]),
+    ("farthest_channel_head", &["streams"]),
+    ("find_main_stem", &["streams"]),
+    ("length_of_upstream_channels", &["streams"]),
+    ("long_profile", &["dem"]),
+    ("long_profile_from_points", &["dem", "points"]),
+    ("rasterize_streams", &["input_vector", "reference_raster"]),
+    ("remove_short_streams", &["streams"]),
+    ("repair_stream_vector_topology", &["input_vector"]),
+    ("rho8_flow_accum", &["dem"]),
+    ("stream_link_class", &["streams"]),
+    ("stream_link_identifier", &["streams"]),
+    ("stream_link_length", &["streams"]),
+    ("stream_link_slope", &["dem", "streams"]),
+    ("stream_slope_continuous", &["dem", "streams"]),
+    ("topological_stream_order", &["streams"]),
+    ("tributary_identifier", &["streams"]),
+];
+
+/// Whether [`REQUIRED_WITHOUT_DOCS`] lists `param` for `tool_id`.
+fn listed_as_required(tool_id: &str, param: &str) -> bool {
+    REQUIRED_WITHOUT_DOCS
+        .iter()
+        .any(|(id, params)| *id == tool_id && params.contains(&param))
+}
+
 /// Sort key that renders a form in the order a user fills it: inputs, then
 /// options, then outputs. A schema table is a `BTreeMap`, so without this the
 /// params come out alphabetically and `output` lands in the middle of the
@@ -220,7 +270,8 @@ fn param_order(schema: &ToolParamSchema) -> u8 {
 /// Descriptions and the required flag come from the companion tables
 /// (`tool_param_descriptions`/`tool_param_required`, both sourced from
 /// whitebox's generated param docs), with the tool's own metadata as a fallback
-/// for a param the docs do not cover.
+/// for a param the docs do not cover, and [`REQUIRED_WITHOUT_DOCS`] for a
+/// required flag neither has.
 fn schema_table_params(
     tool_id: &str,
     metadata_params: &[ToolParamDescriptor],
@@ -251,7 +302,7 @@ fn schema_table_params(
                     .get(name)
                     .copied()
                     .or_else(|| from_metadata.map(|param| param.required))
-                    .unwrap_or(false),
+                    .unwrap_or_else(|| listed_as_required(tool_id, name)),
             };
             (param_order(schema), descriptor)
         })
@@ -408,6 +459,7 @@ pub fn manifest_json(registry: &ToolRegistry, id: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     use wbcore::{AllowAllCapabilities, ProgressSink, ToolArgs, ToolContext};
 
     /// Drops progress; the tests only look at results.
@@ -620,21 +672,26 @@ mod tests {
         (vector, pointer)
     }
 
-    /// Runs `manifest`'s tool with a value for every param it declares, and
-    /// returns the error text (empty when the tool succeeded). Inputs point at
-    /// the fixtures and outputs at a scratch directory, so the tools that can
-    /// complete on a 64x48 DEM do, and the ones that cannot fail on the *data*
-    /// rather than on a parameter they were never offered.
+    /// Runs `manifest`'s tool with a value for every param it declares that
+    /// `keep` accepts, and returns the error text (empty when the tool
+    /// succeeded). Inputs point at the fixtures and outputs at a scratch
+    /// directory, so the tools that can complete on a 64x48 DEM do, and the ones
+    /// that cannot fail on the *data* rather than on a parameter they were never
+    /// offered.
     fn run_with_manifest_params(
         registry: &ToolRegistry,
         manifest: &ToolManifest,
         vector: &std::path::Path,
         pointer: &std::path::Path,
+        keep: &dyn Fn(&Value) -> bool,
     ) -> String {
         let scratch = scratch_dir();
         let json = enriched_manifest(manifest, &backfilled_tool_ids(registry));
         let mut args = ToolArgs::new();
         for param in json["params"].as_array().into_iter().flatten() {
+            if !keep(param) {
+                continue;
+            }
             let name = param["name"].as_str().unwrap_or_default().to_string();
             let data_kind = param["data_kind"].as_str().unwrap_or_default();
             let value = match param["io_role"].as_str() {
@@ -673,9 +730,17 @@ mod tests {
             progress: &progress,
             capabilities: &capabilities,
         };
-        match registry.run(&manifest.id, &args, &ctx) {
-            Ok(_) => String::new(),
-            Err(err) => err.to_string(),
+        // A tool that gets past its params may still panic on the fixture data:
+        // `long_profile` overflows a multiplication while colouring its profiles
+        // in a debug build. That is a failure of the run, not of the manifest,
+        // so it comes back as error text like any other.
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.run(&manifest.id, &args, &ctx)
+        }));
+        match run {
+            Ok(Ok(_)) => String::new(),
+            Ok(Err(err)) => err.to_string(),
+            Err(_) => format!("{} panicked", manifest.id),
         }
     }
 
@@ -710,7 +775,7 @@ mod tests {
                 .iter()
                 .find(|m| m.id == id)
                 .unwrap_or_else(|| panic!("{id} present"));
-            let error = run_with_manifest_params(&registry, manifest, &vector, &pointer);
+            let error = run_with_manifest_params(&registry, manifest, &vector, &pointer, &|_| true);
             if error.contains("missing required") {
                 unsatisfied.push(format!("{id}: {error}"));
             }
@@ -719,6 +784,133 @@ mod tests {
             unsatisfied.is_empty(),
             "tools asked for a parameter their manifest does not declare: {unsatisfied:#?}"
         );
+    }
+
+    /// Whether a param goes into a run that a host makes from a form left at
+    /// its defaults: the required params, and the outputs, which a host names.
+    fn required_or_output(param: &Value) -> bool {
+        param["required"] == true || param["io_role"] == "output"
+    }
+
+    /// The `(tool, param)` pairs of the schema-table backfill whose `required`
+    /// flag neither whitebox's param docs nor the tool's metadata gives, so that
+    /// [`schema_table_params`] falls back to [`REQUIRED_WITHOUT_DOCS`] or `false`.
+    fn unsourced_required_flags(registry: &ToolRegistry) -> BTreeSet<(String, String)> {
+        let metadata: BTreeMap<String, Vec<String>> = registry
+            .list()
+            .into_iter()
+            .map(|meta| {
+                let names = meta.params.iter().map(|p| p.name.to_string()).collect();
+                (meta.id.to_string(), names)
+            })
+            .collect();
+        backfilled_tool_ids(registry)
+            .into_iter()
+            .filter(|id| !PREFER_METADATA_PARAMS.contains(&id.as_str()))
+            .flat_map(|id| {
+                let docs = wbtools_oss::tools::tool_param_required(&id).unwrap_or_default();
+                let names = metadata.get(&id).cloned().unwrap_or_default();
+                wbtools_oss::tools::tool_param_schemas(&id)
+                    .unwrap_or_default()
+                    .into_keys()
+                    .filter(|name| !docs.contains_key(name) && !names.contains(name))
+                    .map(|name| (id.clone(), name))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn backfilled_tools_run_with_their_required_params_alone() {
+        // opengeos/geolibre-rust#622: manifest_params_satisfy_the_runner gives
+        // every input a value, so it cannot see a needed input marked optional.
+        // A host that opens a form with the optional inputs empty can: the run
+        // stops at `missing required parameter`. So run every tool whose
+        // `required` flags the backfill could not read from the docs or the
+        // metadata with only the params its manifest marks required.
+        let registry = build_registry();
+        let manifests = manifests_with_metadata_params(&registry);
+        let tools: BTreeSet<String> = unsourced_required_flags(&registry)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        for id in [
+            "extract_valleys",
+            "rho8_flow_accum",
+            "rasterize_streams",
+            "repair_stream_vector_topology",
+        ] {
+            assert!(tools.contains(id), "{id} is one of the tools checked");
+        }
+
+        let (vector, pointer) = fixtures(&registry);
+        let mut unsatisfied: Vec<String> = Vec::new();
+        for id in &tools {
+            let manifest = manifests
+                .iter()
+                .find(|m| &m.id == id)
+                .unwrap_or_else(|| panic!("{id} present"));
+            let error = run_with_manifest_params(
+                &registry,
+                manifest,
+                &vector,
+                &pointer,
+                &required_or_output,
+            );
+            if error.contains("missing required") {
+                unsatisfied.push(format!("{id}: {error}"));
+            }
+        }
+        assert!(
+            unsatisfied.is_empty(),
+            "tools that need a parameter their manifest marks optional \
+             (add it to REQUIRED_WITHOUT_DOCS): {unsatisfied:#?}"
+        );
+    }
+
+    #[test]
+    fn each_param_listed_as_required_is_needed() {
+        // REQUIRED_WITHOUT_DOCS must not outlive the gap it fills, nor mark a
+        // param a host can leave empty: each entry still has no docs or
+        // metadata flag upstream, comes out required, and the tool stops at
+        // `missing required parameter` when it is the only required param left
+        // out.
+        let registry = build_registry();
+        let unsourced = unsourced_required_flags(&registry);
+        let manifests = manifests_with_metadata_params(&registry);
+        let (vector, pointer) = fixtures(&registry);
+        let mut problems: Vec<String> = Vec::new();
+        for (id, params) in REQUIRED_WITHOUT_DOCS {
+            let manifest = manifests
+                .iter()
+                .find(|m| m.id == *id)
+                .unwrap_or_else(|| panic!("{id} present"));
+            for param in *params {
+                if !unsourced.contains(&(id.to_string(), param.to_string())) {
+                    problems.push(format!(
+                        "{id}.{param}: the docs or metadata now give its flag, or the \
+                         schema table no longer has it; drop the entry"
+                    ));
+                    continue;
+                }
+                if !manifest
+                    .params
+                    .iter()
+                    .any(|p| p.name == *param && p.required)
+                {
+                    problems.push(format!("{id}.{param}: not required in the manifest"));
+                    continue;
+                }
+                let error =
+                    run_with_manifest_params(&registry, manifest, &vector, &pointer, &|p| {
+                        required_or_output(p) && p["name"] != *param
+                    });
+                if !error.contains("missing required") {
+                    problems.push(format!("{id} runs without {param}: {error:?}"));
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{problems:#?}");
     }
 
     #[test]

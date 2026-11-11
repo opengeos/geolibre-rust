@@ -111,7 +111,7 @@ fn run_command() -> ExitCode {
 fn run_tool(tool_id: &str, flags: &[String]) -> ExitCode {
     let mut args = parse_args(flags);
     let registry = build_registry();
-    decode_json_args(&mut args, || string_default_keys(&registry, tool_id));
+    decode_json_args(&mut args, || json_default_keys(&registry, tool_id));
 
     let progress = StdoutProgress::default();
     let capabilities = AllowAllCapabilities;
@@ -141,9 +141,9 @@ fn run_tool(tool_id: &str, flags: &[String]) -> ExitCode {
 ///
 /// Values are type-inferred to match the JSON shapes tools expect: `true`/`false`
 /// become booleans, integers and floats become numbers, and everything else
-/// (including file paths) stays a string. JSON lists and objects are decoded
-/// afterwards by [`decode_json_args`], which needs the tool's manifest. A bare `--flag` with no value is
-/// treated as `true`.
+/// (including file paths) stays a string. A bare `--flag` with no value is
+/// treated as `true`. JSON lists and objects are decoded afterwards by
+/// [`decode_json_args`], which needs the tool's manifest.
 fn parse_args(flags: &[String]) -> ToolArgs {
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
     let mut i = 0;
@@ -187,39 +187,37 @@ fn infer_value(raw: &str) -> Value {
     Value::String(raw.to_string())
 }
 
-/// Turns `[...]` and `{...}` values that parse as JSON into that JSON, so list
-/// and object parameters (`--scales=[8,16]`, `--background_clr=[0,0,0,255]`)
-/// reach tools as arrays and objects rather than strings.
+/// Decodes `[...]` and `{...}` values into JSON for the parameters that take a
+/// list or an object, so `--scales=[8,16]` and `--background_clr=[0,0,0,255]`
+/// reach the tool as arrays rather than strings.
 ///
-/// A parameter whose manifest default is a string keeps its text, because such
-/// tools parse the JSON themselves (e.g. `fit_variogram --lags_json=[...]`).
-/// `string_keys` builds that set and runs only when a value looks like JSON, so
-/// ordinary runs don't pay for building the manifests.
+/// Only parameters whose manifest default is an array or object are decoded.
+/// Every other parameter keeps its text, since some tools read JSON as a string
+/// and parse it themselves (`fit_variogram --lags_json`, `inverse_pca
+/// --pca_report`). `json_keys` runs only when some value looks like JSON, so
+/// ordinary runs don't build the manifests.
 ///
 /// Args:
 ///     args: Parsed CLI arguments, updated in place.
-///     string_keys: Returns the names of parameters whose default is a string.
-fn decode_json_args<F>(args: &mut ToolArgs, string_keys: F)
-where
-    F: FnOnce() -> HashSet<String>,
-{
-    let mut string_keys = Some(string_keys);
-    let mut keep_text: Option<HashSet<String>> = None;
-    for (key, value) in args.iter_mut() {
-        let Value::String(text) = value else { continue };
-        let Some(parsed) = parse_json_text(text) else {
-            continue;
-        };
-        let keep =
-            keep_text.get_or_insert_with(|| string_keys.take().map(|f| f()).unwrap_or_default());
-        if !keep.contains(key) {
-            *value = parsed;
+///     json_keys: Returns the names of parameters with an array or object default.
+fn decode_json_args(args: &mut ToolArgs, json_keys: impl FnOnce() -> HashSet<String>) {
+    let candidates: Vec<(String, Value)> = args
+        .iter()
+        .filter_map(|(key, value)| Some((key.clone(), parse_json_text(value.as_str()?)?)))
+        .collect();
+    if candidates.is_empty() {
+        return;
+    }
+    let json_keys = json_keys();
+    for (key, parsed) in candidates {
+        if json_keys.contains(&key) {
+            args.insert(key, parsed);
         }
     }
 }
 
 /// Parses `raw` as a JSON array or object, or returns `None` when it is not
-/// one (paths, expressions and other free text stay strings).
+/// one (paths, expressions and other free text).
 fn parse_json_text(raw: &str) -> Option<Value> {
     let trimmed = raw.trim_start();
     if !(trimmed.starts_with('[') || trimmed.starts_with('{')) {
@@ -231,8 +229,8 @@ fn parse_json_text(raw: &str) -> Option<Value> {
     }
 }
 
-/// Names of `tool_id`'s parameters whose manifest default is a string.
-fn string_default_keys(registry: &ToolRegistry, tool_id: &str) -> HashSet<String> {
+/// Names of `tool_id`'s parameters whose manifest default is an array or object.
+fn json_default_keys(registry: &ToolRegistry, tool_id: &str) -> HashSet<String> {
     registry
         .manifests()
         .into_iter()
@@ -240,7 +238,7 @@ fn string_default_keys(registry: &ToolRegistry, tool_id: &str) -> HashSet<String
         .map(|m| {
             m.defaults
                 .into_iter()
-                .filter(|(_, v)| v.is_string())
+                .filter(|(_, v)| v.is_array() || v.is_object())
                 .map(|(k, _)| k)
                 .collect()
         })
@@ -282,6 +280,10 @@ mod tests {
         );
     }
 
+    fn keys(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
     #[test]
     fn decodes_json_lists_and_objects() {
         let flags = vec![
@@ -293,7 +295,8 @@ mod tests {
             "--expression={dem} * 2".to_string(),
         ];
         let mut args = parse_args(&flags);
-        decode_json_args(&mut args, HashSet::new);
+        let json = keys(&["scales", "background_clr", "library", "input", "expression"]);
+        decode_json_args(&mut args, || json);
         assert_eq!(args["scales"], serde_json::json!([8, 16]));
         assert_eq!(args["background_clr"], serde_json::json!([0, 0, 0, 255]));
         assert_eq!(args["library"], serde_json::json!({"name": "water"}));
@@ -303,10 +306,14 @@ mod tests {
     }
 
     #[test]
-    fn keeps_json_text_for_string_parameters() {
-        let mut args = parse_args(&["--lags_json=[{\"lag\":1}]".to_string()]);
-        decode_json_args(&mut args, || HashSet::from(["lags_json".to_string()]));
+    fn keeps_json_text_for_other_parameters() {
+        let mut args = parse_args(&[
+            r#"--lags_json=[{"lag":1}]"#.to_string(),
+            r#"--pca_report={"eigenvalues":[1]}"#.to_string(),
+        ]);
+        decode_json_args(&mut args, || keys(&["scales"]));
         assert_eq!(args["lags_json"], Value::from(r#"[{"lag":1}]"#));
+        assert_eq!(args["pca_report"], Value::from(r#"{"eigenvalues":[1]}"#));
     }
 
     #[test]
@@ -317,11 +324,15 @@ mod tests {
     }
 
     #[test]
-    fn string_default_keys_come_from_the_manifest() {
+    fn json_default_keys_come_from_the_manifest() {
         let registry = build_registry();
-        let keys = string_default_keys(&registry, "fit_variogram");
-        assert!(keys.contains("lags_json"), "{keys:?}");
-        assert!(!string_default_keys(&registry, "frangi_filter").contains("scales"));
+        let frangi = json_default_keys(&registry, "frangi_filter");
+        assert!(frangi.contains("scales"), "{frangi:?}");
+        let topo = json_default_keys(&registry, "topo_render");
+        assert!(topo.contains("background_clr"), "{topo:?}");
+        // String defaults holding JSON text stay text.
+        let variogram = json_default_keys(&registry, "fit_variogram");
+        assert!(!variogram.contains("lags_json"), "{variogram:?}");
     }
 
     #[test]

@@ -5,7 +5,9 @@
 #
 #   rustup target add wasm32-unknown-unknown wasm32-wasip1
 #   cargo install wasm-pack
-#   # optional, to shrink the WASI runner: apt-get install -y binaryen
+#   # optional, to shrink the WASI runner: a binaryen GitHub release (CI pins 133;
+#   # old distro binaryen, e.g. Ubuntu 24.04's 108, breaks the library's
+#   # externref table)
 #   ./build.sh
 set -euo pipefail
 

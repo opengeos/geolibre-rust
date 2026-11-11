@@ -15,14 +15,21 @@
 FROM rust:1-bookworm AS builder
 
 # wasm targets + tooling. binaryen provides wasm-opt (shrinks the WASI runner);
+# it comes from a pinned release because old distro binaryen (e.g. Ubuntu
+# 24.04's 108) mis-targets the externref table export of wasm-bindgen >= 0.2.130;
 # clang/llvm/lld let cc-rs cross-compile C deps to wasm32-unknown-unknown (the
 # browser-library target — GitHub's CI runners ship these preinstalled); wasi-sdk
 # is the separate C toolchain for the wasm32-wasip1 WASI runner (zstd-sys).
 RUN rustup target add wasm32-unknown-unknown wasm32-wasip1 \
  && apt-get update \
- && apt-get install -y --no-install-recommends binaryen curl ca-certificates clang llvm lld \
+ && apt-get install -y --no-install-recommends curl ca-certificates clang llvm lld \
  && rm -rf /var/lib/apt/lists/* \
  && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+ENV BINARYEN_VERSION=133
+RUN curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+      | tar xz -C /opt
+ENV PATH=/opt/binaryen-version_${BINARYEN_VERSION}/bin:${PATH}
 
 ENV WASI_SDK_VERSION=33.0
 RUN curl -sL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz" \

@@ -627,24 +627,33 @@ mod tests {
         }
     }
 
-    /// A scratch directory for this test process, so concurrent `cargo test` runs on
-    /// one host don't overwrite each other's fixtures.
-    fn scratch_dir() -> std::path::PathBuf {
+    /// A scratch directory for one test in this test process, so neither
+    /// concurrent `cargo test` runs on one host nor the tests of one run, which
+    /// share a process, overwrite each other's fixtures and outputs.
+    fn scratch_dir(test: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "geolibre-cli-manifest-params-{}",
+            "geolibre-cli-manifest-params-{}-{test}",
             std::process::id()
         ))
     }
 
     const SAMPLE_DEM: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/sample.tif");
 
-    /// A scratch directory holding the fixtures the run-based test feeds in: a
-    /// point GeoJSON and a real D8 pointer raster derived from the sample DEM.
-    /// The pointer matters -- several tools decode `d8_pntr` cell by cell and
-    /// walk the flow network, and handing them an arbitrary DEM instead sends
-    /// `basins` into a non-terminating traversal rather than an error.
-    fn fixtures(registry: &ToolRegistry) -> (std::path::PathBuf, std::path::PathBuf) {
-        let scratch = scratch_dir();
+    /// What the run-based tests feed the tools: a scratch directory for their
+    /// outputs, a point GeoJSON and a real D8 pointer raster derived from the
+    /// sample DEM.
+    struct Fixtures {
+        scratch: std::path::PathBuf,
+        vector: std::path::PathBuf,
+        pointer: std::path::PathBuf,
+    }
+
+    /// Builds `test`'s [`Fixtures`] in its own scratch directory. The pointer
+    /// matters -- several tools decode `d8_pntr` cell by cell and walk the flow
+    /// network, and handing them an arbitrary DEM instead sends `basins` into a
+    /// non-terminating traversal rather than an error.
+    fn fixtures(registry: &ToolRegistry, test: &str) -> Fixtures {
+        let scratch = scratch_dir(test);
         std::fs::create_dir_all(&scratch).expect("scratch dir");
         let vector = scratch.join("points.geojson");
         std::fs::write(
@@ -669,7 +678,11 @@ mod tests {
         registry
             .run("d8_pointer", &args, &ctx)
             .expect("d8_pointer builds the pointer fixture");
-        (vector, pointer)
+        Fixtures {
+            scratch,
+            vector,
+            pointer,
+        }
     }
 
     /// Runs `manifest`'s tool with a value for every param it declares that
@@ -681,11 +694,9 @@ mod tests {
     fn run_with_manifest_params(
         registry: &ToolRegistry,
         manifest: &ToolManifest,
-        vector: &std::path::Path,
-        pointer: &std::path::Path,
+        fixtures: &Fixtures,
         keep: &dyn Fn(&Value) -> bool,
     ) -> String {
-        let scratch = scratch_dir();
         let json = enriched_manifest(manifest, &backfilled_tool_ids(registry));
         let mut args = ToolArgs::new();
         for param in json["params"].as_array().into_iter().flatten() {
@@ -696,14 +707,15 @@ mod tests {
             let data_kind = param["data_kind"].as_str().unwrap_or_default();
             let value = match param["io_role"].as_str() {
                 Some("input") if data_kind == "vector" => {
-                    Value::String(vector.to_string_lossy().into_owned())
+                    Value::String(fixtures.vector.to_string_lossy().into_owned())
                 }
                 Some("input") if name.contains("pntr") || name.contains("pointer") => {
-                    Value::String(pointer.to_string_lossy().into_owned())
+                    Value::String(fixtures.pointer.to_string_lossy().into_owned())
                 }
                 Some("input") => Value::String(SAMPLE_DEM.to_string()),
                 Some("output") => Value::String(
-                    scratch
+                    fixtures
+                        .scratch
                         .join(format!("{}_{name}.tif", manifest.id))
                         .to_string_lossy()
                         .into_owned(),
@@ -730,19 +742,36 @@ mod tests {
             progress: &progress,
             capabilities: &capabilities,
         };
-        // A tool that gets past its params may still panic on the fixture data:
-        // `long_profile` overflows a multiplication while colouring its profiles
-        // in a debug build. That is a failure of the run, not of the manifest,
-        // so it comes back as error text like any other.
         let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             registry.run(&manifest.id, &args, &ctx)
         }));
         match run {
             Ok(Ok(_)) => String::new(),
             Ok(Err(err)) => err.to_string(),
-            Err(_) => format!("{} panicked", manifest.id),
+            Err(payload) => {
+                let message = payload
+                    .downcast_ref::<&str>()
+                    .map(|text| text.to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_default();
+                if KNOWN_PANICS.contains(&(manifest.id.as_str(), message.as_str())) {
+                    format!("{} panicked: {message}", manifest.id)
+                } else {
+                    std::panic::resume_unwind(payload)
+                }
+            }
         }
     }
+
+    /// Panics a tool is known to hit on the fixtures once it has all its
+    /// params, as `(tool, message)`: a failure of the whitebox run, not of the
+    /// manifest, so [`run_with_manifest_params`] returns it as error text. Any
+    /// other panic still fails the test.
+    ///
+    /// `long_profile` overflows a multiplication while colouring its profiles
+    /// (`stream_network_analysis/mod.rs:712` in whitebox-wasm), which a debug
+    /// build checks.
+    const KNOWN_PANICS: &[(&str, &str)] = &[("long_profile", "attempt to multiply with overflow")];
 
     #[test]
     fn manifest_params_satisfy_the_runner() {
@@ -768,14 +797,14 @@ mod tests {
             ])
             .collect();
 
-        let (vector, pointer) = fixtures(&registry);
+        let fixtures = fixtures(&registry, "manifest_params_satisfy_the_runner");
         let mut unsatisfied: Vec<String> = Vec::new();
         for id in checked {
             let manifest = manifests
                 .iter()
                 .find(|m| m.id == id)
                 .unwrap_or_else(|| panic!("{id} present"));
-            let error = run_with_manifest_params(&registry, manifest, &vector, &pointer, &|_| true);
+            let error = run_with_manifest_params(&registry, manifest, &fixtures, &|_| true);
             if error.contains("missing required") {
                 unsatisfied.push(format!("{id}: {error}"));
             }
@@ -843,20 +872,18 @@ mod tests {
             assert!(tools.contains(id), "{id} is one of the tools checked");
         }
 
-        let (vector, pointer) = fixtures(&registry);
+        let fixtures = fixtures(
+            &registry,
+            "backfilled_tools_run_with_their_required_params_alone",
+        );
         let mut unsatisfied: Vec<String> = Vec::new();
         for id in &tools {
             let manifest = manifests
                 .iter()
                 .find(|m| &m.id == id)
                 .unwrap_or_else(|| panic!("{id} present"));
-            let error = run_with_manifest_params(
-                &registry,
-                manifest,
-                &vector,
-                &pointer,
-                &required_or_output,
-            );
+            let error =
+                run_with_manifest_params(&registry, manifest, &fixtures, &required_or_output);
             if error.contains("missing required") {
                 unsatisfied.push(format!("{id}: {error}"));
             }
@@ -878,7 +905,7 @@ mod tests {
         let registry = build_registry();
         let unsourced = unsourced_required_flags(&registry);
         let manifests = manifests_with_metadata_params(&registry);
-        let (vector, pointer) = fixtures(&registry);
+        let fixtures = fixtures(&registry, "each_param_listed_as_required_is_needed");
         let mut problems: Vec<String> = Vec::new();
         for (id, params) in REQUIRED_WITHOUT_DOCS {
             let manifest = manifests
@@ -901,10 +928,9 @@ mod tests {
                     problems.push(format!("{id}.{param}: not required in the manifest"));
                     continue;
                 }
-                let error =
-                    run_with_manifest_params(&registry, manifest, &vector, &pointer, &|p| {
-                        required_or_output(p) && p["name"] != *param
-                    });
+                let error = run_with_manifest_params(&registry, manifest, &fixtures, &|p| {
+                    required_or_output(p) && p["name"] != *param
+                });
                 if !error.contains("missing required") {
                     problems.push(format!("{id} runs without {param}: {error:?}"));
                 }

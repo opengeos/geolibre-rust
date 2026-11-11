@@ -966,6 +966,85 @@ mod tests {
     }
 
     #[test]
+    fn study_area_polygon_is_read_as_a_polygon_file() {
+        // values_the_inference_read_as_datasets_follow_the_schema_table keeps
+        // `study_area_polygon` a vector input although the schema table calls it
+        // a string. Check the runners agree: in `polygon_layer` mode both tools
+        // run with a polygon file, and fail when that file is not there.
+        let registry = build_registry();
+        let scratch = std::env::temp_dir().join(format!(
+            "geolibre-cli-study-area-polygon-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&scratch).expect("scratch dir");
+        let points = scratch.join("points.geojson");
+        let features: Vec<String> = [[1.0, 1.0], [2.0, 3.0], [3.0, 2.0], [4.0, 4.0], [2.5, 1.5]]
+            .iter()
+            .map(|[x, y]| {
+                format!(
+                    r#"{{"type":"Feature","properties":{{}},"geometry":{{"type":"Point","coordinates":[{x},{y}]}}}}"#
+                )
+            })
+            .collect();
+        std::fs::write(
+            &points,
+            format!(
+                r#"{{"type":"FeatureCollection","features":[{}]}}"#,
+                features.join(",")
+            ),
+        )
+        .expect("points");
+        let polygon = scratch.join("study_area.geojson");
+        std::fs::write(
+            &polygon,
+            r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0,0],[5,0],[5,5],[0,5],[0,0]]]}}]}"#,
+        )
+        .expect("polygon");
+        let missing = scratch.join("no_such_polygon.geojson");
+
+        let progress = QuietProgress;
+        let capabilities = AllowAllCapabilities;
+        let ctx = ToolContext {
+            progress: &progress,
+            capabilities: &capabilities,
+        };
+        for id in ["nearest_neighbour_index", "quadrat_count_test"] {
+            let run = |study_area: &std::path::Path| {
+                let mut args = ToolArgs::new();
+                args.insert(
+                    "input".to_string(),
+                    Value::String(points.to_string_lossy().into_owned()),
+                );
+                args.insert(
+                    "study_area_mode".to_string(),
+                    Value::String("polygon_layer".to_string()),
+                );
+                args.insert(
+                    "study_area_polygon".to_string(),
+                    Value::String(study_area.to_string_lossy().into_owned()),
+                );
+                args.insert(
+                    "output_json".to_string(),
+                    Value::String(
+                        scratch
+                            .join(format!("{id}.json"))
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
+                );
+                registry.run(id, &args, &ctx)
+            };
+            if let Err(err) = run(&polygon) {
+                panic!("{id} with a polygon file: {err}");
+            }
+            assert!(
+                run(&missing).is_err(),
+                "{id} ran without reading its study_area_polygon file"
+            );
+        }
+    }
+
+    #[test]
     fn no_number_flag_or_choice_is_a_dataset_input() {
         // The general form of #618: wherever whitebox's schema table types a
         // param as a number, a flag or a fixed set of choices, a host must not be

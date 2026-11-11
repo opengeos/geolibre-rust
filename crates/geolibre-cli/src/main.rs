@@ -25,11 +25,11 @@
 //!
 //! Exit codes: `0` success, `1` tool/execution error, `2` usage error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::process::ExitCode;
 
 use geolibre_cli::wbcore::{AllowAllCapabilities, ProgressSink, ToolArgs, ToolContext};
-use geolibre_cli::{build_registry, manifest_json, manifests_json};
+use geolibre_cli::{build_registry, manifest_json, manifests_json, ToolRegistry};
 use serde_json::Value;
 
 /// Stack for the command on native targets. Windows gives the main thread only
@@ -109,8 +109,9 @@ fn run_command() -> ExitCode {
 /// Runs a single tool, mapping `--key=value` CLI flags onto the JSON [`ToolArgs`]
 /// the registry expects.
 fn run_tool(tool_id: &str, flags: &[String]) -> ExitCode {
-    let args = parse_args(flags);
+    let mut args = parse_args(flags);
     let registry = build_registry();
+    decode_json_args(&mut args, || string_default_keys(&registry, tool_id));
 
     let progress = StdoutProgress::default();
     let capabilities = AllowAllCapabilities;
@@ -140,7 +141,8 @@ fn run_tool(tool_id: &str, flags: &[String]) -> ExitCode {
 ///
 /// Values are type-inferred to match the JSON shapes tools expect: `true`/`false`
 /// become booleans, integers and floats become numbers, and everything else
-/// (including file paths) stays a string. A bare `--flag` with no value is
+/// (including file paths) stays a string. JSON lists and objects are decoded
+/// afterwards by [`decode_json_args`], which needs the tool's manifest. A bare `--flag` with no value is
 /// treated as `true`.
 fn parse_args(flags: &[String]) -> ToolArgs {
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
@@ -185,6 +187,66 @@ fn infer_value(raw: &str) -> Value {
     Value::String(raw.to_string())
 }
 
+/// Turns `[...]` and `{...}` values that parse as JSON into that JSON, so list
+/// and object parameters (`--scales=[8,16]`, `--background_clr=[0,0,0,255]`)
+/// reach tools as arrays and objects rather than strings.
+///
+/// A parameter whose manifest default is a string keeps its text, because such
+/// tools parse the JSON themselves (e.g. `fit_variogram --lags_json=[...]`).
+/// `string_keys` builds that set and runs only when a value looks like JSON, so
+/// ordinary runs don't pay for building the manifests.
+///
+/// Args:
+///     args: Parsed CLI arguments, updated in place.
+///     string_keys: Returns the names of parameters whose default is a string.
+fn decode_json_args<F>(args: &mut ToolArgs, string_keys: F)
+where
+    F: FnOnce() -> HashSet<String>,
+{
+    let mut string_keys = Some(string_keys);
+    let mut keep_text: Option<HashSet<String>> = None;
+    for (key, value) in args.iter_mut() {
+        let Value::String(text) = value else { continue };
+        let Some(parsed) = parse_json_text(text) else {
+            continue;
+        };
+        let keep =
+            keep_text.get_or_insert_with(|| string_keys.take().map(|f| f()).unwrap_or_default());
+        if !keep.contains(key) {
+            *value = parsed;
+        }
+    }
+}
+
+/// Parses `raw` as a JSON array or object, or returns `None` when it is not
+/// one (paths, expressions and other free text stay strings).
+fn parse_json_text(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim_start();
+    if !(trimmed.starts_with('[') || trimmed.starts_with('{')) {
+        return None;
+    }
+    match serde_json::from_str::<Value>(raw) {
+        Ok(v @ (Value::Array(_) | Value::Object(_))) => Some(v),
+        _ => None,
+    }
+}
+
+/// Names of `tool_id`'s parameters whose manifest default is a string.
+fn string_default_keys(registry: &ToolRegistry, tool_id: &str) -> HashSet<String> {
+    registry
+        .manifests()
+        .into_iter()
+        .find(|m| m.id == tool_id)
+        .map(|m| {
+            m.defaults
+                .into_iter()
+                .filter(|(_, v)| v.is_string())
+                .map(|(k, _)| k)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Progress sink that forwards tool messages to stdout (captured by the WASI
 /// shim and surfaced to JS). Per-percent progress is dropped to keep stdout
 /// quiet; flip `EMIT_PROGRESS` if you want it.
@@ -218,6 +280,48 @@ mod tests {
             infer_value("/work/dem.tif"),
             Value::String("/work/dem.tif".to_string())
         );
+    }
+
+    #[test]
+    fn decodes_json_lists_and_objects() {
+        let flags = vec![
+            "--scales=[8,16]".to_string(),
+            "--background_clr=[0,0,0,255]".to_string(),
+            "--library".to_string(),
+            r#"{"name":"water"}"#.to_string(),
+            "--input=/work/[dem].tif".to_string(),
+            "--expression={dem} * 2".to_string(),
+        ];
+        let mut args = parse_args(&flags);
+        decode_json_args(&mut args, HashSet::new);
+        assert_eq!(args["scales"], serde_json::json!([8, 16]));
+        assert_eq!(args["background_clr"], serde_json::json!([0, 0, 0, 255]));
+        assert_eq!(args["library"], serde_json::json!({"name": "water"}));
+        // Not JSON: left as text.
+        assert_eq!(args["input"], Value::from("/work/[dem].tif"));
+        assert_eq!(args["expression"], Value::from("{dem} * 2"));
+    }
+
+    #[test]
+    fn keeps_json_text_for_string_parameters() {
+        let mut args = parse_args(&["--lags_json=[{\"lag\":1}]".to_string()]);
+        decode_json_args(&mut args, || HashSet::from(["lags_json".to_string()]));
+        assert_eq!(args["lags_json"], Value::from(r#"[{"lag":1}]"#));
+    }
+
+    #[test]
+    fn skips_manifest_lookup_without_json_values() {
+        let mut args = parse_args(&["--input=dem.tif".to_string(), "--z=2".to_string()]);
+        decode_json_args(&mut args, || panic!("manifests built for plain args"));
+        assert_eq!(args["input"], Value::from("dem.tif"));
+    }
+
+    #[test]
+    fn string_default_keys_come_from_the_manifest() {
+        let registry = build_registry();
+        let keys = string_default_keys(&registry, "fit_variogram");
+        assert!(keys.contains("lags_json"), "{keys:?}");
+        assert!(!string_default_keys(&registry, "frangi_filter").contains("scales"));
     }
 
     #[test]

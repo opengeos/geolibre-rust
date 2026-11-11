@@ -351,7 +351,7 @@ fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<Strin
         return wbcore::manifest_with_param_schema_json(manifest, &table);
     }
     let inferred = wbcore::manifest_with_io_schema_json(manifest);
-    let corrections = dataset_input_corrections(&inferred, &table);
+    let corrections = dataset_input_corrections(&inferred, &inferred_from_names(manifest), &table);
     if corrections.is_empty() {
         inferred
     } else {
@@ -366,14 +366,21 @@ fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<Strin
 ///
 /// The inference finds a raster, vector or LiDAR input mostly in loose words of
 /// the name or description: `dem` or `grid` anywhere makes a raster, `feature`
-/// or `layer` a vector, `las` LiDAR. So `topo_render`'s `palette` ("Palette name (soft, atlas,
-/// ..., dem, grey, white)") became a raster a host offered a layer picker for,
-/// its `background_hgt_offset` (a number) and `clipping_polygon` (a polygon
-/// vector) did too, and so did `cell_size`, `min_feature_size` and other
-/// numbers in other tools (opengeos/geolibre-rust#618). The table is the one
-/// the runner's arg parsing follows, and for these params it is right: numbers,
-/// flags, choices and names, a vector where the inference said raster, a raster
-/// stack where it said a single raster, an output where it said an input.
+/// or `layer` a vector, `las` LiDAR. So `topo_render`'s `palette` ("Palette
+/// name (soft, atlas, ..., dem, grey, white)") became a raster a host offered a
+/// layer picker for, its `background_hgt_offset` (a number) and
+/// `clipping_polygon` (a polygon vector) did too, and so did `cell_size`,
+/// `min_feature_size` and other numbers in other tools
+/// (opengeos/geolibre-rust#618). The table is the one the runner's arg parsing
+/// follows, and for these params it is right: numbers, flags, choices and
+/// names, a vector where the inference said raster, a raster stack where it
+/// said a single raster, an output where it said an input.
+///
+/// A plain string in the table is weaker evidence, since a path is a string
+/// too. It replaces an inferred dataset only when the param's name alone
+/// (`inferred_from_names`) does not make it one: `palette` becomes a string,
+/// while `study_area_polygon` ("Polygon layer used when
+/// study_area_mode=polygon_layer", a string in the table) stays a vector input.
 ///
 /// The rest of the inference stays. A CSV, JSON or text input is read from a
 /// file-format word (`csv`, `json`, `txt`, ...), and the table is wrong about
@@ -385,8 +392,16 @@ fn enriched_manifest(manifest: &wbcore::ToolManifest, backfilled: &HashSet<Strin
 /// naming and collecting those files.
 fn dataset_input_corrections(
     inferred: &Value,
+    inferred_from_names: &Value,
     table: &BTreeMap<String, ToolParamSchema>,
 ) -> BTreeMap<String, ToolParamSchema> {
+    let names_a_dataset = |name: &str| {
+        inferred_from_names["params"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|param| param["name"] == name && param["schema"]["kind"] == "input")
+    };
     inferred["params"]
         .as_array()
         .into_iter()
@@ -400,11 +415,24 @@ fn dataset_input_corrections(
                 Some("raster" | "vector" | "lidar")
             );
             let table_says_output = matches!(schema, ToolParamSchema::Output(_));
+            let string_for_a_named_dataset =
+                matches!(schema, ToolParamSchema::String) && names_a_dataset(name);
             ((guessed_from_loose_words || table_says_output)
+                && !string_for_a_named_dataset
                 && serde_json::to_value(schema).ok()? != param["schema"])
                 .then(|| (name.to_string(), schema.clone()))
         })
         .collect()
+}
+
+/// wbcore's inference for `manifest`'s params from their names alone, with the
+/// descriptions left out (wbcore then derives one from the name).
+fn inferred_from_names(manifest: &wbcore::ToolManifest) -> Value {
+    let mut bare = manifest.clone();
+    for param in &mut bare.params {
+        param.description.clear();
+    }
+    wbcore::manifest_with_io_schema_json(&bare)
 }
 
 /// Every tool's manifest as JSON, the shape `geolibre manifests` prints (one pass
@@ -925,6 +953,15 @@ mod tests {
         let morans = manifest_json(&registry, "global_morans_i").expect("global_morans_i");
         for output in ["output_html", "output_csv", "output_json"] {
             assert_eq!(param(&morans, output)["io_role"], "output", "{output}");
+        }
+        // A plain string in the table does not replace a dataset the param's
+        // name points to: in `polygon_layer` mode both runners read this polygon
+        // file.
+        for id in ["nearest_neighbour_index", "quadrat_count_test"] {
+            let manifest = manifest_json(&registry, id).expect(id);
+            let polygon = param(&manifest, "study_area_polygon");
+            assert_eq!(polygon["io_role"], "input", "{id}: {polygon}");
+            assert_eq!(polygon["data_kind"], "vector", "{id}: {polygon}");
         }
     }
 

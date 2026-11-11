@@ -89,7 +89,11 @@ jobs:
         # wasm-bindgen >= 0.2.130 output, so the library fails to initialize.
         run: |
           ver=133
-          curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/version_${ver}/binaryen-version_${ver}-x86_64-linux.tar.gz" | sudo tar xz -C /opt
+          sha=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+          tgz="$RUNNER_TEMP/binaryen.tar.gz"
+          curl -fsSL -o "$tgz" "https://github.com/WebAssembly/binaryen/releases/download/version_${ver}/binaryen-version_${ver}-x86_64-linux.tar.gz"
+          echo "$sha  $tgz" | sha256sum -c -
+          sudo tar xzf "$tgz" -C /opt
           echo "/opt/binaryen-version_${ver}/bin" >> "$GITHUB_PATH"
 
       - name: Install wasi-sdk (C toolchain so zstd-sys builds for wasm32-wasip1)

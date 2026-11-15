@@ -140,8 +140,8 @@ impl Tool for TopoToRasterTool {
         let mut n_contour_features = 0usize;
         let mut n_point_features = 0usize;
 
-        if let Some(path) = &prm.contours {
-            let layer = load_input_layer(path)?;
+        let contour_layer = prm.contours.as_deref().map(load_input_layer).transpose()?;
+        if let Some(layer) = &contour_layer {
             epsg = epsg.or_else(|| layer.crs_epsg());
             let field = resolve_elevation_field(&layer, prm.elevation_field.as_deref())?;
             for feature in layer.iter() {
@@ -153,7 +153,7 @@ impl Tool for TopoToRasterTool {
                 };
                 let before = samples.len();
                 collect_line_samples(geom, z, f64::INFINITY, &mut samples);
-                contour_geometries.push((geom.clone(), z));
+                contour_geometries.push((geom, z));
                 if samples.len() > before {
                     n_contour_features += 1;
                 }
@@ -235,10 +235,13 @@ impl Tool for TopoToRasterTool {
         // A^T W h once; no crossed cell is pinned to a contour elevation.
         let n = rows * cols;
         let data = assemble_constraints(&samples, rows, cols, x_min, y_max, cell_size);
+        let samples_used = samples.len();
+        let constrained_cells = data.iter().filter(|d| d.diagonal > 0.0).count();
         let total_weight = samples.iter().map(|s| s.weight).sum::<f64>();
         let mean_all = samples.iter().map(|s| s.weight * s.z).sum::<f64>() / total_weight;
         drop(samples);
         drop(contour_geometries);
+        drop(contour_layer);
         let mut z = vec![mean_all; n];
         let n_fixed = 0; // Kept in the output schema for existing clients.
 
@@ -274,23 +277,10 @@ impl Tool for TopoToRasterTool {
                     0.01 * relief
                 };
                 let layer = load_input_layer(path)?;
-                let mut stream_samples: Vec<Sample> = Vec::new();
-                for feature in layer.iter() {
-                    if let Some(geom) = feature.geometry.as_ref() {
-                        collect_line_samples(geom, 0.0, cell_size, &mut stream_samples);
-                    }
-                }
-                for s in &stream_samples {
-                    let col = ((s.x - x_min) / cell_size).floor() as isize;
-                    let row = ((y_max - s.y) / cell_size).floor() as isize;
-                    if row < 0 || col < 0 || row as usize >= rows || col as usize >= cols {
-                        continue;
-                    }
-                    z[row as usize * cols + col as usize] -= burn;
-                }
+                let burned_cells =
+                    burn_streams(&mut z, &layer, rows, cols, x_min, y_max, cell_size, burn);
                 ctx.progress.info(&format!(
-                    "burned {} stream cell(s) by {burn:.3}",
-                    stream_samples.len()
+                    "burned {burned_cells} stream cell(s) by {burn:.3}"
                 ));
             }
 
@@ -323,6 +313,8 @@ impl Tool for TopoToRasterTool {
         outputs.insert("cols".to_string(), json!(cols));
         outputs.insert("cell_size".to_string(), json!(cell_size));
         outputs.insert("fixed_cells".to_string(), json!(n_fixed));
+        outputs.insert("samples_used".to_string(), json!(samples_used));
+        outputs.insert("constrained_cells".to_string(), json!(constrained_cells));
         outputs.insert("contour_features".to_string(), json!(n_contour_features));
         outputs.insert("point_features".to_string(), json!(n_point_features));
         outputs.insert("iterations".to_string(), json!(iters_run));
@@ -606,6 +598,132 @@ fn collect_point_samples(geom: &Geometry, z: f64, out: &mut Vec<Sample>) {
         }
         _ => {}
     }
+}
+
+/// Clip in grid coordinates before choosing a step count. Work depends on the
+/// part of the stream inside the raster, even if its endpoints are far away.
+fn clip_stream_segment(
+    a: (f64, f64),
+    b: (f64, f64),
+    rows: usize,
+    cols: usize,
+) -> Option<((f64, f64), (f64, f64))> {
+    if ![a.0, a.1, b.0, b.1].iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    let dx = b.0 - a.0;
+    let dy = b.1 - a.1;
+    if !dx.is_finite() || !dy.is_finite() {
+        return None;
+    }
+    let (mut enter, mut leave) = (0.0_f64, 1.0_f64);
+    for (p, q) in [
+        (-dx, a.0),
+        (dx, cols as f64 - a.0),
+        (-dy, a.1),
+        (dy, rows as f64 - a.1),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else if p < 0.0 {
+            enter = enter.max(q / p);
+        } else {
+            leave = leave.min(q / p);
+        }
+        if enter > leave {
+            return None;
+        }
+    }
+    let point = |t: f64| {
+        (
+            (a.0 + t * dx).clamp(0.0, cols as f64),
+            (a.1 + t * dy).clamp(0.0, rows as f64),
+        )
+    };
+    Some((point(enter), point(leave)))
+}
+
+/// Burn each cell only once across all stream features and segments. The mask
+/// is bounded by grid size; clipped samples are consumed without a sample Vec.
+#[allow(clippy::too_many_arguments)]
+fn burn_streams(
+    z: &mut [f64],
+    layer: &Layer,
+    rows: usize,
+    cols: usize,
+    x_min: f64,
+    y_max: f64,
+    cell_size: f64,
+    burn: f64,
+) -> usize {
+    let mut burned = vec![false; z.len()];
+    let mut count = 0;
+    let mut mark = |x: f64, y: f64| {
+        if !x.is_finite()
+            || !y.is_finite()
+            || x < 0.0
+            || y < 0.0
+            || x > cols as f64
+            || y > rows as f64
+        {
+            return;
+        }
+        let c = (x.floor() as usize).min(cols - 1);
+        let r = (y.floor() as usize).min(rows - 1);
+        let i = r * cols + c;
+        if !burned[i] {
+            z[i] -= burn;
+            burned[i] = true;
+            count += 1;
+        }
+    };
+    let grid_point = |c: &Coord| ((c.x - x_min) / cell_size, (y_max - c.y) / cell_size);
+    for feature in layer.iter() {
+        let Some(geom) = feature.geometry.as_ref() else {
+            continue;
+        };
+        let mut burn_line = |coords: &[Coord]| {
+            for segment in coords.windows(2) {
+                let Some((a, b)) = clip_stream_segment(
+                    grid_point(&segment[0]),
+                    grid_point(&segment[1]),
+                    rows,
+                    cols,
+                ) else {
+                    continue;
+                };
+                let dx = b.0 - a.0;
+                let dy = b.1 - a.1;
+                let steps = ((2.0 * dx.hypot(dy)).ceil() as usize).max(1);
+                for k in 0..=steps {
+                    let t = k as f64 / steps as f64;
+                    mark(a.0 + t * dx, a.1 + t * dy);
+                }
+            }
+        };
+        match geom {
+            Geometry::LineString(coords) => burn_line(coords),
+            Geometry::MultiLineString(lines) => {
+                for coords in lines {
+                    burn_line(coords);
+                }
+            }
+            Geometry::Point(c) => {
+                let (x, y) = grid_point(c);
+                mark(x, y);
+            }
+            Geometry::MultiPoint(coords) => {
+                for c in coords {
+                    let (x, y) = grid_point(c);
+                    mark(x, y);
+                }
+            }
+            _ => {}
+        }
+    }
+    count
 }
 
 // ── Field resolution ─────────────────────────────────────────────────────────
@@ -1064,6 +1182,67 @@ mod tests {
             strict_sinks, 0,
             "no interior sink should remain after enforcement"
         );
+    }
+
+    #[test]
+    fn stream_burn_depth_is_independent_of_sample_density() {
+        let points = point_layer(&[
+            (0.0, 0.0, 100.0),
+            (100.0, 0.0, 100.0),
+            (0.0, 100.0, 100.0),
+            (100.0, 100.0, 100.0),
+        ]);
+        let stream = contour_layer(&[(0.0, vec![(-10.0, 50.0), (50.0, 50.0), (110.0, 50.0)])]);
+        let (_, raster) = run(json!({
+            "points": points, "streams": stream,
+            "cell_size": 10.0, "stream_burn": 1.0,
+        }));
+        let row = ((raster.y_max() - 50.0) / raster.cell_size_y).floor() as isize;
+        for c in 0..raster.cols {
+            let actual = raster.get(0, row, c as isize);
+            assert!(
+                (actual - 99.0).abs() < 1e-6,
+                "stream depth at column {c}: {actual}"
+            );
+            assert!((raster.get(0, row - 1, c as isize) - 100.0).abs() < 1e-6);
+        }
+    }
+
+    /// Long stream portions outside the DEM must neither allocate samples
+    /// nor change the burn inside the DEM. Include disjoint and multipart lines.
+    #[test]
+    fn clips_long_streams_before_sampling() {
+        let mut layer = Layer::new("streams");
+        layer
+            .add_feature(
+                Some(Geometry::MultiLineString(vec![
+                    vec![Coord::xy(-1e12, 50.0), Coord::xy(1e12, 50.0)],
+                    vec![Coord::xy(-1e12, -1e12), Coord::xy(1e12, -1e12)],
+                    vec![Coord::xy(50.0, -1e12), Coord::xy(50.0, 1e12)],
+                ])),
+                &[],
+            )
+            .unwrap();
+        let mut z = vec![100.0; 12 * 12];
+        let count = burn_streams(&mut z, &layer, 12, 12, -10.0, 110.0, 10.0, 1.0);
+        assert_eq!(count, 23, "two crossing channels share one cell");
+        for r in 0..12 {
+            for c in 0..12 {
+                let expected = if r == 6 || c == 6 { 99.0 } else { 100.0 };
+                assert_eq!(z[r * 12 + c], expected, "cell ({r}, {c})");
+            }
+        }
+    }
+
+    #[test]
+    fn reports_soft_constraint_usage() {
+        let (out, _) = run(json!({
+            "points": point_layer(&[(0.0, 0.0, 100.0), (100.0, 100.0, 100.0)]),
+            "cell_size": 10.0,
+        }));
+        assert_eq!(out.outputs["fixed_cells"], json!(0));
+        assert_eq!(out.outputs["samples_used"], json!(2));
+        assert_eq!(out.outputs["constrained_cells"], json!(8));
     }
 
     #[test]

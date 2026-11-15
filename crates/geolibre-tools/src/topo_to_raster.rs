@@ -8,6 +8,7 @@
 //! ## Method (single-resolution finite-difference relaxation)
 //! 1. Sample contour segments at half-cell spacing, weighted by represented
 //!    line length, and retain spot-height points at their true coordinates.
+//!    Spot heights receive ten times the weight of a cell-length of contour.
 //!    Each observation adds a soft least-squares constraint on the bilinear
 //!    surface formed by the four surrounding cell centres. No crossed cell is
 //!    fixed at the contour's elevation.
@@ -61,7 +62,7 @@ impl Tool for TopoToRasterTool {
                 },
                 ToolParamSpec {
                     name: "points",
-                    description: "Input spot-height point vector layer (elevation read from elevation_field).",
+                    description: "Input spot-height point vector layer (elevation read from elevation_field). Points are soft observations fitted at their true positions, not exact elevation pins.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -81,7 +82,7 @@ impl Tool for TopoToRasterTool {
                 },
                 ToolParamSpec {
                     name: "cell_size",
-                    description: "Output cell size in CRS units. Default: sized so the longer grid axis is ~400 cells.",
+                    description: "Output cell size in CRS units. Default: sized so the longer grid axis is ~400 cells. Grids are limited to 10 million cells to bound surface-fitting memory.",
                     required: false,
                 },
                 ToolParamSpec {
@@ -210,9 +211,11 @@ impl Tool for TopoToRasterTool {
         let cols = (((max_x + margin - x_min) / cell_size).ceil() as usize).max(2);
         let rows = (((max_y + margin - y_min) / cell_size).ceil() as usize).max(2);
 
-        if rows.saturating_mul(cols) > 40_000_000 {
+        // The six f64 normal-equation terms plus the surface use 56 bytes
+        // per cell. Keep that core allocation below ~560 MB for WASM hosts.
+        if rows.saturating_mul(cols) > 10_000_000 {
             return Err(ToolError::Validation(format!(
-                "requested grid is {rows}x{cols} cells (> 40M); increase cell_size"
+                "requested grid is {rows}x{cols} cells (> 10M); increase cell_size"
             )));
         }
         let y_max = y_min + rows as f64 * cell_size;
@@ -259,6 +262,10 @@ impl Tool for TopoToRasterTool {
         ctx.progress.info(&format!(
             "relaxation stopped after {iters_run} iteration(s), max change {final_delta:.4}"
         ));
+
+        // The matrix is no longer needed; do not retain it alongside the
+        // priority-flood and raster output buffers.
+        drop(data);
 
         // ── Optional stream burn + drainage enforcement ─────────────────────
         let mut sinks_removed = 0usize;
@@ -581,7 +588,7 @@ fn collect_point_samples(geom: &Geometry, z: f64, out: &mut Vec<Sample>) {
             x: c.x,
             y: c.y,
             z,
-            weight: 1.0,
+            weight: 10.0,
         }),
         Geometry::MultiPoint(cs) => {
             for c in cs {
@@ -592,7 +599,7 @@ fn collect_point_samples(geom: &Geometry, z: f64, out: &mut Vec<Sample>) {
                     x: c.x,
                     y: c.y,
                     z,
-                    weight: 1.0,
+                    weight: 10.0,
                 });
             }
         }
@@ -1129,6 +1136,23 @@ mod tests {
         let corner = raster.get(0, 1, 1);
         assert!(center < corner, "bowl centre {center} below rim {corner}");
         assert!(center >= -1.0, "centre should not undershoot far below 0");
+        // Check the bilinear elevation at each observation's actual position,
+        // rather than expecting a containing cell to equal a spot height.
+        // This fixture's soft-fit residual must stay below 1% of its relief.
+        for (x, y, height) in pts {
+            let gx = (x - raster.x_min) / raster.cell_size_x - 0.5;
+            let gy = (raster.y_max() - y) / raster.cell_size_y - 0.5;
+            let c = gx.floor() as isize;
+            let r = gy.floor() as isize;
+            let dx = gx - c as f64;
+            let dy = gy - r as f64;
+            let fitted = (1.0 - dx) * (1.0 - dy) * raster.get(0, r, c)
+                + dx * (1.0 - dy) * raster.get(0, r, c + 1)
+                + (1.0 - dx) * dy * raster.get(0, r + 1, c)
+                + dx * dy * raster.get(0, r + 1, c + 1);
+            let residual = (fitted - height).abs();
+            assert!(residual < 1.0, "point ({x}, {y}) residual: {residual}");
+        }
     }
 
     /// Drainage enforcement removes an interior sink: after enforcement no
@@ -1250,6 +1274,20 @@ mod tests {
         let args: ToolArgs = serde_json::from_value(json!({ "cell_size": 5.0 })).unwrap();
         assert!(TopoToRasterTool.validate(&args).is_err());
         assert!(TopoToRasterTool.run(&args, &ctx()).is_err());
+    }
+
+    #[test]
+    fn rejects_grids_exceeding_surface_memory_budget() {
+        let args: ToolArgs = serde_json::from_value(json!({
+            "points": point_layer(&[(0.0, 0.0, 0.0), (4000.0, 4000.0, 100.0)]),
+            "cell_size": 1.0,
+        }))
+        .unwrap();
+        let err = match TopoToRasterTool.run(&args, &ctx()) {
+            Err(err) => err,
+            Ok(_) => panic!("an oversized surface should be rejected before allocation"),
+        };
+        assert!(err.to_string().contains("> 10M"), "{err}");
     }
 
     #[test]

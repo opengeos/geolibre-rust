@@ -57,7 +57,7 @@ exif = { package = "kamadak-exif", version = "0.6.1" }
 # Pure-Rust Excel/OpenDocument spreadsheet reader (no C deps; xlsx/xls/xlsb/ods),
 # used by excel_to_table. Reads through std::fs, so it works on the WASI /work
 # filesystem like the other file-reading tools (gtfs_to_features, etc.).
-calamine = "0.36"
+calamine = "0.38"
 # 1-D/2-D nearest-neighbour search (propensity-score caliper matching and
 # spatial-confounder neighbour averaging in causal_inference_analysis).
 # 0.8.1 moved `criterion` (which pulls wasm/WASI-incompatible rayon) to

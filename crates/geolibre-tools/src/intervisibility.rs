@@ -111,10 +111,8 @@ impl Tool for IntervisibilityTool {
         // Load every obstruction layer into one flat list, tagged by source so
         // BLOCKED_BY identifies the feature rather than just "something".
         let mut blockers: Vec<(usize, Solid)> = Vec::new();
-        for (li, path) in obstruction_spec
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
+        for (li, path) in crate::common::split_path_list(obstruction_spec)
+            .iter()
             .enumerate()
         {
             let layer = load_input_layer(path)?;

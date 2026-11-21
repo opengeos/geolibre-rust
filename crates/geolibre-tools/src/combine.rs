@@ -215,7 +215,8 @@ struct Combo {
     count: u64,
 }
 
-/// Parses the comma-separated `inputs` list into trimmed, non-empty paths.
+/// Parses the comma- or semicolon-separated `inputs` list into trimmed,
+/// non-empty paths.
 fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
     let list = args
         .get("inputs")
@@ -225,12 +226,7 @@ fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
         .ok_or_else(|| {
             ToolError::Validation("missing required string parameter 'inputs'".to_string())
         })?;
-    Ok(list
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect())
+    Ok(crate::common::split_path_list(list))
 }
 
 /// 1-based `band` param -> 0-based index (default band 1). Rejects non-positive

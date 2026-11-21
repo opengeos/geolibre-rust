@@ -665,11 +665,7 @@ struct Params {
 
 fn parse_params(args: &ToolArgs) -> Result<Params, ToolError> {
     let raw = require_str(args, "explanatory")?;
-    let explanatory: Vec<String> = raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let explanatory = crate::common::split_path_list(raw);
     if explanatory.is_empty() {
         return Err(ToolError::Validation(
             "'explanatory' must list at least one raster path".into(),

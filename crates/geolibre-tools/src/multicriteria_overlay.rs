@@ -367,11 +367,8 @@ fn topsis(norm: &[f64], w: &[f64], ideal_pos: &[f64], ideal_neg: &[f64]) -> f64 
 
 // ── Parameters ──────────────────────────────────────────────────────────────────
 
-fn split_paths(list: &str) -> Vec<&str> {
-    list.split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect()
+fn split_paths(list: &str) -> Vec<String> {
+    crate::common::split_path_list(list)
 }
 
 fn parse_method(args: &ToolArgs) -> Result<Method, ToolError> {

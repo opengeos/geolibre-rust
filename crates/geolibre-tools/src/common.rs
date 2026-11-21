@@ -163,7 +163,9 @@ pub fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
 /// Hosts join a multiple-input parameter differently: RustGIS joins the files
 /// of an `input_multiple` parameter with `;`, while command-line callers often
 /// use `,`. Every tool that reads a list of paths goes through this helper, so
-/// both work everywhere.
+/// both work everywhere. Both characters are therefore reserved: a path that
+/// contains `,` or `;` cannot be passed inside a list (a comma already could
+/// not be before this helper).
 pub fn split_path_list(list: &str) -> Vec<String> {
     list.split([',', ';'])
         .map(str::trim)

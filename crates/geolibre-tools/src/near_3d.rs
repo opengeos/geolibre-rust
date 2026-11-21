@@ -106,12 +106,7 @@ impl Tool for Near3dTool {
 
         // Near layers: explicit list, or the input itself (self-join).
         let near_paths: Vec<String> = match parse_optional_str(args, "near_features")? {
-            Some(s) => s
-                .split(',')
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-                .map(String::from)
-                .collect(),
+            Some(s) => crate::common::split_path_list(s),
             None => Vec::new(),
         };
         let self_join = near_paths.is_empty();

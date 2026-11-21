@@ -311,12 +311,7 @@ fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
         .get("input")
         .and_then(Value::as_str)
         .ok_or_else(|| ToolError::Validation("missing required parameter 'input'".to_string()))?;
-    let paths: Vec<String> = s
-        .split(',')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(String::from)
-        .collect();
+    let paths = crate::common::split_path_list(s);
     if paths.is_empty() {
         return Err(ToolError::Validation("'input' is empty".to_string()));
     }

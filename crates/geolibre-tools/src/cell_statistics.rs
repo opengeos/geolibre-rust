@@ -305,12 +305,7 @@ fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
         .get("inputs")
         .and_then(Value::as_str)
         .ok_or_else(|| ToolError::Validation("missing required parameter 'inputs'".to_string()))?;
-    let paths: Vec<String> = s
-        .split(',')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(String::from)
-        .collect();
+    let paths = crate::common::split_path_list(s);
     if paths.is_empty() {
         return Err(ToolError::Validation("'inputs' is empty".to_string()));
     }
@@ -491,6 +486,25 @@ mod tests {
             run(json!({ "inputs": path, "statistic": "percentile", "percentile_value": 25 }))
                 .get(0, 0, 0),
             20.0
+        );
+    }
+
+    /// A list of separate rasters may be joined with `;` (as RustGIS joins an
+    /// `input_multiple` parameter) or `,`; every raster is one layer.
+    #[test]
+    fn semicolon_and_comma_lists() {
+        let a = multiband(1, 1, 1, vec![vec![10.0]]);
+        let b = multiband(1, 1, 1, vec![vec![30.0]]);
+        let c = multiband(1, 1, 1, vec![vec![20.0]]);
+        let semi = format!("{a};{b};{c}");
+        assert_eq!(
+            run(json!({ "inputs": semi, "statistic": "median" })).get(0, 0, 0),
+            20.0
+        );
+        let mixed = format!(" {a} ; {b},{c}; ");
+        assert_eq!(
+            run(json!({ "inputs": mixed, "statistic": "maximum" })).get(0, 0, 0),
+            30.0
         );
     }
 

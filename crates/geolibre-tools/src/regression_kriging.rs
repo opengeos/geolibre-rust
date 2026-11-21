@@ -492,12 +492,7 @@ fn as_f64(v: &wbvector::FieldValue) -> Option<f64> {
 
 fn parse_list(args: &ToolArgs, key: &str) -> Result<Vec<String>, ToolError> {
     match args.get(key) {
-        Some(Value::String(s)) => Ok(s
-            .split([',', ';'])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .map(str::to_string)
-            .collect()),
+        Some(Value::String(s)) => Ok(crate::common::split_path_list(s)),
         Some(Value::Array(items)) => items
             .iter()
             .map(|v| {

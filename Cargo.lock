@@ -441,9 +441,9 @@ checksum = "8f1fe948ff07f4bd06c30984e69f5b4899c516a3ef74f34df92a2df2ab535495"
 
 [[package]]
 name = "bytes"
-version = "1.12.1"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
 name = "calamine"
@@ -459,7 +459,7 @@ dependencies = [
  "log",
  "quick-xml",
  "serde",
- "zip 9.5.1",
+ "zip 9.7.2",
 ]
 
 [[package]]
@@ -1076,7 +1076,7 @@ dependencies = [
  "wblidar",
  "wbraster",
  "wbvector",
- "zip 9.5.1",
+ "zip 9.7.2",
 ]
 
 [[package]]
@@ -2857,7 +2857,7 @@ version = "0.102.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ca3d0e879a578c1313c2800ab0c6c029d38eed18098675e50341a30d32372ed"
 dependencies = [
- "zip 9.5.1",
+ "zip 9.7.2",
 ]
 
 [[package]]
@@ -4320,9 +4320,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.5.1"
+version = "9.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3476fd497ac8af5b1ec7b51acab7bef380f7e8dd8e0487595bafd839417a302"
+checksum = "18d355ef4ea6fc9eaad04cae82d07c1329f643a5f94d10f35fc55b265f577829"
 dependencies = [
  "constant_time_eq",
  "crc32fast",

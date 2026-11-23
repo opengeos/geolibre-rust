@@ -923,8 +923,19 @@ mod tests {
         let band0: Vec<f64> = u16s.iter().step_by(2).map(|v| *v as f64).collect();
         assert_eq!(reader.read_band_f64(0).unwrap(), band0);
 
-        let i16s: Vec<i16> = (0..16 * 16 * 2).map(|i| i as i16 * -50).collect();
-        let reader = GeoTiffReader::new(&builder.write_i16(&i16s).unwrap()).unwrap();
-        assert_eq!((reader.sample_format().as_str(), reader.bits_per_sample()), ("int", 16));
+        fn check(bytes: Vec<u8>, format: &str, bits: u16, band0: Vec<f64>) {
+            let reader = GeoTiffReader::new(&bytes).unwrap();
+            assert_eq!((reader.sample_format().as_str(), reader.bits_per_sample()), (format, bits));
+            assert_eq!(reader.read_band_f64(0).unwrap(), band0);
+        }
+        let n = 16 * 16 * 2;
+        let i8s: Vec<i8> = (0..n).map(|i| (i % 256) as u8 as i8).collect();
+        check(builder.write_i8(&i8s).unwrap(), "int", 8, i8s.iter().step_by(2).map(|v| *v as f64).collect());
+        let i16s: Vec<i16> = (0..n).map(|i| i as i16 * -50).collect();
+        check(builder.write_i16(&i16s).unwrap(), "int", 16, i16s.iter().step_by(2).map(|v| *v as f64).collect());
+        let u32s: Vec<u32> = (0..n).map(|i| 4_000_000_000 + i as u32 * 1_000).collect();
+        check(builder.write_u32(&u32s).unwrap(), "uint", 32, u32s.iter().step_by(2).map(|v| *v as f64).collect());
+        let i32s: Vec<i32> = (0..n).map(|i| -2_000_000_000 + i as i32 * 1_000).collect();
+        check(builder.write_i32(&i32s).unwrap(), "int", 32, i32s.iter().step_by(2).map(|v| *v as f64).collect());
     }
 }

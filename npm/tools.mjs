@@ -993,27 +993,33 @@ function writeTypedCog({ data, width, height, bands, sampleFormat, bitsPerSample
   const integer = INTEGER_COG_WRITERS[`${sampleFormat}/${bitsPerSample}`];
   if (integer) {
     const { Array: Typed, min, max, write } = integer;
-    const clamp = (v) => Math.max(min, Math.min(max, Math.round(v)));
-    const out = new Typed(data.length);
-    const fill = nodata == null ? 0 : clamp(nodata);
-    for (let i = 0; i < data.length; i++) {
-      const v = data[i];
-      out[i] = Number.isFinite(v) ? clamp(v) : fill;
+    if (nodata == null || (Number.isInteger(nodata) && nodata >= min && nodata <= max)) {
+      const clamp = (v) => Math.max(min, Math.min(max, Math.round(v)));
+      const out = new Typed(data.length);
+      const fill = nodata ?? 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = data[i];
+        out[i] = Number.isFinite(v) ? clamp(v) : fill;
+      }
+      const bytes = builder[write](out);
+      return bitsPerSample === 8 && sampleFormat === "uint" && bands === 1 && palette
+        ? patchTiffPalette(bytes, palette)
+        : bytes;
     }
-    const bytes = builder[write](out);
-    return bitsPerSample === 8 && sampleFormat === "uint" && bands === 1 && palette
-      ? patchTiffPalette(bytes, palette)
-      : bytes;
+    // The requested nodata (e.g. -9999 on uint16) does not fit the integer
+    // type, so widen to a float type that holds every source value exactly
+    // and store nodata as given, keeping pixels and metadata in agreement.
+    const out = (bitsPerSample <= 16 ? Float32Array : Float64Array).from(data, (v) =>
+      Number.isFinite(v) ? v : nodata,
+    );
+    return bitsPerSample <= 16 ? builder.write_f32(out) : builder.write_f64(out);
   }
   if (sampleFormat === "ieeefloat" && bitsPerSample === 32) {
     return builder.write_f32(Float32Array.from(data));
   }
-  if (sampleFormat === "ieeefloat" && bitsPerSample === 64) {
-    return builder.write_f64(data);
-  }
-  // Any other type (e.g. 64-bit integers) is written as float64 rather than
-  // failing, so the extract still succeeds.
-  return builder.write_f64(data);
+  // float64 and any other type (e.g. 64-bit integers) are written as float64,
+  // so the extract still succeeds.
+  return builder.write_f64(data instanceof Float64Array ? data : Float64Array.from(data));
 }
 
 function windowFromBbox(gt, baseLevel, level, bbox) {

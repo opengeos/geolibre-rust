@@ -171,7 +171,10 @@ result. Outputs are Deflate-compressed by default. `nodata` overrides the output
 nodata metadata and is used to fill pixels introduced during reprojection.
 The subset writer preserves the source sample type for 8-, 16-, and 32-bit
 integers (signed and unsigned), `float32`, and `float64`, so 16-bit imagery such
-as Landsat and Sentinel-2 stays 16-bit; any other type is written as `float64`.
+as Landsat and Sentinel-2 stays 16-bit. If `nodata` does not fit an integer
+source type (e.g. `-9999` on `uint16`), the output is widened to `float32` (or
+`float64` for 32-bit integers) so the nodata value is stored as given. Any other
+type is written as `float64`.
 Palette-indexed `uint8` rasters retain their source ColorMap.
 
 ## API

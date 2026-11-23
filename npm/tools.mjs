@@ -973,21 +973,37 @@ function readGeotiffInterleaved(reader) {
   return out;
 }
 
+// Integer sample types the COG writer can preserve, keyed "format/bits":
+// the typed array to fill, its value range, and the CogBuilder method.
+const INTEGER_COG_WRITERS = {
+  "uint/8": { Array: Uint8Array, min: 0, max: 255, write: "write_u8" },
+  "int/8": { Array: Int8Array, min: -128, max: 127, write: "write_i8" },
+  "uint/16": { Array: Uint16Array, min: 0, max: 65535, write: "write_u16" },
+  "int/16": { Array: Int16Array, min: -32768, max: 32767, write: "write_i16" },
+  "uint/32": { Array: Uint32Array, min: 0, max: 4294967295, write: "write_u32" },
+  "int/32": { Array: Int32Array, min: -2147483648, max: 2147483647, write: "write_i32" },
+};
+
 function writeTypedCog({ data, width, height, bands, sampleFormat, bitsPerSample, geoTransform, epsg, nodata, palette }) {
   const builder = new CogBuilder(width, height, bands);
   builder.set_geo_transform(geoTransform);
   builder.set_compression("deflate");
   if (epsg != null) builder.set_epsg(epsg);
   if (nodata != null) builder.set_nodata(nodata);
-  if (sampleFormat === "uint" && bitsPerSample === 8) {
-    const u8 = new Uint8Array(data.length);
-    const fill = nodata == null ? 0 : Math.max(0, Math.min(255, Math.round(nodata)));
+  const integer = INTEGER_COG_WRITERS[`${sampleFormat}/${bitsPerSample}`];
+  if (integer) {
+    const { Array: Typed, min, max, write } = integer;
+    const clamp = (v) => Math.max(min, Math.min(max, Math.round(v)));
+    const out = new Typed(data.length);
+    const fill = nodata == null ? 0 : clamp(nodata);
     for (let i = 0; i < data.length; i++) {
       const v = data[i];
-      u8[i] = Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v))) : fill;
+      out[i] = Number.isFinite(v) ? clamp(v) : fill;
     }
-    const bytes = builder.write_u8(u8);
-    return bands === 1 && palette ? patchTiffPalette(bytes, palette) : bytes;
+    const bytes = builder[write](out);
+    return bitsPerSample === 8 && sampleFormat === "uint" && bands === 1 && palette
+      ? patchTiffPalette(bytes, palette)
+      : bytes;
   }
   if (sampleFormat === "ieeefloat" && bitsPerSample === 32) {
     return builder.write_f32(Float32Array.from(data));
@@ -995,7 +1011,9 @@ function writeTypedCog({ data, width, height, bands, sampleFormat, bitsPerSample
   if (sampleFormat === "ieeefloat" && bitsPerSample === 64) {
     return builder.write_f64(data);
   }
-  throw new Error(`preserving source sample type is not yet supported for ${sampleFormat}/${bitsPerSample}-bit rasters`);
+  // Any other type (e.g. 64-bit integers) is written as float64 rather than
+  // failing, so the extract still succeeds.
+  return builder.write_f64(data);
 }
 
 function windowFromBbox(gt, baseLevel, level, bbox) {

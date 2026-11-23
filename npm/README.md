@@ -169,9 +169,10 @@ user-defined projection strings that cannot be written as EPSG metadata, such as
 the NLCD sample, default to `bbox_crs` output so GIS viewers can place the
 result. Outputs are Deflate-compressed by default. `nodata` overrides the output
 nodata metadata and is used to fill pixels introduced during reprojection.
-The subset writer preserves the source sample type for supported COG types
-(`uint8`, `float32`, and `float64`); palette-indexed `uint8` rasters retain
-their source ColorMap.
+The subset writer preserves the source sample type for 8-, 16-, and 32-bit
+integers (signed and unsigned), `float32`, and `float64`, so 16-bit imagery such
+as Landsat and Sentinel-2 stays 16-bit; any other type is written as `float64`.
+Palette-indexed `uint8` rasters retain their source ColorMap.
 
 ## API
 

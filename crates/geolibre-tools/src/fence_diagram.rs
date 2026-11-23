@@ -97,7 +97,12 @@ impl Tool for FenceDiagramTool {
     fn validate(&self, args: &ToolArgs) -> Result<(), ToolError> {
         req_str(args, "input")?;
         let surfaces = req_str(args, "surfaces")?;
-        let n = surfaces.split(',').filter(|s| !s.trim().is_empty()).count();
+        let n = crate::common::split_path_list(surfaces).len();
+        if n == 0 {
+            return Err(ToolError::Validation(
+                "'surfaces' lists no raster".to_string(),
+            ));
+        }
         let bounds = [
             opt_f64(args, "floor_height")?.is_some(),
             opt_f64(args, "ceiling_height")?.is_some(),
@@ -126,11 +131,12 @@ impl Tool for FenceDiagramTool {
         let ceiling = opt_f64(args, "ceiling_height")?;
         let floor = opt_f64(args, "floor_height")?;
 
-        let paths: Vec<&str> = req_str(args, "surfaces")?
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
+        let paths = crate::common::split_path_list(req_str(args, "surfaces")?);
+        if paths.is_empty() {
+            return Err(ToolError::Validation(
+                "'surfaces' lists no raster".to_string(),
+            ));
+        }
         let rasters: Vec<Raster> = paths
             .iter()
             .map(|p| load_input_raster(p))
@@ -564,5 +570,13 @@ mod tests {
         assert!(bad(
             json!({"input": t, "surfaces": format!("{s},{s}"), "sample_distance": 0})
         ));
+        // Separators alone list no surface, even with both constant bounds.
+        let empty = json!({
+            "input": t, "surfaces": ";", "floor_height": 0.0, "ceiling_height": 10.0,
+            "sample_distance": 5.0
+        });
+        assert!(bad(empty.clone()));
+        let args: ToolArgs = serde_json::from_value(empty).unwrap();
+        assert!(FenceDiagramTool.run(&args, &ctx()).is_err());
     }
 }

@@ -91,18 +91,13 @@ impl Stack {
     }
 }
 
-/// Splits a comma-separated `inputs` parameter into paths.
+/// Splits a comma- or semicolon-separated `inputs` parameter into paths.
 pub(crate) fn parse_input_paths(args: &ToolArgs, key: &str) -> Result<Vec<String>, ToolError> {
     let s = args
         .get(key)
         .and_then(Value::as_str)
         .ok_or_else(|| ToolError::Validation(format!("missing required parameter '{key}'")))?;
-    let paths: Vec<String> = s
-        .split(',')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(String::from)
-        .collect();
+    let paths = crate::common::split_path_list(s);
     if paths.is_empty() {
         return Err(ToolError::Validation(format!("'{key}' is empty")));
     }

@@ -385,11 +385,7 @@ fn key_of(v: Option<&FieldValue>) -> String {
 }
 
 fn split_list(s: &str) -> Vec<String> {
-    s.split([',', ';'])
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(str::to_string)
-        .collect()
+    crate::common::split_path_list(s)
 }
 
 fn parse_optional_f64(args: &ToolArgs, key: &str) -> Result<Option<f64>, ToolError> {

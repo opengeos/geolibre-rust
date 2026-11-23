@@ -262,11 +262,7 @@ impl FuzzyOverlayTool {
             ));
         }
 
-        let paths: Vec<&str> = list
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
+        let paths = crate::common::split_path_list(list);
         if paths.len() < 2 {
             return Err(ToolError::Validation(
                 "overlay mode needs at least 2 rasters in 'inputs'".to_string(),

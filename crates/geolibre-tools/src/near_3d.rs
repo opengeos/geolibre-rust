@@ -91,6 +91,7 @@ impl Tool for Near3dTool {
         for k in ["location", "angle", "delta"] {
             parse_optional_bool(args, k)?;
         }
+        parse_near_paths(args)?;
         Ok(())
     }
 
@@ -105,15 +106,7 @@ impl Tool for Near3dTool {
         let layer = load_input_layer(input)?;
 
         // Near layers: explicit list, or the input itself (self-join).
-        let near_paths: Vec<String> = match parse_optional_str(args, "near_features")? {
-            Some(s) => s
-                .split(',')
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-                .map(String::from)
-                .collect(),
-            None => Vec::new(),
-        };
+        let near_paths = parse_near_paths(args)?;
         let self_join = near_paths.is_empty();
 
         // Flatten every near feature into segments, tagged with (layer, feature).
@@ -480,6 +473,24 @@ fn point_seg_dist2(p: P3, a: P3, b: P3) -> (f64, P3) {
 
 // ── parameter parsing ────────────────────────────────────────────────────────
 
+/// Near layers: the explicit `near_features` list, or empty (self-join) when
+/// the parameter is omitted or blank. A non-blank value that lists no path
+/// (separators only) is an error, not a silent self-join.
+fn parse_near_paths(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
+    match parse_optional_str(args, "near_features")? {
+        Some(s) => {
+            let paths = crate::common::split_path_list(s);
+            if paths.is_empty() {
+                return Err(ToolError::Validation(
+                    "'near_features' lists no layer".to_string(),
+                ));
+            }
+            Ok(paths)
+        }
+        None => Ok(Vec::new()),
+    }
+}
+
 fn require_str<'a>(args: &'a ToolArgs, key: &str) -> Result<&'a str, ToolError> {
     match args.get(key).and_then(Value::as_str) {
         Some(s) if !s.trim().is_empty() => Ok(s),
@@ -572,6 +583,27 @@ mod tests {
     fn num(layer: &Layer, row: usize, field: &str) -> f64 {
         let i = layer.schema.field_index(field).unwrap();
         layer.features[row].attributes[i].as_f64().unwrap()
+    }
+
+    /// Separators alone are an error; omitting the list (or leaving it blank)
+    /// still self-joins.
+    #[test]
+    fn near_features_of_separators_only_is_rejected() {
+        let input = points(vec![(0.0, 0.0, 0.0), (0.0, 0.0, 5.0)]);
+        for near in [";;", " ; , "] {
+            let args: ToolArgs =
+                serde_json::from_value(json!({ "input": input, "near_features": near })).unwrap();
+            assert!(
+                Near3dTool.validate(&args).is_err(),
+                "validate accepted {near:?}"
+            );
+            assert!(
+                Near3dTool.run(&args, &ctx()).is_err(),
+                "run accepted {near:?}"
+            );
+        }
+        let (_, layer) = run(json!({ "input": input, "near_features": " " }));
+        assert!((num(&layer, 0, "near_dist") - 5.0).abs() < 1e-9);
     }
 
     /// THE regression: features coincident in plan view but separated in Z must

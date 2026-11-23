@@ -156,3 +156,39 @@ pub fn write_bytes(path: &str, bytes: &[u8]) -> Result<(), ToolError> {
     std::fs::write(path, bytes)
         .map_err(|e| ToolError::Execution(format!("failed writing output file: {e}")))
 }
+
+/// Splits a list of input paths or layer names on `,` and `;`, trims each piece
+/// and drops empty ones.
+///
+/// Hosts join a multiple-input parameter differently: RustGIS joins the files
+/// of an `input_multiple` parameter with `;`, while command-line callers often
+/// use `,`. Every tool that reads a list of paths goes through this helper, so
+/// both work everywhere. Both characters are therefore reserved: a path that
+/// contains `,` or `;` cannot be passed inside a list (a comma already could
+/// not be before this helper).
+pub fn split_path_list(list: &str) -> Vec<String> {
+    list.split([',', ';'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_path_list;
+
+    #[test]
+    fn split_path_list_accepts_commas_and_semicolons() {
+        assert_eq!(
+            split_path_list(r"C:\data\a.tif;C:\data\b.tif"),
+            vec![r"C:\data\a.tif", r"C:\data\b.tif"]
+        );
+        assert_eq!(
+            split_path_list(" a.tif , b.tif ;c.tif"),
+            vec!["a.tif", "b.tif", "c.tif"]
+        );
+        assert_eq!(split_path_list("a.tif;;, ;"), vec!["a.tif"]);
+        assert!(split_path_list(" ; , ").is_empty());
+    }
+}

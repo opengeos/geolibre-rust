@@ -256,12 +256,7 @@ fn close(a: f64, b: f64, tol: f64) -> bool {
 
 fn parse_inputs(args: &ToolArgs) -> Result<Vec<String>, ToolError> {
     match args.get("inputs") {
-        Some(Value::String(s)) => Ok(s
-            .split([',', ';'])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .map(str::to_string)
-            .collect()),
+        Some(Value::String(s)) => Ok(crate::common::split_path_list(s)),
         Some(Value::Array(items)) => items
             .iter()
             .map(|v| {

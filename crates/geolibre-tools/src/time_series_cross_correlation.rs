@@ -275,18 +275,14 @@ struct Stack {
 
 impl Stack {
     fn load(spec: &str, band_1based: usize) -> Result<Stack, ToolError> {
-        let paths: Vec<&str> = spec
-            .split(',')
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
+        let paths = crate::common::split_path_list(spec);
         if paths.is_empty() {
             return Err(ToolError::Validation("empty stack specification".into()));
         }
         let band = (band_1based.max(1) - 1) as isize;
 
         if paths.len() == 1 {
-            let ras = load_input_raster(paths[0])?;
+            let ras = load_input_raster(&paths[0])?;
             if ras.bands >= 2 {
                 // Multiband stack: each band is a time step.
                 let (rows, cols, n) = (ras.rows, ras.cols, ras.bands);

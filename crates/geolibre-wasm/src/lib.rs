@@ -649,6 +649,31 @@ impl CogBuilder {
         self.check_len(data.len())?;
         self.build().write_u8_to_vec(data).map_err(jerr("write"))
     }
+    /// Encode `i8` pixel data (`Int8Array`) to a COG. `Uint8Array`.
+    pub fn write_i8(&self, data: &[i8]) -> Result<Vec<u8>, JsValue> {
+        self.check_len(data.len())?;
+        self.build().write_i8_to_vec(data).map_err(jerr("write"))
+    }
+    /// Encode `u16` pixel data (`Uint16Array`) to a COG. `Uint8Array`.
+    pub fn write_u16(&self, data: &[u16]) -> Result<Vec<u8>, JsValue> {
+        self.check_len(data.len())?;
+        self.build().write_u16_to_vec(data).map_err(jerr("write"))
+    }
+    /// Encode `i16` pixel data (`Int16Array`) to a COG. `Uint8Array`.
+    pub fn write_i16(&self, data: &[i16]) -> Result<Vec<u8>, JsValue> {
+        self.check_len(data.len())?;
+        self.build().write_i16_to_vec(data).map_err(jerr("write"))
+    }
+    /// Encode `u32` pixel data (`Uint32Array`) to a COG. `Uint8Array`.
+    pub fn write_u32(&self, data: &[u32]) -> Result<Vec<u8>, JsValue> {
+        self.check_len(data.len())?;
+        self.build().write_u32_to_vec(data).map_err(jerr("write"))
+    }
+    /// Encode `i32` pixel data (`Int32Array`) to a COG. `Uint8Array`.
+    pub fn write_i32(&self, data: &[i32]) -> Result<Vec<u8>, JsValue> {
+        self.check_len(data.len())?;
+        self.build().write_i32_to_vec(data).map_err(jerr("write"))
+    }
     /// Encode `f32` pixel data to a COG. `Uint8Array`.
     pub fn write_f32(&self, data: &[f32]) -> Result<Vec<u8>, JsValue> {
         self.check_len(data.len())?;
@@ -882,5 +907,35 @@ mod tests {
         let reader = GeoTiffReader::new(&builder.write_f32(&[1.0; 16 * 16]).unwrap()).unwrap();
         assert_eq!(reader.epsg(), Some(32735));
         assert_eq!(reader.proj_string(), None);
+    }
+
+    /// Integer imagery (e.g. 16-bit Landsat) keeps its sample type and values
+    /// through `CogBuilder`, so a subset is not widened to float.
+    #[test]
+    fn integer_writers_preserve_sample_type() {
+        let mut builder = CogBuilder::new(16, 16, 2);
+        builder.set_epsg(32617);
+        builder.set_origin(432_000.0, 4_605_000.0, 15.0);
+        builder.set_overview_levels(Vec::new());
+        let u16s: Vec<u16> = (0..16 * 16 * 2).map(|i| 7_000 + i as u16 * 97).collect();
+        let reader = GeoTiffReader::new(&builder.write_u16(&u16s).unwrap()).unwrap();
+        assert_eq!((reader.sample_format().as_str(), reader.bits_per_sample()), ("uint", 16));
+        let band0: Vec<f64> = u16s.iter().step_by(2).map(|v| *v as f64).collect();
+        assert_eq!(reader.read_band_f64(0).unwrap(), band0);
+
+        fn check(bytes: Vec<u8>, format: &str, bits: u16, band0: Vec<f64>) {
+            let reader = GeoTiffReader::new(&bytes).unwrap();
+            assert_eq!((reader.sample_format().as_str(), reader.bits_per_sample()), (format, bits));
+            assert_eq!(reader.read_band_f64(0).unwrap(), band0);
+        }
+        let n = 16 * 16 * 2;
+        let i8s: Vec<i8> = (0..n).map(|i| (i % 256) as u8 as i8).collect();
+        check(builder.write_i8(&i8s).unwrap(), "int", 8, i8s.iter().step_by(2).map(|v| *v as f64).collect());
+        let i16s: Vec<i16> = (0..n).map(|i| i as i16 * -50).collect();
+        check(builder.write_i16(&i16s).unwrap(), "int", 16, i16s.iter().step_by(2).map(|v| *v as f64).collect());
+        let u32s: Vec<u32> = (0..n).map(|i| 4_000_000_000 + i as u32 * 1_000).collect();
+        check(builder.write_u32(&u32s).unwrap(), "uint", 32, u32s.iter().step_by(2).map(|v| *v as f64).collect());
+        let i32s: Vec<i32> = (0..n).map(|i| -2_000_000_000 + i as i32 * 1_000).collect();
+        check(builder.write_i32(&i32s).unwrap(), "int", 32, i32s.iter().step_by(2).map(|v| *v as f64).collect());
     }
 }

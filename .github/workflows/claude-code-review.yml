@@ -6,9 +6,8 @@ name: Claude Code Review
 # dependencies or executes the PR's code, so untrusted fork code is never run
 # with the elevated token.
 #
-# NO GITHUB TOKEN REACHES THE AGENT'S SUBPROCESSES, and it has no Bash tool.
-# `allowed_non_write_users` makes claude-code-action set
-# CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, and the review is built around that:
+# THE AGENT HAS NO SHELL: `--tools` below gives it Read, Grep and Glob, and the
+# review is built around that:
 #
 #   1. A workflow step (which has the token) writes the diff and the PR metadata
 #      into `pr-context/`; Claude reads those files with Read/Grep.
@@ -191,7 +190,7 @@ jobs:
           # anything from the checkout belongs in ci.yml.
           allow-unsafe-pr-checkout: true
 
-      # Claude has no token with which to fetch the diff (see the header), so
+      # Claude has no shell with which to fetch the diff (see the header), so
       # stage it on disk. This runs AFTER the checkout and clears the directory
       # first, so a PR that ships its own `pr-context/` cannot pre-seed what the
       # reviewer reads.
@@ -317,8 +316,7 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
-      # Publish Claude's final message as the summary comment. The token lives
-      # here, in a plain workflow step, never in the agent's environment.
+      # Publish Claude's final message as the summary comment.
       # `execution_file` is a JSON array of SDK turns; the last `result` turn
       # holds the final assistant message.
       - name: Post review summary

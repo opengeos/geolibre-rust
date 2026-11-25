@@ -33,7 +33,7 @@ geolibre-pmtiles = { path = "../geolibre-pmtiles" }
 # `fix/geo-0.33-wasm-compat` branch so the tiler cannot drift under us. Default
 # features only: `duckdb`/`geoparquet` would pull bundled C++ and arrow, which
 # do not belong in the wasm build.
-freestiler-core = { git = "https://github.com/giswqs/freestiler", rev = "b77f7f0d76e11bf105e913ab6d553eb2a4a7ca00", default-features = false }
+freestiler-core = { git = "https://github.com/giswqs/freestiler", rev = "f0cf4215b2b1dc7d3fcdc4037edfe8c83979949a", default-features = false }
 
 serde_json = "1"
 # Pure-Rust PNG encoder (miniz_oxide backend), used by render_raster_png and

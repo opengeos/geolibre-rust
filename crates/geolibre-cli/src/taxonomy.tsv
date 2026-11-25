@@ -492,6 +492,7 @@ las_to_shapefile	LiDAR	I/O & Management
 layer_footprint_raster	Vector	Sampling & Gridding
 layer_footprint_vector	Vector	Sampling & Gridding
 lee_filter	Remote Sensing	Filters
+lee_sigma_filter	Remote Sensing	SAR
 length_of_upstream_channels	Hydrology	Streams - Longitudinal Analysis
 less_than	Raster	General
 less_than_or_equal_to	Raster	General

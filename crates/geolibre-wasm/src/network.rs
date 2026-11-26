@@ -118,11 +118,17 @@ impl Graph {
         if edge_b.len() != m || cost_ab.len() != m || cost_ba.len() != m || feature.len() != m {
             return Err("edge arrays must all have the same length".into());
         }
-        if n > (u32::MAX as usize) || 2 * m > (i32::MAX as usize) {
+        // Node and state ids are stored as i32 in the predecessor arrays.
+        if n > (i32::MAX as usize) || 2 * m > (i32::MAX as usize) {
             return Err("network is too large".into());
         }
         if edge_a.iter().chain(edge_b.iter()).any(|&v| v as usize >= n) {
             return Err("edge endpoint out of range".into());
+        }
+        // A self-loop has no direction for the directed-edge states to tell
+        // apart, and never shortens a route; GeoLibre never builds one.
+        if edge_a.iter().zip(&edge_b).any(|(a, b)| a == b) {
+            return Err("self-loop edges are not supported".into());
         }
         if cost_ab.iter().chain(cost_ba.iter()).any(|c| c.is_nan() || *c < 0.0) {
             return Err("edge costs must be non-negative or infinity".into());
@@ -469,8 +475,14 @@ impl Search {
         if opts.max_cost.is_nan() {
             return Err("max_cost must be a number".into());
         }
+        if opts.stop_weights.is_some() && opts.stop_count == 0 {
+            return Err("stop_count must be at least 1 with stop_weights".into());
+        }
+        // A weighted stop needs settle order by true cost, so it runs Dijkstra
+        // even when a target is given.
         let use_heuristic = opts.astar
             && opts.target.is_some()
+            && opts.stop_weights.is_none()
             && opts.min_cost_per_meter.is_finite()
             && opts.min_cost_per_meter > 0.0;
         let (target_lon, target_lat) = match opts.target {
@@ -619,9 +631,11 @@ impl Search {
         let reverse = self.opts.reverse;
         let max_cost = self.opts.max_cost;
         if self.phase == Phase::Start {
+            // Distinct sources in first-seen order (tie-breaking depends on it).
+            let mut seen = vec![false; graph.node_count()];
             let mut starts: Vec<usize> = Vec::with_capacity(self.opts.sources.len());
             for &s in &self.opts.sources {
-                if !starts.contains(&(s as usize)) {
+                if !std::mem::replace(&mut seen[s as usize], true) {
                     starts.push(s as usize);
                 }
             }
@@ -1271,8 +1285,33 @@ mod tests {
         assert!(bad_cost.is_err());
         let bad_adj = Graph::new(vec![0.0, 1.0, 2.0], vec![0.0; 3], vec![0], vec![1], vec![1.0], vec![1.0], vec![0], vec![0, 1, 2, 3], vec![0, 0, 0]);
         assert!(bad_adj.is_err());
+        let self_loop = Graph::new(vec![0.0, 1.0], vec![0.0, 0.0], vec![0, 0], vec![1, 0], vec![1.0, 1.0], vec![1.0, 1.0], vec![0, 1], vec![0, 3, 4], vec![0, 1, 1, 0]);
+        assert!(self_loop.is_err());
         let g = grid();
         assert!(Search::new(Rc::clone(&g), None, opts(&[99])).is_err());
+        let mut zero_stop = opts(&[0]);
+        zero_stop.stop_weights = Some(vec![1; 9]);
+        assert!(Search::new(Rc::clone(&g), None, zero_stop).is_err());
+    }
+
+    #[test]
+    fn weighted_stop_ignores_the_heuristic() {
+        // A line A(-100) - 0 - B(150) - T(300): facility A costs 100 and B 150
+        // from node 0. A* toward T would pop B first (150 + 150 left) before
+        // A (100 + 400 left); the stop must still see A, the nearer one.
+        let g = graph(&[(0.0, 0.0), (-100.0, 0.0), (150.0, 0.0), (300.0, 0.0)], &[
+            (0, 1, 100.0, 100.0, 0),
+            (0, 2, 150.0, 150.0, 1),
+            (2, 3, 150.0, 150.0, 2),
+        ]);
+        let mut o = opts(&[0]);
+        o.stop_weights = Some(vec![0, 1, 1, 0]);
+        o.stop_count = 1;
+        o.target = Some(3);
+        o.astar = true;
+        o.min_cost_per_meter = 1.0;
+        let s = finish(&g, None, o);
+        assert_eq!(s.settled_targets(), &[1]);
     }
 
     #[test]

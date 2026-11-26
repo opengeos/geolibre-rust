@@ -17,6 +17,7 @@ mod geoparquet_mem;
 mod vector;
 mod lidar;
 mod analysis;
+mod network;
 mod pmtiles;
 use wasm_bindgen::prelude::*;
 use wbgeotiff::{CogLayout, CogWriter, Compression, GeoKeyDirectory, GeoTiff, GeoTransform, SampleFormat};

@@ -76,6 +76,33 @@ Reprojecting variants (`vector_to_binary_reproject`,
 `vector_to_arrow_ipc_reproject`) take `dst_epsg` and `src_epsg`, where `0`
 means "use the layer's own CRS".
 
+### Network routing over typed arrays
+
+`RoutingGraph` runs Dijkstra and A* (a haversine heuristic scaled by the
+cheapest cost per metre, so A* returns the Dijkstra optimum) over a network you
+pass as typed arrays: node `lon`/`lat`, per-edge end nodes, a cost each way
+(`Infinity` closes a direction) and a source feature id, and the node adjacency
+in CSR form. `set_turn_rules` switches to a directed-edge search with a turn
+table between features, left/right turn costs and a U-turn policy. A search
+runs in bounded chunks, so a caller can yield and cancel between them:
+
+```js
+import init, { RoutingGraph } from "geolibre-wasm";
+await init();
+
+const graph = new RoutingGraph(lon, lat, edgeA, edgeB, costAB, costBA, feature, adjOffsets, adjEdges);
+// sources, target (-1 for none), astar, maxCost, reverse, sphere radius (m),
+// min cost per metre, stop weights per node (or undefined), stop count, budget
+const search = graph.start_search(sources, target, true, Infinity, false, 6371008.8, minCostPerMeter, undefined, 0, 5e7);
+while (!search.run(250_000)) await new Promise((r) => setTimeout(r, 0));
+search.dist();      // Float64Array cost per node
+search.prev_node(); // Int32Array predecessor per node (-1 for none)
+search.free();
+```
+
+It backs GeoLibre's local network tools (shortest path, closest facility,
+service area), which build and snap the graph in JavaScript.
+
 ## Tools usage (`./tools`)
 
 ```js

@@ -10,6 +10,7 @@ import initLib, {
   vector_formats,
   vector_to_binary,
   vector_to_arrow_ipc,
+  RoutingGraph,
 } from "../npm/geolibre_wasm.js";
 import { initTools, listTools, runTool } from "../npm/tools.mjs";
 
@@ -56,6 +57,30 @@ const ipc = vector_to_arrow_ipc(sampleGeoJson, "geojson");
 const marker = new DataView(ipc.buffer, ipc.byteOffset, 4).getUint32(0, true);
 if (marker !== 0xffffffff) throw new Error(`not an Arrow IPC stream (marker ${marker})`);
 console.log(`library vector_to_arrow_ipc: ${ipc.length} bytes of GeoArrow IPC`);
+
+// ── network routing: Dijkstra / A* over typed arrays ──
+// A triangle 0-1-2 with a costly direct edge 0-2: the cheapest route to 2
+// runs through 1. Adjacency is CSR: node n's edges are
+// adj_edges[adj_offsets[n]..adj_offsets[n + 1]].
+const graph = new RoutingGraph(
+  new Float64Array([0, 0.001, 0.002]),
+  new Float64Array([0, 0.001, 0]),
+  new Uint32Array([0, 1, 0]),
+  new Uint32Array([1, 2, 2]),
+  new Float64Array([1, 1, 5]),
+  new Float64Array([1, 1, 5]),
+  new Uint32Array([0, 1, 2]),
+  new Uint32Array([0, 2, 4, 6]),
+  new Uint32Array([0, 2, 0, 1, 1, 2]),
+);
+const search = graph.start_search(new Uint32Array([0]), 2, true, Infinity, false, 6371008.8, 0, undefined, 0, 1e6);
+if (!search.run(1e6)) throw new Error("routing search did not finish");
+const dist = search.dist();
+const prev = search.prev_node();
+if (dist[2] !== 2 || prev[2] !== 1) throw new Error(`unexpected route: cost ${dist[2]}, via ${prev[2]}`);
+console.log(`library RoutingGraph: cost ${dist[2]} to node 2 via node ${prev[2]}`);
+search.free();
+graph.free();
 
 // ── tools export (./tools) ──
 await initTools(await readFile(new URL("../npm/geolibre-cli.wasm", import.meta.url)));

@@ -142,16 +142,25 @@ impl Graph {
         if adj_edges.iter().any(|&e| e as usize >= m) {
             return Err("adjacency edge out of range".into());
         }
-        // Each adjacency entry must name an edge incident to its node, or the
-        // searches would step from a node along an edge that does not touch it.
+        // Each edge must be listed exactly once at each of its two ends: an
+        // entry at a node it does not touch would step along a foreign edge,
+        // and a missing or repeated one would hide or double a move.
+        let mut listed = vec![0u8; m];
         for node in 0..n {
             let range = adj_offsets[node] as usize..adj_offsets[node + 1] as usize;
             for &e in &adj_edges[range] {
                 let (a, b) = (edge_a[e as usize] as usize, edge_b[e as usize] as usize);
-                if a != node && b != node {
+                let bit = if node == a { 1 } else if node == b { 2 } else {
                     return Err(format!("adjacency of node {node} lists edge {e}, which does not touch it"));
+                };
+                if listed[e as usize] & bit != 0 {
+                    return Err(format!("adjacency of node {node} lists edge {e} twice"));
                 }
+                listed[e as usize] |= bit;
             }
+        }
+        if let Some(e) = listed.iter().position(|&bits| bits != 3) {
+            return Err(format!("edge {e} is missing from the adjacency of one of its ends"));
         }
         Ok(Self { lon, lat, edge_a, edge_b, cost_ab, cost_ba, feature, adj_offsets, adj_edges })
     }
@@ -426,6 +435,8 @@ enum Phase {
     Start,
     Main,
     Done,
+    /// Stopped by the budget; the search arrays are partial.
+    Failed,
 }
 
 /// Directed-edge state arrays, present when the search applies turn rules.
@@ -529,7 +540,7 @@ impl Search {
     /// Charge one adjacency entry against the budget, even one skipped later.
     fn charge(&mut self) -> Result<(), String> {
         if self.remaining == 0 {
-            self.phase = Phase::Done;
+            self.phase = Phase::Failed;
             return Err(BUDGET_EXCEEDED.into());
         }
         self.remaining -= 1;
@@ -554,6 +565,11 @@ impl Search {
     /// Returns true once the search is complete. A search that exceeds its
     /// budget returns an error and is complete.
     pub fn run(&mut self, max_visits: u64) -> Result<bool, String> {
+        // A search that ran out of budget stays failed, so its partial arrays
+        // are never mistaken for a finished search.
+        if self.phase == Phase::Failed {
+            return Err(BUDGET_EXCEEDED.into());
+        }
         let stop_at = self.visits.saturating_add(max_visits.max(1));
         if self.turns.is_some() {
             self.run_turns(stop_at)
@@ -724,9 +740,14 @@ impl Search {
         Ok(true)
     }
 
-    /// Whether the search has finished.
+    /// Whether the search has stopped, finished or failed.
     pub fn done(&self) -> bool {
-        self.phase == Phase::Done
+        matches!(self.phase, Phase::Done | Phase::Failed)
+    }
+
+    /// Whether the search ran out of budget (its arrays are partial).
+    pub fn failed(&self) -> bool {
+        self.phase == Phase::Failed
     }
 
     /// Per node, the cheapest cost from (or, reverse, to) the sources.
@@ -920,10 +941,16 @@ impl RoutingSearch {
         self.inner.run(js_count(max_visits)).map_err(js_err)
     }
 
-    /// Whether the search has finished.
+    /// Whether the search has stopped, finished or failed.
     #[wasm_bindgen(getter)]
     pub fn done(&self) -> bool {
         self.inner.done()
+    }
+
+    /// Whether the search ran out of budget (its arrays are partial).
+    #[wasm_bindgen(getter)]
+    pub fn failed(&self) -> bool {
+        self.inner.failed()
     }
 
     /// Whether the search ran over directed-edge states (turn rules).
@@ -1178,7 +1205,9 @@ mod tests {
         let err = s.run(u64::MAX).unwrap_err();
         assert_eq!(err, BUDGET_EXCEEDED);
         assert_eq!(s.remaining_budget(), 0);
-        assert!(s.done());
+        assert!(s.done() && s.failed());
+        // Running a failed search again keeps failing.
+        assert_eq!(s.run(u64::MAX).unwrap_err(), BUDGET_EXCEEDED);
     }
 
     /// A plus-shaped junction: 0 west, 1 centre, 2 east, 3 north, 4 south,
@@ -1285,6 +1314,11 @@ mod tests {
         assert!(bad_cost.is_err());
         let bad_adj = Graph::new(vec![0.0, 1.0, 2.0], vec![0.0; 3], vec![0], vec![1], vec![1.0], vec![1.0], vec![0], vec![0, 1, 2, 3], vec![0, 0, 0]);
         assert!(bad_adj.is_err());
+        // Edge 0 listed only at node 0, and listed twice at node 0.
+        let missing = Graph::new(vec![0.0, 1.0], vec![0.0, 0.0], vec![0], vec![1], vec![1.0], vec![1.0], vec![0], vec![0, 1, 1], vec![0]);
+        assert!(missing.is_err());
+        let twice = Graph::new(vec![0.0, 1.0], vec![0.0, 0.0], vec![0], vec![1], vec![1.0], vec![1.0], vec![0], vec![0, 2, 3], vec![0, 0, 0]);
+        assert!(twice.is_err());
         let self_loop = Graph::new(vec![0.0, 1.0], vec![0.0, 0.0], vec![0, 0], vec![1, 0], vec![1.0, 1.0], vec![1.0, 1.0], vec![0, 1], vec![0, 3, 4], vec![0, 1, 1, 0]);
         assert!(self_loop.is_err());
         let g = grid();
